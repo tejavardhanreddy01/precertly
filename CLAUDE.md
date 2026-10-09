@@ -12,12 +12,17 @@ uv run uvicorn precertly.api.main:app --reload  # API at :8000/docs
 uv run pytest -q                                # tests
 uv run ruff check . && uv run ruff format .     # lint + format
 data/synthea/generate.sh 10                     # synthetic FHIR patients (Java 11+)
+uv run python -m precertly.fhir <bundle-or-dir>  # chunk summary for FHIR bundles
+uv run python scripts/smoke_llm.py              # one real Bedrock call (costs money; ask first)
 ```
 
 ## Layout
 
 - `src/precertly/policies/` – policy schema (Pydantic) and loader
 - `src/precertly/api/` – FastAPI app
+- `src/precertly/fhir/` – FHIR bundle → `Chunk`s (id `Type/id#n`; notes are verbatim slices with char offsets)
+- `src/precertly/llm/` – Bedrock Converse client: structured output, tokens and latency per call
+- `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile)
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
 - `data/synthea/` – patient generator (output is git-ignored)
 - `evals/` – labeled cases and scorers (see evals/README.md)
@@ -34,4 +39,5 @@ data/synthea/generate.sh 10                     # synthetic FHIR patients (Java 
 ## Status
 
 - Day 1 done: policy schema + 4 policies validated in CI, read-only policy API, Synthea script.
-- Next (core pipeline): FHIR bundle → text chunks with resource ids → hybrid search (Postgres FTS + pgvector) → per-criterion judgment on Bedrock with structured output and quote verification → combine via variant logic → PAS-shaped Claim bundle.
+- Day 2 part 1 done: FHIR chunker, Bedrock client (mocked in tests), smoke script.
+- Next (core pipeline): hybrid search over chunks (Postgres FTS + pgvector) → per-criterion judgment on Bedrock with structured output and quote verification → combine via variant logic → PAS-shaped Claim bundle.

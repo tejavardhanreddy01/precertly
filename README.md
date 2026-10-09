@@ -29,6 +29,15 @@ uv run uvicorn precertly.api.main:app --reload   # http://localhost:8000/docs
 uv run pytest
 ```
 
+Chunk a FHIR bundle (or a directory of them) and see what the agent will be able to cite:
+
+```bash
+data/synthea/generate.sh 10                        # synthetic patients, needs Java 11+
+uv run python -m precertly.fhir data/synthea/output/fhir
+```
+
+The LLM runs on Amazon Bedrock. Model, region and AWS profile come from `PRECERTLY_BEDROCK_MODEL_ID`, `PRECERTLY_AWS_REGION` and `PRECERTLY_AWS_PROFILE` (defaults: `us.amazon.nova-2-lite-v1:0`, `us-east-2`, `precertly`). `uv run python scripts/smoke_llm.py` makes one real call to check the setup; tests never touch the network.
+
 Try `GET /requirements/64635` to see what a lumbar facet ablation request must show.
 
 ## Roadmap
