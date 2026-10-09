@@ -43,8 +43,8 @@ async def main() -> int:
         print(f"Bedrock call failed: {error}", file=sys.stderr)
         print(
             "Check `aws sso login --profile <profile>` (or your credentials), that the model "
-            "is enabled in this region, and whether it needs an inference profile id "
-            "(e.g. PRECERTLY_BEDROCK_MODEL_ID=us.amazon.nova-2-lite-v1:0).",
+            "is enabled in this region, and that PRECERTLY_BEDROCK_MODEL_ID is an inference "
+            "profile id. Credentials from `aws login` need botocore[crt] (in the dev group).",
             file=sys.stderr,
         )
         return 1

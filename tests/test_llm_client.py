@@ -52,7 +52,7 @@ def _client(*responses: dict[str, Any] | Exception) -> tuple[BedrockClient, Fake
 
 
 def test_settings_defaults_and_env_override(monkeypatch):
-    assert SETTINGS.bedrock_model_id == "amazon.nova-2-lite-v1:0"
+    assert SETTINGS.bedrock_model_id == "us.amazon.nova-2-lite-v1:0"
     assert SETTINGS.aws_region == "us-east-2"
     assert SETTINGS.aws_profile == "precertly"
     monkeypatch.setenv("PRECERTLY_BEDROCK_MODEL_ID", "some.other-model-v1:0")
@@ -69,7 +69,7 @@ def test_converse_builds_request_and_records_usage():
     assert result.text == "hello"
     assert fake.requests == [
         {
-            "modelId": "amazon.nova-2-lite-v1:0",
+            "modelId": "us.amazon.nova-2-lite-v1:0",
             "messages": [{"role": "user", "content": [{"text": "hi"}]}],
             "inferenceConfig": {"maxTokens": 50, "temperature": 0.0},
             "system": [{"text": "be brief"}],
@@ -78,7 +78,7 @@ def test_converse_builds_request_and_records_usage():
     usage = result.usage
     assert (usage.input_tokens, usage.output_tokens, usage.stop_reason) == (40, 12, "end_turn")
     assert usage.latency_ms >= 0
-    assert usage.model_id == "amazon.nova-2-lite-v1:0"
+    assert usage.model_id == "us.amazon.nova-2-lite-v1:0"
     assert client.calls == [usage]
 
 
