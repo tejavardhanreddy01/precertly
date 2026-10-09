@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
     "pyyaml>=6.0",
+    "boto3>=1.43.111",
 ]
 
 [dependency-groups]
