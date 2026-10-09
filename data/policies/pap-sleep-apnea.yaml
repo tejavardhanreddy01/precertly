@@ -1,0 +1,82 @@
+id: pap-sleep-apnea
+title: Positive Airway Pressure (PAP) Devices for Obstructive Sleep Apnea
+document: LCD L33718
+verified_on: 2026-10-09
+sources:
+  - title: Noridian documentation checklist, positive airway pressure (cites LCD L33718)
+    url: https://med.noridianmedicare.com/documents/2230715/26734435/Documentation+Checklist+-+Positive+Airway+Pressure+%28PAP%29.pdf
+
+criteria:
+  - id: f2f-before-sleep-test
+    text: A face-to-face clinical evaluation to assess for obstructive sleep apnea took place before the sleep test.
+    kind: documentation
+    evidence: [Encounter, DocumentReference]
+
+  - id: covered-sleep-test
+    text: A Medicare-covered diagnostic sleep test, with hypopneas scored using the 4% desaturation rule.
+    kind: documentation
+    evidence: [DiagnosticReport, Procedure]
+
+  - id: ahi-15-plus
+    text: AHI or RDI of 15 or more events per hour, with at least 30 events.
+    kind: clinical
+    thresholds: { min_ahi: 15, min_events: 30 }
+    evidence: [Observation, DiagnosticReport]
+
+  - id: ahi-5-to-14
+    text: AHI or RDI of 5 to 14 events per hour, with at least 10 events.
+    kind: clinical
+    thresholds: { min_ahi: 5, max_ahi: 14.9, min_events: 10 }
+    evidence: [Observation, DiagnosticReport]
+
+  - id: osa-symptom-or-condition
+    text: Documented excessive daytime sleepiness, impaired cognition, mood disorder or insomnia; or hypertension, ischemic heart disease or history of stroke.
+    kind: clinical
+    evidence: [Condition, Observation, DocumentReference]
+
+  - id: device-education
+    text: The supplier documented teaching the beneficiary or caregiver proper use and care of the device.
+    kind: documentation
+    evidence: [DocumentReference, Communication]
+
+  - id: adherence-4h-70pct
+    text: Use of at least 4 hours per night on 70% of nights during a consecutive 30-day period within the first 3 months.
+    kind: clinical
+    thresholds: { min_hours_per_night: 4, min_nights_pct: 70, window_days: 30, within_months: 3 }
+    evidence: [Observation, DeviceUseStatement, DocumentReference]
+
+  - id: reevaluation-day-31-to-91
+    text: A face-to-face re-evaluation between days 31 and 91 after starting therapy documents improved symptoms and reviews objective adherence data.
+    kind: documentation
+    thresholds: { min_day: 31, max_day: 91 }
+    evidence: [Encounter, DocumentReference]
+
+variants:
+  - id: initial
+    title: PAP device, first 3 months
+    codes: ["E0601", "E0470"]
+    logic:
+      all_of:
+        - f2f-before-sleep-test
+        - covered-sleep-test
+        - any_of:
+            - ahi-15-plus
+            - all_of: [ahi-5-to-14, osa-symptom-or-condition]
+        - device-education
+
+  - id: continued
+    title: PAP device, continued coverage after 3 months
+    codes: ["E0601", "E0470"]
+    logic:
+      all_of:
+        - f2f-before-sleep-test
+        - covered-sleep-test
+        - any_of:
+            - ahi-15-plus
+            - all_of: [ahi-5-to-14, osa-symptom-or-condition]
+        - device-education
+        - adherence-4h-70pct
+        - reevaluation-day-31-to-91
+
+notes:
+  - E0470 (bilevel without backup rate) has additional criteria in the LCD that are not encoded yet; only the shared PAP criteria are modeled.

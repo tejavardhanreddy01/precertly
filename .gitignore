@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Synthea tool and its generated output (large; regenerate with data/synthea/generate.sh)
+data/synthea/bin/
+data/synthea/output/
+
+# CDK
+cdk.out/
+node_modules/

@@ -1,0 +1,153 @@
+id: facet-joint-interventions
+title: Facet Joint Interventions for Pain Management
+document: LCD L38773
+verified_on: 2026-10-09
+sources:
+  - title: CGS J15 prior authorization checklist, facet joint interventions (cites LCD L38773, LCA A58364)
+    url: https://cgsmedicare.com/pdf/j15/pa/facet_checklist_tool.pdf
+  - title: CMS Hospital OPD prior authorization program (facet joint interventions added July 1, 2023)
+    url: https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-pre-claim-review-initiatives/prior-authorization-certain-hospital-outpatient-department-opd-services
+
+criteria:
+  - id: axial-pain-3-months
+    text: Moderate to severe chronic pain, predominantly axial (neck or low back), present for about 3 months.
+    kind: clinical
+    thresholds: { min_duration_months: 3, location: [cervical, thoracic, lumbar] }
+    evidence: [Condition, Encounter, DocumentReference]
+
+  - id: functional-deficit-measured
+    text: The pain causes a functional deficit, measured on a pain or disability scale.
+    kind: clinical
+    evidence: [Observation, DocumentReference]
+
+  - id: conservative-care-3-months
+    text: Documented failure of about 3 months of noninvasive conservative management, as tolerated.
+    kind: clinical
+    thresholds: { min_duration_months: 3 }
+    evidence: [Procedure, MedicationRequest, DocumentReference]
+    note: Physical therapy, medications and home exercise are typical evidence.
+
+  - id: no-untreated-radiculopathy
+    text: No untreated radiculopathy or neurogenic claudication, except radiculopathy caused by a facet joint synovial cyst.
+    kind: exclusion
+    evidence: [Condition, DocumentReference]
+
+  - id: no-other-pathology
+    text: No non-facet pathology (such as fracture, tumor, infection or significant deformity) that could explain the pain.
+    kind: exclusion
+    evidence: [Condition, DiagnosticReport, DocumentReference]
+
+  - id: levels-1-to-2
+    text: The procedure involves only 1 to 2 levels.
+    kind: coverage
+    thresholds: { max_levels: 2 }
+    evidence: [ServiceRequest]
+
+  - id: no-multiple-blocks-same-day
+    text: Multiple blocks on the same day may lead to a non-affirmed decision.
+    kind: frequency
+    severity: warning
+    evidence: [Procedure, ServiceRequest]
+
+  - id: first-mbb-80pct-relief
+    text: The first medial branch block gave at least 80% relief, measured on the same pain scale before and after and documented.
+    kind: clinical
+    thresholds: { min_relief_pct: 80, same_scale: true }
+    evidence: [Observation, Procedure, DocumentReference]
+
+  - id: two-mbbs-80pct-relief
+    text: At least 2 diagnostic medial branch blocks, each with consistent relief of at least 80% on the same pain scale.
+    kind: clinical
+    thresholds: { min_blocks: 2, min_relief_pct: 80, same_scale: true }
+    evidence: [Observation, Procedure, DocumentReference]
+
+  - id: mbb-interval-2-weeks
+    text: At least 2 weeks since the previous medial branch block or intra-articular procedure.
+    kind: frequency
+    thresholds: { min_interval_days: 14 }
+    evidence: [Procedure]
+
+  - id: mbb-sessions-max-4
+    text: No more than 4 medial branch block sessions in a rolling 12 months.
+    kind: frequency
+    thresholds: { max_sessions: 4, window_months: 12 }
+    evidence: [Procedure]
+
+  - id: rfa-sessions-max-2
+    text: No more than 2 radiofrequency ablation procedures in a rolling 12 months (a session may be unilateral or bilateral).
+    kind: frequency
+    thresholds: { max_sessions: 2, window_months: 12 }
+    evidence: [Procedure]
+
+  - id: prior-rfa-50pct-6-months
+    text: A prior ablation at the same site gave at least 50% consistent pain improvement for 6 months or more, or at least 50% consistent improvement in activities of daily living, against baseline.
+    kind: clinical
+    thresholds: { min_improvement_pct: 50, min_duration_months: 6 }
+    evidence: [Observation, Procedure, DocumentReference]
+
+  - id: diagnostics-repeated-after-2-years
+    text: If 2 years or more have passed since the last ablation, or the pain source is unclear, diagnostic blocks have been repeated.
+    kind: clinical
+    thresholds: { years_since_last_rfa: 2 }
+    evidence: [Procedure, Observation]
+
+variants:
+  - id: first-mbb
+    title: First diagnostic medial branch block
+    codes: ["64490", "64491", "64493", "64494"]
+    logic:
+      all_of:
+        - axial-pain-3-months
+        - functional-deficit-measured
+        - conservative-care-3-months
+        - no-untreated-radiculopathy
+        - no-other-pathology
+        - levels-1-to-2
+        - no-multiple-blocks-same-day
+
+  - id: second-mbb
+    title: Second diagnostic medial branch block
+    codes: ["64490", "64491", "64493", "64494"]
+    logic:
+      all_of:
+        - axial-pain-3-months
+        - functional-deficit-measured
+        - conservative-care-3-months
+        - no-untreated-radiculopathy
+        - no-other-pathology
+        - levels-1-to-2
+        - first-mbb-80pct-relief
+        - mbb-interval-2-weeks
+        - mbb-sessions-max-4
+        - no-multiple-blocks-same-day
+
+  - id: initial-rfa
+    title: Initial radiofrequency ablation
+    codes: ["64633", "64634", "64635", "64636"]
+    logic:
+      all_of:
+        - axial-pain-3-months
+        - functional-deficit-measured
+        - conservative-care-3-months
+        - no-untreated-radiculopathy
+        - no-other-pathology
+        - levels-1-to-2
+        - two-mbbs-80pct-relief
+        - rfa-sessions-max-2
+
+  - id: repeat-rfa
+    title: Repeat radiofrequency ablation at the same site
+    codes: ["64633", "64634", "64635", "64636"]
+    logic:
+      all_of:
+        - levels-1-to-2
+        - prior-rfa-50pct-6-months
+        - rfa-sessions-max-2
+        - diagnostics-repeated-after-2-years
+
+not_covered:
+  - Three- or four-level facet procedures (CPT 64492, 64495), removed from the prior-auth list in August 2024 as not medically necessary.
+
+notes:
+  - A third medial branch block or any intra-articular procedure needs specific documentation of why it is needed.
+  - Codes are listed for routing only; confirm descriptors against the current CPT set before relying on them.

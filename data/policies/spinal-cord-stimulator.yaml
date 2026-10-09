@@ -1,0 +1,62 @@
+id: spinal-cord-stimulator
+title: Implanted Spinal Neurostimulators (trial and permanent)
+document: NCD 160.7 with MAC documentation requirements
+verified_on: 2026-10-09
+sources:
+  - title: Noridian JF, spinal neurostimulator implantation documentation
+    url: https://med.noridianmedicare.com/web/jfb/specialties/surgery/spinal-neurostimulator-implantation
+  - title: CMS Hospital OPD prior authorization program (implanted spinal neurostimulators added July 1, 2021)
+    url: https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-pre-claim-review-initiatives/prior-authorization-certain-hospital-outpatient-department-opd-services
+
+criteria:
+  - id: request-type-stated
+    text: The request states whether it is for a trial or a permanent placement.
+    kind: documentation
+    evidence: [ServiceRequest]
+
+  - id: condition-and-exam-documented
+    text: Office notes document the condition requiring the procedure and a physical evaluation.
+    kind: documentation
+    evidence: [Condition, Encounter, DocumentReference]
+
+  - id: failed-prior-treatments
+    text: Treatments tried and failed are documented, such as spine surgery, physical therapy, medications, injections or psychological therapy.
+    kind: clinical
+    evidence: [Procedure, MedicationRequest, DocumentReference]
+
+  - id: psych-evaluation
+    text: An appropriate psychological evaluation is documented.
+    kind: documentation
+    evidence: [Procedure, DocumentReference, Encounter]
+
+  - id: trial-relief-50pct
+    text: The trial produced at least 50% reduction in target pain, or at least 50% reduction in analgesic medications.
+    kind: clinical
+    thresholds: { min_pain_reduction_pct: 50, min_analgesic_reduction_pct: 50 }
+    evidence: [Observation, MedicationRequest, DocumentReference]
+
+variants:
+  - id: trial
+    title: Spinal cord stimulator trial
+    codes: ["63650"]
+    logic:
+      all_of:
+        - request-type-stated
+        - condition-and-exam-documented
+        - failed-prior-treatments
+        - psych-evaluation
+
+  - id: permanent
+    title: Permanent spinal cord stimulator implant
+    codes: ["63650", "63685"]
+    logic:
+      all_of:
+        - request-type-stated
+        - condition-and-exam-documented
+        - failed-prior-treatments
+        - psych-evaluation
+        - trial-relief-50pct
+
+notes:
+  - Encoded from MAC (Noridian JF) documentation guidance; other MACs word requirements differently. Check NCD 160.7 text before adding criteria.
+  - The source does not state a minimum pain duration, so none is encoded.
