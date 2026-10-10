@@ -149,3 +149,39 @@ def test_reingest_rejects_another_patients_bundle(db, sleep_bundle):
             await ingest_bundle(session, other, case_id=result.case_id)
 
     db(work)
+
+
+class FlakyEmbedder(FakeEmbedder):
+    """Fails on its second batch, like an expired session or a hard quota would."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.batches = 0
+
+    async def embed_many(self, texts):
+        self.batches += 1
+        if self.batches == 2:
+            raise RuntimeError("credentials expired")
+        return await super().embed_many(texts)
+
+
+def test_embedder_failure_keeps_finished_batches_and_resumes(db, sleep_bundle, monkeypatch):
+    monkeypatch.setattr("precertly.ingest.pipeline.EMBED_BATCH", 2)
+
+    async def work(session):
+        first = await ingest_bundle(session, sleep_bundle, embedder=FlakyEmbedder())
+        saved = await session.scalar(
+            select(func.count()).select_from(ChartChunk).where(ChartChunk.embedding.is_not(None))
+        )
+        resumed_with = FakeEmbedder()
+        second = await ingest_bundle(
+            session, sleep_bundle, case_id=first.case_id, embedder=resumed_with
+        )
+        return first, saved, second, resumed_with
+
+    first, saved, second, resumed_with = db(work)
+    assert first.embedding_error == "RuntimeError: credentials expired"
+    assert (first.chunks, first.embedded, first.unembedded, saved) == (10, 2, 3, 2)
+    # the resume only pays for the three texts that were never embedded
+    assert (second.embedding_calls, second.cache_hits, second.unembedded) == (3, 2, 0)
+    assert len(resumed_with.texts) == 3 and second.embedding_error is None

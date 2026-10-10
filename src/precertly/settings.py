@@ -19,6 +19,10 @@ class Settings(BaseSettings):
 
     embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     embedding_dimensions: int = 1024
+    # Paces embedding calls to the account's on-demand quota. New accounts are often held
+    # to 60 requests/minute (the AWS default is 6000); raise this to match yours, or set
+    # it empty to disable pacing.
+    embedding_requests_per_minute: int | None = 60
 
     # Matches docker-compose.yml (host port 5433).
     database_url: str = "postgresql+asyncpg://precertly:precertly@localhost:5433/precertly"

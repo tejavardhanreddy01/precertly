@@ -1,4 +1,4 @@
-"""Titan Text Embeddings V2 on Bedrock, with bounded concurrency and throttle backoff."""
+"""Titan Text Embeddings V2 on Bedrock: paced, bounded concurrency, throttle backoff."""
 
 from __future__ import annotations
 
@@ -30,8 +30,9 @@ class BedrockEmbedder:
         client: Any = None,
         *,
         concurrency: int = 5,
-        max_attempts: int = 6,
+        max_attempts: int = 8,
         base_delay: float = 0.5,
+        max_delay: float = 30.0,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self.settings = settings or get_settings()
@@ -39,7 +40,11 @@ class BedrockEmbedder:
         self.concurrency = concurrency
         self.max_attempts = max_attempts
         self.base_delay = base_delay
+        self.max_delay = max_delay
         self._sleep = sleep
+        rate = self.settings.embedding_requests_per_minute
+        self._interval = 60.0 / rate if rate else 0.0
+        self._next_slot = 0.0
         self.calls: list[EmbeddingUsage] = []
 
     @property
@@ -48,6 +53,16 @@ class BedrockEmbedder:
             # botocore retries are off so the backoff below is the only retry policy.
             self._client = runtime_client(self.settings, max_attempts=1)
         return self._client
+
+    async def _wait_for_slot(self) -> None:
+        """Space request starts evenly so the per-minute quota is not exceeded."""
+        if not self._interval:
+            return
+        now = asyncio.get_running_loop().time()
+        slot = max(now, self._next_slot)
+        self._next_slot = slot + self._interval
+        if slot > now:
+            await self._sleep(slot - now)
 
     async def embed(self, text: str) -> list[float]:
         body = json.dumps(
@@ -58,6 +73,7 @@ class BedrockEmbedder:
             }
         )
         for attempt in range(1, self.max_attempts + 1):
+            await self._wait_for_slot()
             started = time.perf_counter()
             try:
                 response = await asyncio.to_thread(
@@ -71,8 +87,9 @@ class BedrockEmbedder:
                 throttled = error.response.get("Error", {}).get("Code") == "ThrottlingException"
                 if not throttled or attempt == self.max_attempts:
                     raise
-                # 0.5s, 1s, 2s, ... with jitter so concurrent workers do not retry in step.
-                await self._sleep(self.base_delay * 2 ** (attempt - 1) * random.uniform(0.5, 1.5))
+                # 0.5s, 1s, 2s, ... capped, with jitter so workers do not retry in step.
+                delay = min(self.base_delay * 2 ** (attempt - 1), self.max_delay)
+                await self._sleep(delay * random.uniform(0.5, 1.5))
                 continue
             payload = json.loads(response["body"].read())
             self.calls.append(

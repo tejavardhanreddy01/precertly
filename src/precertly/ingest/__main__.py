@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 import uuid
 from pathlib import Path
@@ -29,7 +30,11 @@ async def _ingest(paths: list[Path], case_id: uuid.UUID | None, embed: bool) -> 
             async with sessions() as session:
                 try:
                     result = await ingest_bundle(
-                        session, load_bundle(path), case_id=case_id, embedder=embedder
+                        session,
+                        load_bundle(path),
+                        case_id=case_id,
+                        embedder=embedder,
+                        commit_batches=True,
                     )
                 except IngestError as error:
                     print(f"{path.name}: {error}", file=sys.stderr)
@@ -40,12 +45,23 @@ async def _ingest(paths: list[Path], case_id: uuid.UUID | None, embed: bool) -> 
                 f"embedded={result.embedded} (new={result.embedding_calls}, "
                 f"cached={result.cache_hits})  unembedded={result.unembedded}"
             )
+            if result.embedding_error:
+                print(
+                    f"embedding stopped: {result.embedding_error}\n"
+                    f"Finished vectors are saved. Resume with: python -m precertly.ingest "
+                    f"{path} --embed --case-id {result.case_id}",
+                    file=sys.stderr,
+                )
+                return 1
     finally:
+        if embedder is not None:
+            tokens = sum(call.input_tokens for call in embedder.calls)
+            retries = sum(call.attempts - 1 for call in embedder.calls)
+            print(
+                f"Bedrock: {len(embedder.calls)} embedding calls, {tokens} tokens, "
+                f"{retries} retries"
+            )
         await get_engine().dispose()
-    if embedder is not None:
-        tokens = sum(call.input_tokens for call in embedder.calls)
-        retries = sum(call.attempts - 1 for call in embedder.calls)
-        print(f"Bedrock: {len(embedder.calls)} embedding calls, {tokens} tokens, {retries} retries")
     return 0
 
 
@@ -57,6 +73,7 @@ def main() -> int:
     parser.add_argument("--case-id", type=uuid.UUID, help="replace this case's chunks")
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     paths = sorted(args.path.glob("*.json")) if args.path.is_dir() else [args.path]
     if not paths:
         parser.error(f"no .json bundles found in {args.path}")

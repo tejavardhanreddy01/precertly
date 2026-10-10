@@ -11,7 +11,7 @@ from botocore.exceptions import ClientError
 from precertly.llm import BedrockEmbedder
 from precertly.settings import Settings
 
-SETTINGS = Settings(_env_file=None)
+SETTINGS = Settings(_env_file=None, embedding_requests_per_minute=None)
 
 
 def _throttle() -> ClientError:
@@ -112,3 +112,26 @@ def test_embed_many_keeps_order_and_bounds_concurrency():
 
     assert [v[0] for v in vectors] == [float(n) for n in range(1, 31)]
     assert 1 < fake.peak <= 5
+
+
+def test_requests_are_paced_to_the_per_minute_quota():
+    fake = FakeTitan()
+    sleeps: list[float] = []
+
+    async def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    paced = Settings(_env_file=None, embedding_requests_per_minute=60)
+    embedder = BedrockEmbedder(paced, client=fake, sleep=sleep)
+    asyncio.run(embedder.embed_many(["a", "b", "c", "d"]))
+
+    # first request goes at once; each later one is scheduled a second after the previous
+    assert len(sleeps) == 3
+    assert [round(s) for s in sorted(sleeps)] == [1, 2, 3]
+
+
+def test_backoff_delay_is_capped():
+    fake = FakeTitan(failures=6)
+    embedder, sleeps = _embedder(fake, base_delay=1.0, max_delay=4.0)
+    asyncio.run(embedder.embed("hello"))
+    assert max(sleeps) <= 4.0 * 1.5
