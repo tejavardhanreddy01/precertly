@@ -45,6 +45,11 @@ class Chunk(BaseModel):
     # rendered from structured fields.
     char_start: int | None = None
     char_end: int | None = None
+    # Structured fields, set on chunks rendered from coded resources: "system|code" tokens
+    # (component codes included) and the numeric value of an Observation.
+    codes: list[str] = []
+    value: float | None = None
+    unit: str | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -157,6 +162,27 @@ def _value(holder: dict[str, Any]) -> str:
         if key in holder:
             return str(holder[key])
     return ""
+
+
+def _codes(resource: Resource) -> list[str]:
+    concepts = [resource.get(k) for k in ("code", "medicationCodeableConcept", "vaccineCode")]
+    concepts += [c.get("code") for c in resource.get("component") or []]
+    tokens = [
+        f"{coding['system']}|{coding['code']}"
+        for concept in concepts
+        if isinstance(concept, dict)
+        for coding in concept.get("coding") or []
+        if coding.get("system") and coding.get("code")
+    ]
+    return list(dict.fromkeys(tokens))
+
+
+def _numeric_value(resource: Resource) -> tuple[float | None, str | None]:
+    quantity = resource.get("valueQuantity") or {}
+    value = quantity.get("value")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None, None
+    return float(value), quantity.get("unit") or quantity.get("code")
 
 
 def _reasons(resource: Resource, index: _Index) -> str:
@@ -516,8 +542,9 @@ def chunk_bundle(bundle: dict[str, Any], *, as_of: date | None = None) -> list[C
             pieces += [(text[start:end], start, end) for start, end in split_spans(text)]
 
         effective = next(filter(None, (_parse_date(_get(resource, p)) for p in date_paths)), None)
-        chunks += [
-            Chunk(
+        value, unit = _numeric_value(resource)
+        for i, (text, start, end) in enumerate(pieces):
+            chunk = Chunk(
                 resource_type=kind,
                 resource_id=resource["id"],
                 chunk_index=i,
@@ -526,8 +553,9 @@ def chunk_bundle(bundle: dict[str, Any], *, as_of: date | None = None) -> list[C
                 char_start=start,
                 char_end=end,
             )
-            for i, (text, start, end) in enumerate(pieces)
-        ]
+            if start is None:  # rendered from structured fields, not a note slice
+                chunk.codes, chunk.value, chunk.unit = _codes(resource), value, unit
+            chunks.append(chunk)
     return chunks
 
 
