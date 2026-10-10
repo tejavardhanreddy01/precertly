@@ -14,12 +14,12 @@ Under the CMS Interoperability and Prior Authorization rule (CMS-0057-F), affect
 
 | Procedure | Policy |
 | --- | --- |
-| Facet joint interventions (medial branch blocks, radiofrequency ablation) | LCD L38773 |
-| Spinal cord stimulator (trial and permanent) | NCD 160.7 + MAC documentation rules |
-| PAP devices for obstructive sleep apnea | LCD L33718 |
+| Facet joint interventions (medial branch blocks, radiofrequency ablation) | LCD L38773 + billing article A58364 |
+| Spinal cord stimulator (trial and permanent) | NCD 160.7 + LCD L36204 (Noridian JF) and article A57792 |
+| PAP devices for obstructive sleep apnea | LCD L33718 + policy article A52467 |
 | Bariatric surgery | NCD 100.1 |
 
-Each policy is encoded in [`data/policies/`](data/policies) as atomic criteria plus AND/OR logic per request type, with its public sources and a verification date. Synthetic data only: no real patient information is used anywhere.
+Each policy is encoded in [`data/policies/`](data/policies) as atomic criteria plus AND/OR logic per request type. Every criterion quotes the governing NCD, LCD or article text it encodes, with the document version and the date it was retrieved; `scripts/verify_policy_quotes.py` re-checks the quotes against the CMS Coverage API. Synthetic data only: no real patient information is used anywhere.
 
 ## Run locally
 
@@ -65,3 +65,5 @@ Try `GET /requirements/64635` to see what a lumbar facet ablation request must s
 ## License
 
 MIT
+
+CPT® is a registered trademark of the American Medical Association. No CPT descriptors are included in this repository.

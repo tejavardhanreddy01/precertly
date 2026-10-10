@@ -1,82 +1,254 @@
 id: pap-sleep-apnea
-title: Positive Airway Pressure (PAP) Devices for Obstructive Sleep Apnea
+title: Positive Airway Pressure (PAP) Devices for the Treatment of Obstructive Sleep Apnea
 document: LCD L33718
-verified_on: 2026-10-09
+verified_on: 2026-10-10
 sources:
-  - title: Noridian documentation checklist, positive airway pressure (cites LCD L33718)
-    url: https://med.noridianmedicare.com/documents/2230715/26734435/Documentation+Checklist+-+Positive+Airway+Pressure+%28PAP%29.pdf
+  - document: LCD L33718
+    title: Positive Airway Pressure (PAP) Devices for the Treatment of Obstructive Sleep Apnea
+    contractor: CGS Administrators, LLC and Noridian Healthcare Solutions, LLC (DME MACs)
+    version: "52"
+    effective_date: 2024-01-01
+    url: https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718&ver=52
+  - document: Article A52467
+    title: Positive Airway Pressure (PAP) Devices for the Treatment of Obstructive Sleep Apnea - Policy Article
+    contractor: CGS Administrators, LLC and Noridian Healthcare Solutions, LLC (DME MACs)
+    version: "54"
+    effective_date: 2021-08-08
+    url: https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467&ver=54
 
 criteria:
-  - id: f2f-before-sleep-test
-    text: A face-to-face clinical evaluation to assess for obstructive sleep apnea took place before the sleep test.
+  # --- Initial coverage (criteria A to C) --------------------------------------------------
+  - id: in-person-evaluation-before-sleep-test
+    text: An in-person clinical evaluation by the treating practitioner, before the sleep test, to assess for obstructive sleep apnea.
     kind: documentation
     evidence: [Encounter, DocumentReference]
-
-  - id: covered-sleep-test
-    text: A Medicare-covered diagnostic sleep test, with hypopneas scored using the 4% desaturation rule.
-    kind: documentation
-    evidence: [DiagnosticReport, Procedure]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion A)
+    quote: >-
+      The beneficiary has an in-person clinical evaluation by the treating practitioner prior to the sleep test to assess the beneficiary for obstructive sleep apnea.
 
   - id: ahi-15-plus
-    text: AHI or RDI of 15 or more events per hour, with at least 30 events.
+    text: AHI or RDI greater than or equal to 15 events per hour, with a minimum of 30 events.
     kind: clinical
     thresholds: { min_ahi: 15, min_events: 30 }
-    evidence: [Observation, DiagnosticReport]
+    evidence: [Observation, DiagnosticReport, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion B.1)
+    quote: >-
+      The apnea-hypopnea index (AHI) or Respiratory Disturbance Index (RDI) is greater than or equal to 15 events per hour with a minimum of 30 events; or,
 
   - id: ahi-5-to-14
-    text: AHI or RDI of 5 to 14 events per hour, with at least 10 events.
+    text: AHI or RDI greater than or equal to 5 and less than or equal to 14 events per hour, with a minimum of 10 events.
     kind: clinical
-    thresholds: { min_ahi: 5, max_ahi: 14.9, min_events: 10 }
-    evidence: [Observation, DiagnosticReport]
+    thresholds: { min_ahi: 5, max_ahi: 14, min_events: 10 }
+    evidence: [Observation, DiagnosticReport, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion B.2)
+    quote: >-
+      The AHI or RDI is greater than or equal to 5 and less than or equal to 14 events per hour with a minimum of 10 events and documentation of:
+    note: The LCD's upper bound is "less than or equal to 14", and the higher range starts at "greater than or equal to 15". A value between the two (for example 14.5) falls in neither range as written; the thresholds are left exactly as the LCD states them.
 
   - id: osa-symptom-or-condition
-    text: Documented excessive daytime sleepiness, impaired cognition, mood disorder or insomnia; or hypertension, ischemic heart disease or history of stroke.
+    text: Documented excessive daytime sleepiness, impaired cognition, mood disorders or insomnia; or hypertension, ischemic heart disease or history of stroke.
     kind: clinical
     evidence: [Condition, Observation, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion B.2.a and B.2.b)
+    quote: >-
+      Excessive daytime sleepiness, impaired cognition, mood disorders, or insomnia; or, Hypertension, ischemic heart disease, or history of stroke.
 
-  - id: device-education
-    text: The supplier documented teaching the beneficiary or caregiver proper use and care of the device.
+  - id: short-study-event-minimum
+    text: When the AHI or RDI is based on less than 2 hours of sleep or recording, the recorded events reach at least 30 without symptoms or at least 10 with symptoms.
+    kind: clinical
+    condition: The AHI or RDI was calculated from less than 2 hours of sleep or recording time.
+    thresholds: { min_events_without_symptoms: 30, min_events_with_symptoms: 10 }
+    evidence: [DiagnosticReport, Observation, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > DEFINITIONS
+    quote: >-
+      If the AHI or RDI is calculated based on less than 2 hours of sleep or recording time, the total number of recorded events used to calculate the AHI or RDI (respectively) must be at least the number of events that would have been required in a 2 hour period (i.e., must reach ≥30 events without symptoms or ≥10 events with symptoms).
+
+  - id: supplier-instruction
+    text: The beneficiary or caregiver received instruction from the supplier in the proper use and care of the equipment.
     kind: documentation
     evidence: [DocumentReference, Communication]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion C)
+    quote: >-
+      The beneficiary and/or their caregiver has received instruction from the supplier of the device in the proper use and care of the equipment.
+
+  # --- Sleep test requirements -------------------------------------------------------------
+  - id: sleep-test-type
+    text: The sleep test is a facility-based polysomnogram (Type I) or an inpatient hospital-based or home-based sleep test (Types II, III, IV, Other).
+    kind: documentation
+    evidence: [DiagnosticReport, Procedure, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
+    quote: >-
+      The sleep test must be either a polysomnogram performed in a facility-based laboratory (Type I study) or an inpatient hospital-based or home-based sleep test (HST) (Types II, III, IV, Other).
+
+  - id: sleep-test-meets-medicare-validity
+    text: The sleep test meets the Medicare requirements for a valid sleep test in NCD 240.4.1 and the applicable A/B MAC LCD and billing article.
+    kind: documentation
+    evidence: [DiagnosticReport, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
+    quote: >-
+      A sleep test (Type I, II, III, IV, Other) that meets the Medicare requirements for a valid sleep test as outlined in NCD 240.4.1 and the applicable A/B MAC LCD and Billing and Coding article; and,
+    note: The validity requirements themselves are in NCD 240.4.1 and the A/B MAC documents, which are not encoded here.
+
+  - id: sleep-test-fda-approved-device
+    text: The sleep test is approved by the FDA as a diagnostic device.
+    kind: documentation
+    evidence: [DiagnosticReport, Device, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
+    quote: >-
+      A sleep test that is approved by the Food and Drug Administration (FDA) as a diagnostic device; and,
+
+  - id: sleep-test-ordered-by-treating-practitioner
+    text: The sleep test was ordered by the beneficiary's treating practitioner.
+    kind: documentation
+    evidence: [ServiceRequest, DiagnosticReport, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
+    quote: >-
+      The sleep test is ordered by the beneficiary’s treating practitioner; and,
+
+  - id: sleep-test-qualified-entity
+    text: The sleep test was conducted by an entity that qualifies as a Medicare provider of sleep tests and complies with state regulatory requirements.
+    kind: documentation
+    evidence: [DiagnosticReport, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
+    quote: >-
+      The sleep test is conducted by an entity that qualifies as a Medicare provider of sleep tests and is in compliance with all applicable state regulatory requirements.
+
+  # --- Bi-level device without back-up rate (E0470), criterion D ---------------------------
+  - id: cpap-tried-and-ineffective
+    text: A single-level CPAP device (E0601) was tried and proven ineffective in a therapeutic trial, in a facility or at home.
+    kind: clinical
+    evidence: [DeviceUseStatement, Procedure, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion D)
+    quote: >-
+      An E0601 has been tried and proven ineffective based on a therapeutic trial conducted in either a facility or in a home setting. Ineffective is defined as documented failure to meet therapeutic goals using an E0601 during the titration portion of a facility-based study or during home use despite optimal therapy (i.e., proper mask selection and fitting and appropriate pressure settings).
+
+  - id: interface-fit-addressed
+    text: Before the change to E0470, the practitioner documented that an appropriate interface was properly fit and the beneficiary uses it without difficulty.
+    kind: documentation
+    evidence: [DocumentReference, Encounter]
+    source_document: Article A52467
+    source_section: Article Text > POLICY SPECIFIC DOCUMENTATION REQUIREMENTS > INITIAL EVALUATION
+    quote: >-
+      For beneficiaries changing from an E0601 to E0470 due to ineffective therapy while on E0601 (either during a facility-based titration or in the home setting), the treating practitioner must document that both of the following issues were addressed prior to changing to an E0470 device: Interface fit and comfort. An appropriate interface has been properly fit and the beneficiary is using it without difficulty. This properly fit interface will be used with the E0470 device; and,
+
+  - id: cpap-pressure-settings-failed
+    text: Before the change to E0470, the practitioner documented that the current E0601 pressure prevents the beneficiary from tolerating therapy and that lower pressures failed to control symptoms, improve sleep quality or reduce the AHI/RDI to acceptable levels.
+    kind: documentation
+    evidence: [DocumentReference, Observation, Encounter]
+    source_document: Article A52467
+    source_section: Article Text > POLICY SPECIFIC DOCUMENTATION REQUIREMENTS > INITIAL EVALUATION
+    quote: >-
+      E0601 pressure settings. The current pressure setting of the E0601 prevents the beneficiary from tolerating the therapy and lower pressure settings of the E0601 were tried but failed to: Adequately control the symptoms of OSA; or, Improve sleep quality; or, Reduce the AHI/RDI to acceptable levels.
+
+  - id: new-evaluation-after-3-months-on-cpap
+    text: A new initial in-person clinical evaluation was done for the switch to E0470 (a new sleep test is not required).
+    kind: documentation
+    condition: The beneficiary used an E0601 for more than 3 months before being switched to an E0470.
+    thresholds: { months_on_e0601_over: 3 }
+    evidence: [Encounter, DocumentReference, DeviceUseStatement]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE
+    quote: >-
+      If an E0601 device has been used for more than 3 months and the beneficiary is switched to an E0470, a new initial in-person clinical evaluation is required, but a new sleep test is not required.
+
+  # --- Continued coverage beyond the first three months -----------------------------------
+  - id: reevaluation-day-31-to-91
+    text: The treating practitioner conducted a clinical re-evaluation no sooner than the 31st day and no later than the 91st day after therapy began, and documented that the beneficiary is benefiting.
+    kind: documentation
+    thresholds: { earliest_day: 31, latest_day: 91 }
+    evidence: [Encounter, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > CONTINUED COVERAGE BEYOND THE FIRST THREE MONTHS OF THERAPY
+    quote: >-
+      Continued coverage of a PAP device (E0470 or E0601) beyond the first three months of therapy requires that, no sooner than the 31st day but no later than the 91st day after initiating therapy, the treating practitioner must conduct a clinical re-evaluation and document that the beneficiary is benefiting from PAP therapy.
+    note: The LCD adds that a re-evaluation after the 91st day that shows benefit starts continued coverage from the date of that re-evaluation, so a late re-evaluation delays coverage instead of ending it.
+
+  - id: symptoms-improved-in-person
+    text: An in-person clinical re-evaluation by the treating practitioner documents that symptoms of obstructive sleep apnea are improved.
+    kind: clinical
+    evidence: [Encounter, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > CONTINUED COVERAGE BEYOND THE FIRST THREE MONTHS OF THERAPY
+    quote: >-
+      In-person clinical re-evaluation by the treating practitioner with documentation that symptoms of obstructive sleep apnea are improved; and,
 
   - id: adherence-4h-70pct
-    text: Use of at least 4 hours per night on 70% of nights during a consecutive 30-day period within the first 3 months.
+    text: Objective evidence, reviewed by the treating practitioner, of PAP use of at least 4 hours per night on 70% of nights during a consecutive 30-day period in the first 3 months.
     kind: clinical
     thresholds: { min_hours_per_night: 4, min_nights_pct: 70, window_days: 30, within_months: 3 }
     evidence: [Observation, DeviceUseStatement, DocumentReference]
+    source_document: LCD L33718
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > CONTINUED COVERAGE BEYOND THE FIRST THREE MONTHS OF THERAPY
+    quote: >-
+      Objective evidence of adherence to use of the PAP device, reviewed by the treating practitioner. Adherence to therapy is defined as use of PAP ≥4 hours per night on 70% of nights during a consecutive thirty (30) day period anytime during the first three (3) months of initial usage.
 
-  - id: reevaluation-day-31-to-91
-    text: A face-to-face re-evaluation between days 31 and 91 after starting therapy documents improved symptoms and reviews objective adherence data.
+  - id: adherence-report-in-record
+    text: Adherence is documented by direct download or visual inspection of usage data, in a written report reviewed by the treating practitioner and included in the medical record.
     kind: documentation
-    thresholds: { min_day: 31, max_day: 91 }
-    evidence: [Encounter, DocumentReference]
+    evidence: [DocumentReference, DeviceUseStatement, Communication]
+    source_document: Article A52467
+    source_section: Article Text > POLICY SPECIFIC DOCUMENTATION REQUIREMENTS
+    quote: >-
+      Documentation of adherence to PAP therapy shall be accomplished through direct download or visual inspection of usage data with documentation provided in a written report format to be reviewed by the treating practitioner and included in the beneficiary’s medical record.
 
 variants:
   - id: initial
-    title: PAP device, first 3 months
-    codes: ["E0601", "E0470"]
+    title: Single-level CPAP device (E0601), first 3 months
+    codes: ["E0601"]
     logic:
-      all_of:
-        - f2f-before-sleep-test
-        - covered-sleep-test
+      all_of: &initial
+        - in-person-evaluation-before-sleep-test
         - any_of:
             - ahi-15-plus
             - all_of: [ahi-5-to-14, osa-symptom-or-condition]
-        - device-education
+        - short-study-event-minimum
+        - supplier-instruction
+        - sleep-test-type
+        - sleep-test-meets-medicare-validity
+        - sleep-test-fda-approved-device
+        - sleep-test-ordered-by-treating-practitioner
+        - sleep-test-qualified-entity
+
+  - id: initial-bilevel
+    title: Bi-level device without back-up rate (E0470), first 3 months
+    codes: ["E0470"]
+    logic:
+      all_of:
+        - all_of: *initial
+        - cpap-tried-and-ineffective
+        - interface-fit-addressed
+        - cpap-pressure-settings-failed
+        - new-evaluation-after-3-months-on-cpap
 
   - id: continued
-    title: PAP device, continued coverage after 3 months
+    title: PAP device, continued coverage beyond the first 3 months
     codes: ["E0601", "E0470"]
     logic:
       all_of:
-        - f2f-before-sleep-test
-        - covered-sleep-test
-        - any_of:
-            - ahi-15-plus
-            - all_of: [ahi-5-to-14, osa-symptom-or-condition]
-        - device-education
-        - adherence-4h-70pct
+        - all_of: *initial
         - reevaluation-day-31-to-91
+        - symptoms-improved-in-person
+        - adherence-4h-70pct
+        - adherence-report-in-record
+
+# Verbatim from LCD L33718, INITIAL COVERAGE.
+not_covered:
+  - A bi-level positive airway pressure device with back-up rate (E0471) is not reasonable and necessary if the primary diagnosis is OSA.
 
 notes:
-  - E0470 (bilevel without backup rate) has additional criteria in the LCD that are not encoded yet; only the shared PAP criteria are modeled.
+  - AHI or RDI values between 14 and 15 (for example 14.5) fall between the LCD's two ranges ("greater than or equal to 5 and less than or equal to 14" and "greater than or equal to 15"). The LCD does not say how they are treated, so the thresholds are encoded exactly as written.
+  - Continued coverage of an E0470 also depends on the E0470 initial criteria; the "continued" variant encodes only the criteria shared by both devices plus the continued-coverage criteria.
+  - Replacement devices, beneficiaries entering Medicare, re-qualification after a failed trial, concurrent oxygen, accessories and refills are covered by the LCD but are not encoded as variants.
+  - NCD 240.4 is the national determination for CPAP and is cited by the LCD. It is not encoded here; this file encodes the DME MAC LCD and its policy article.

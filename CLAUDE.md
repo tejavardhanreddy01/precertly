@@ -36,7 +36,8 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 ## Rules
 
 - Synthetic data only. Never add real patient data, and never commit generated Synthea output.
-- Policy criteria must trace to a public source listed in the policy file. Don't invent thresholds; if a source is silent, leave it out and add a note.
+- Policy criteria come only from governing NCD, LCD or LCD-article text, never from MAC checklists, summary pages or memory. Each criterion carries a verbatim `quote`, the `source_document` and the `source_section`. Encode only thresholds the text states, exactly as stated; if the text is silent, leave it out and add a note. Criteria that apply only in some situations get a `condition`.
+- After editing a policy, run `uv run python scripts/verify_policy_quotes.py` (needs network) and keep fetched documents out of the repo. Never copy CPT descriptors.
 - Every verdict the agent produces must cite FHIR resource ids and verbatim quotes that are verified against the source text.
 - The agent never outputs a denial on its own: outcomes are met, not_met or insufficient, and a human decides.
 - Schema changes go through an Alembic migration; `uv run alembic check` must report no drift.
