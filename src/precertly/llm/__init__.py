@@ -1,4 +1,4 @@
-"""Bedrock Converse client with structured output and per-call usage."""
+"""Bedrock clients: Converse with structured output, and text embeddings."""
 
 from precertly.llm.client import (
     BedrockClient,
@@ -7,9 +7,12 @@ from precertly.llm.client import (
     StructuredOutputError,
     StructuredResponse,
 )
+from precertly.llm.embeddings import BedrockEmbedder, EmbeddingUsage
 
 __all__ = [
     "BedrockClient",
+    "BedrockEmbedder",
+    "EmbeddingUsage",
     "LLMResponse",
     "LLMUsage",
     "StructuredOutputError",
