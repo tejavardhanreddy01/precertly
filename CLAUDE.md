@@ -46,7 +46,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 
 ## Status
 
-- Day 1 done: policy schema + 4 policies validated in CI, read-only policy API, Synthea script.
-- Day 2 part 1 done: FHIR chunker, Bedrock client (mocked in tests), smoke script.
-- Day 2 part 2 done: Postgres + pgvector, migrations, ingest with cached embeddings, hybrid search, observation lookups.
+- Done: policy schema + 4 policies validated in CI, read-only policy API, Synthea script.
+- Done: FHIR chunker, Bedrock client (mocked in tests), smoke script.
+- Done: Postgres + pgvector, migrations, ingest with cached embeddings, hybrid search, observation lookups.
 - Next (core pipeline): per-criterion judgment on Bedrock with structured output and quote verification → combine via variant logic → PAS-shaped Claim bundle.

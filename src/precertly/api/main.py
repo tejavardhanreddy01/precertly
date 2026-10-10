@@ -1,4 +1,4 @@
-"""FastAPI entrypoint. Day 1: health check and read-only policy endpoints."""
+"""FastAPI entrypoint: health check and read-only policy endpoints."""
 
 from __future__ import annotations
 
