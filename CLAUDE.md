@@ -44,6 +44,14 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - Python 3.12, typed, Pydantic v2, async where I/O happens. Keep CI green: ruff + pytest.
 - Small, focused commits with clear messages.
 
+## Conventions
+
+- Branches: `feat/`, `fix/`, `docs/` or `chore/` prefix, then a kebab-case name (`feat/criterion-judgment`).
+- Commit subjects: imperative, sentence case, under 72 characters, no trailing period (`Add hybrid search with reciprocal rank fusion`).
+- Commit bodies: explain why when it isn't obvious from the subject.
+- PR titles follow the same style as commit subjects.
+- No day or sprint labels anywhere: not in branches, commits, PR titles, docs or code.
+
 ## Status
 
 - Done: policy schema + 4 policies validated in CI, read-only policy API, Synthea script.
