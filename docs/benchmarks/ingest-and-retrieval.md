@@ -7,11 +7,13 @@
 | | |
 | --- | --- |
 | Dataset | 10 Synthea patients, seed `20261009`, ages 40 to 75, Massachusetts (`data/synthea/generate.sh 10`) |
-| Synthea build | `master-branch-latest` jar, not pinned, so regenerated patients can differ |
+| Synthea build | Unpinned `master-branch-latest` jar downloaded 2026-10-09, sha256 `018ad7f04f7aacb995804d7d4781c76d5fc714f7f23257ba50daa9eefae224ac` |
 | Database | Postgres 16.15 with pgvector 0.8.7 in Docker, on an Apple M1 laptop |
 | Embedding model | Amazon Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0`), 1024 dimensions, normalized, us-east-2 |
 | What is embedded | DocumentReference, Condition, Procedure and MedicationRequest chunks, as `"{resource_type} {effective_date}: {text}"` |
 | Code | commit `01e7c8d` for the largest patient, `b9c7c9c` for the other nine |
+
+**This baseline is not exactly reproducible.** Its patients came from an unpinned Synthea build that the `master-branch-latest` release tag no longer has to point at. `data/synthea/generate.sh` is now pinned to Synthea v4.0.0, which generates different patients from the same seed (only 3 of the 10 patient ids recur, and those charts differ in content), so a rerun will give different chunk and token counts. The patients were not regenerated or re-embedded after the pin.
 
 ## Chunks
 
