@@ -1,0 +1,114 @@
+"""Titan Text Embeddings V2 on Bedrock: paced, bounded concurrency, throttle backoff."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import random
+import time
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Any
+
+from botocore.exceptions import ClientError
+from pydantic import BaseModel
+
+from precertly.llm.client import runtime_client
+from precertly.settings import Settings, get_settings
+
+
+class EmbeddingUsage(BaseModel):
+    model_id: str
+    input_tokens: int = 0
+    latency_ms: float = 0.0  # of the successful attempt
+    attempts: int = 1
+
+
+class BedrockEmbedder:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        client: Any = None,
+        *,
+        concurrency: int = 5,
+        max_attempts: int = 8,
+        base_delay: float = 0.5,
+        max_delay: float = 30.0,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> None:
+        self.settings = settings or get_settings()
+        self._client = client
+        self.concurrency = concurrency
+        self.max_attempts = max_attempts
+        self.base_delay = base_delay
+        self.max_delay = max_delay
+        self._sleep = sleep
+        rate = self.settings.embedding_requests_per_minute
+        self._interval = 60.0 / rate if rate else 0.0
+        self._next_slot = 0.0
+        self.calls: list[EmbeddingUsage] = []
+
+    @property
+    def client(self) -> Any:
+        if self._client is None:
+            # botocore retries are off so the backoff below is the only retry policy.
+            self._client = runtime_client(self.settings, max_attempts=1)
+        return self._client
+
+    async def _wait_for_slot(self) -> None:
+        """Space request starts evenly so the per-minute quota is not exceeded."""
+        if not self._interval:
+            return
+        now = asyncio.get_running_loop().time()
+        slot = max(now, self._next_slot)
+        self._next_slot = slot + self._interval
+        if slot > now:
+            await self._sleep(slot - now)
+
+    async def embed(self, text: str) -> list[float]:
+        body = json.dumps(
+            {
+                "inputText": text,
+                "dimensions": self.settings.embedding_dimensions,
+                "normalize": True,
+            }
+        )
+        for attempt in range(1, self.max_attempts + 1):
+            await self._wait_for_slot()
+            started = time.perf_counter()
+            try:
+                response = await asyncio.to_thread(
+                    self.client.invoke_model,
+                    modelId=self.settings.embedding_model_id,
+                    body=body,
+                    contentType="application/json",
+                    accept="application/json",
+                )
+            except ClientError as error:
+                throttled = error.response.get("Error", {}).get("Code") == "ThrottlingException"
+                if not throttled or attempt == self.max_attempts:
+                    raise
+                # 0.5s, 1s, 2s, ... capped, with jitter so workers do not retry in step.
+                delay = min(self.base_delay * 2 ** (attempt - 1), self.max_delay)
+                await self._sleep(delay * random.uniform(0.5, 1.5))
+                continue
+            payload = json.loads(response["body"].read())
+            self.calls.append(
+                EmbeddingUsage(
+                    model_id=self.settings.embedding_model_id,
+                    input_tokens=payload.get("inputTextTokenCount", 0),
+                    latency_ms=(time.perf_counter() - started) * 1000,
+                    attempts=attempt,
+                )
+            )
+            return payload["embedding"]
+        raise AssertionError("unreachable")  # the loop returns or raises
+
+    async def embed_many(self, texts: Sequence[str]) -> list[list[float]]:
+        """Embeddings in input order, at most `concurrency` requests in flight."""
+        gate = asyncio.Semaphore(self.concurrency)
+
+        async def one(text: str) -> list[float]:
+            async with gate:
+                return await self.embed(text)
+
+        return list(await asyncio.gather(*(one(text) for text in texts)))

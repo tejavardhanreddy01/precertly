@@ -75,7 +75,13 @@ BUNDLE = _bundle(
         "status": "final",
         "code": {"text": "Blood pressure"},
         "component": [
-            {"code": {"text": "Systolic"}, "valueQuantity": {"value": 142, "unit": "mm[Hg]"}},
+            {
+                "code": {
+                    "coding": [{"system": "http://loinc.org", "code": "8480-6"}],
+                    "text": "Systolic",
+                },
+                "valueQuantity": {"value": 142, "unit": "mm[Hg]"},
+            },
             {"code": {"text": "Diastolic"}, "valueQuantity": {"value": 91, "unit": "mm[Hg]"}},
         ],
     },
@@ -168,8 +174,20 @@ def test_observation_values_and_components():
     assert "Value: 36.2 kg/m2" in bmi.text
     assert bmi.effective_date == date(2026, 2, 14)
     (bp,) = _for("obs-bp")
-    assert "Systolic: 142 mm[Hg]; Diastolic: 91 mm[Hg]" in bp.text
+    assert "Systolic (LOINC 8480-6): 142 mm[Hg]; Diastolic: 91 mm[Hg]" in bp.text
     assert bp.effective_date is None
+
+
+def test_structured_fields_for_code_and_value_lookups():
+    (bmi,) = _for("obs-bmi")
+    assert bmi.codes == ["http://loinc.org|39156-5"]
+    assert (bmi.value, bmi.unit) == (36.2, "kg/m2")
+    (bp,) = _for("obs-bp")
+    assert bp.codes == ["http://loinc.org|8480-6"]  # component code; values stay in the text
+    assert bp.value is None
+    assert _for("cond-1")[0].codes == ["http://snomed.info/sct|78275009"]
+    assert _for("note-short")[0].codes == []
+    assert _for("report-psg")[1].codes == []
 
 
 def test_references_are_resolved_within_the_bundle():

@@ -64,6 +64,17 @@ def _rejects_tool_choice(error: ClientError) -> bool:
     return detail.get("Code") == "ValidationException" and "toolchoice" in message
 
 
+def runtime_client(settings: Settings, *, max_attempts: int = 3) -> Any:
+    """boto3 bedrock-runtime client for the configured profile and region."""
+    session = boto3.Session(
+        profile_name=settings.aws_profile or None, region_name=settings.aws_region
+    )
+    return session.client(
+        "bedrock-runtime",
+        config=Config(retries={"max_attempts": max_attempts, "mode": "standard"}, read_timeout=120),
+    )
+
+
 class BedrockClient:
     def __init__(self, settings: Settings | None = None, client: Any = None) -> None:
         self.settings = settings or get_settings()
@@ -74,14 +85,7 @@ class BedrockClient:
     @property
     def client(self) -> Any:
         if self._client is None:
-            session = boto3.Session(
-                profile_name=self.settings.aws_profile or None,
-                region_name=self.settings.aws_region,
-            )
-            self._client = session.client(
-                "bedrock-runtime",
-                config=Config(retries={"max_attempts": 3, "mode": "standard"}, read_timeout=120),
-            )
+            self._client = runtime_client(self.settings)
         return self._client
 
     async def converse(
