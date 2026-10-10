@@ -26,6 +26,8 @@ tags: [adversarial, near-miss-threshold]
 
 Outcomes: `met`, `not_met`, `insufficient`.
 
+Some criteria have a `condition` in the policy file (for example, a rule that applies only to a repeat procedure). When the condition does not hold for a case, label the criterion `not_applicable` in `expected`; the scorer leaves it out of accuracy and false-approval counts. `not_applicable` is a label for scoring only: the agent's outcomes stay `met`, `not_met` and `insufficient`.
+
 ## Mix per procedure
 
 - 5 clean cases: clearly meets or clearly fails.
