@@ -118,8 +118,10 @@ async def ingest_bundle(
     With commit_batches the chunks and each finished batch of embeddings are committed as
     they complete, so an interrupted long run loses at most one batch.
 
-    Without case_id a new case is created. With one, the case's chunks are replaced,
-    unless it already has verdicts: their evidence points at the existing chunks.
+    Ingest is idempotent per patient: without case_id the patient's existing case is
+    reused, and a new case is created only for a patient that has none. Reusing a case
+    replaces its chunks, unless it already has verdicts: their evidence points at the
+    existing chunks.
     Vectors are reused by sha256 of the embedded text; only texts never seen before go
     to the embedder, and without an embedder those chunks are stored unembedded. If the
     embedder fails, what was embedded so far is kept and the error is reported in the
@@ -127,24 +129,33 @@ async def ingest_bundle(
     """
     patient_ref = _patient_ref(bundle)
     if case_id is None:
-        case = Case(patient_ref=patient_ref, created_by=created_by)
-        session.add(case)
-        await session.flush()
+        existing = list(await session.scalars(select(Case).where(Case.patient_ref == patient_ref)))
+        if len(existing) > 1:
+            raise IngestError(
+                f"{patient_ref} has {len(existing)} cases; pass case_id to choose one"
+            )
+        case = existing[0] if existing else None
     else:
         case = await session.get(Case, case_id)
         if case is None:
             raise IngestError(f"case {case_id} does not exist")
-        verdicts = await session.scalar(
-            select(func.count()).select_from(Verdict).where(Verdict.case_id == case_id)
-        )
-        if verdicts:
-            raise IngestError(
-                f"case {case_id} already has {verdicts} verdict(s) citing its chunks; "
-                "re-ingesting would invalidate that evidence. Ingest into a new case instead."
-            )
         if case.patient_ref != patient_ref:
             raise IngestError(
                 f"case {case_id} belongs to {case.patient_ref}, but the bundle is {patient_ref}"
+            )
+
+    if case is None:
+        case = Case(patient_ref=patient_ref, created_by=created_by)
+        session.add(case)
+        await session.flush()
+    else:
+        verdicts = await session.scalar(
+            select(func.count()).select_from(Verdict).where(Verdict.case_id == case.id)
+        )
+        if verdicts:
+            raise IngestError(
+                f"case {case.id} already has {verdicts} verdict(s) citing its chunks; "
+                "re-ingesting would invalidate that evidence."
             )
 
     chunks = chunk_bundle(bundle)

@@ -4,7 +4,8 @@ uv run python -m precertly.ingest data/synthea/output/fhir --estimate   # no DB,
 uv run python -m precertly.ingest data/synthea/output/fhir              # store, no new embeddings
 uv run python -m precertly.ingest data/synthea/output/fhir --embed      # real Bedrock calls
 
-Each run without --case-id creates new cases; pass --case-id to replace one case's chunks.
+Re-running is safe: a patient who already has a case gets its chunks replaced, not a
+second case. --case-id picks the case when a patient has several.
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ def main() -> int:
     parser.add_argument("path", type=Path, help="a bundle .json file or a directory of them")
     parser.add_argument("--estimate", action="store_true", help="print the embedding job size")
     parser.add_argument("--embed", action="store_true", help="embed new texts with Bedrock")
-    parser.add_argument("--case-id", type=uuid.UUID, help="replace this case's chunks")
+    parser.add_argument("--case-id", type=uuid.UUID, help="ingest into this case")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")

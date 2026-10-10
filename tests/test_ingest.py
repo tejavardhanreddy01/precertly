@@ -22,6 +22,12 @@ async def _chunks(session, case_id):
     return {f"{r.fhir_resource_type}/{r.fhir_resource_id}#{r.chunk_index}": r for r in rows}
 
 
+def _for_patient(bundle, patient_id):
+    other = copy.deepcopy(bundle)
+    other["entry"][0]["resource"]["id"] = patient_id
+    return other
+
+
 def test_embedding_text_prefixes_type_and_date():
     dated = Chunk(
         resource_type="Condition",
@@ -95,14 +101,44 @@ def test_reingest_replaces_chunks_and_reuses_cached_vectors(db, sleep_bundle):
 
 def test_cache_is_shared_across_cases_and_works_without_an_embedder(db, sleep_bundle):
     async def work(session):
-        cold = await ingest_bundle(session, sleep_bundle)
-        await ingest_bundle(session, sleep_bundle, embedder=FakeEmbedder())
-        warm = await ingest_bundle(session, sleep_bundle)
+        cold = await ingest_bundle(session, _for_patient(sleep_bundle, "pat-1"))
+        await ingest_bundle(session, _for_patient(sleep_bundle, "pat-2"), embedder=FakeEmbedder())
+        warm = await ingest_bundle(session, _for_patient(sleep_bundle, "pat-3"))
         return cold, warm
 
     cold, warm = db(work)
     assert (cold.embedded, cold.unembedded, cold.embedding_calls) == (0, 5, 0)
     assert (warm.embedded, warm.cache_hits, warm.unembedded) == (5, 5, 0)
+
+
+def test_ingest_is_idempotent_per_patient(db, sleep_bundle):
+    again = FakeEmbedder()
+
+    async def work(session):
+        first = await ingest_bundle(session, sleep_bundle, embedder=FakeEmbedder())
+        second = await ingest_bundle(session, sleep_bundle, embedder=again)
+        other = await ingest_bundle(session, _for_patient(sleep_bundle, "pat-2"))
+        cases = await session.scalar(select(func.count()).select_from(Case))
+        chunks = await session.scalar(select(func.count()).select_from(ChartChunk))
+        return first, second, other, cases, chunks
+
+    first, second, other, cases, chunks = db(work)
+    assert second.case_id == first.case_id != other.case_id
+    assert (cases, chunks) == (2, 20)  # no duplicate case, no duplicate chunks
+    assert (second.embedding_calls, second.cache_hits, again.texts) == (0, 5, [])
+
+
+def test_patient_with_several_cases_needs_an_explicit_case_id(db, sleep_bundle):
+    async def work(session):
+        first = await ingest_bundle(session, sleep_bundle)
+        session.add(Case(patient_ref="Patient/pat-1", created_by="test"))
+        await session.flush()
+        with pytest.raises(IngestError, match="has 2 cases"):
+            await ingest_bundle(session, sleep_bundle)
+        return await ingest_bundle(session, sleep_bundle, case_id=first.case_id), first
+
+    chosen, first = db(work)
+    assert chosen.case_id == first.case_id
 
 
 def test_reingest_is_refused_once_the_case_has_verdicts(db, sleep_bundle):
@@ -134,6 +170,8 @@ def test_reingest_is_refused_once_the_case_has_verdicts(db, sleep_bundle):
         await session.flush()
         with pytest.raises(IngestError, match="already has 1 verdict"):
             await ingest_bundle(session, sleep_bundle, case_id=result.case_id)
+        with pytest.raises(IngestError, match="already has 1 verdict"):
+            await ingest_bundle(session, sleep_bundle)  # found by patient id
         return len(await _chunks(session, result.case_id))
 
     assert db(work) == 10  # the existing chunks are untouched
