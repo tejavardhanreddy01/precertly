@@ -1,153 +1,412 @@
 id: facet-joint-interventions
 title: Facet Joint Interventions for Pain Management
 document: LCD L38773
-verified_on: 2026-10-09
+verified_on: 2026-10-10
 sources:
-  - title: CGS J15 prior authorization checklist, facet joint interventions (cites LCD L38773, LCA A58364)
-    url: https://cgsmedicare.com/pdf/j15/pa/facet_checklist_tool.pdf
-  - title: CMS Hospital OPD prior authorization program (facet joint interventions added July 1, 2023)
-    url: https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-pre-claim-review-initiatives/prior-authorization-certain-hospital-outpatient-department-opd-services
+  - document: LCD L38773
+    title: Facet Joint Interventions for Pain Management
+    contractor: CGS Administrators, LLC (MAC Part A and Part B)
+    version: "32"
+    effective_date: 2026-07-23
+    url: https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=38773&ver=32
+  - document: Article A58364
+    title: "Billing and Coding: Facet Joint Interventions for Pain Management"
+    contractor: CGS Administrators, LLC (MAC Part A and Part B)
+    version: "42"
+    effective_date: 2026-09-17
+    url: https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=58364&ver=42
 
 criteria:
-  - id: axial-pain-3-months
-    text: Moderate to severe chronic pain, predominantly axial (neck or low back), present for about 3 months.
+  # --- General criteria for every facet joint intervention -------------------------------
+  - id: chronic-axial-pain-functional-deficit
+    text: Moderate to severe chronic neck or low back pain, predominantly axial, causing a functional deficit measured on a pain or disability scale.
     kind: clinical
-    thresholds: { min_duration_months: 3, location: [cervical, thoracic, lumbar] }
-    evidence: [Condition, Encounter, DocumentReference]
+    evidence: [Condition, Observation, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Facet Joint Interventions
+    quote: >-
+      Moderate to severe chronic neck or low back pain, predominantly axial, that causes functional deficit measured on pain or disability scale*
 
-  - id: functional-deficit-measured
-    text: The pain causes a functional deficit, measured on a pain or disability scale.
-    kind: clinical
-    evidence: [Observation, DocumentReference]
-
-  - id: conservative-care-3-months
-    text: Documented failure of about 3 months of noninvasive conservative management, as tolerated.
+  - id: pain-minimum-3-months
+    text: The pain has been present for a minimum of 3 months.
     kind: clinical
     thresholds: { min_duration_months: 3 }
+    evidence: [Condition, Encounter, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Facet Joint Interventions
+    quote: >-
+      Pain present for minimum of 3 months with documented failure to respond to noninvasive conservative management (as tolerated)
+    note: The LCD's Definitions section separately defines chronic pain as "pain persisting for greater than or equal to 12 weeks after the onset of the pain".
+
+  - id: conservative-care-failed
+    text: Documented failure to respond to noninvasive conservative management, as tolerated.
+    kind: clinical
     evidence: [Procedure, MedicationRequest, DocumentReference]
-    note: Physical therapy, medications and home exercise are typical evidence.
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Facet Joint Interventions
+    quote: >-
+      Pain present for minimum of 3 months with documented failure to respond to noninvasive conservative management (as tolerated)
+    note: The LCD states no duration for conservative management, so none is encoded. Its Definitions section lists NSAIDs, acetaminophen, physical therapy, acupuncture (chronic low back pain only) and spinal manipulation as non-invasive conservative management.
 
   - id: no-untreated-radiculopathy
     text: No untreated radiculopathy or neurogenic claudication, except radiculopathy caused by a facet joint synovial cyst.
     kind: exclusion
     evidence: [Condition, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Facet Joint Interventions
+    quote: >-
+      Absence of untreated radiculopathy or neurogenic claudication (except for radiculopathy caused by facet joint synovial cyst)
 
-  - id: no-other-pathology
-    text: No non-facet pathology (such as fracture, tumor, infection or significant deformity) that could explain the pain.
+  - id: no-non-facet-pathology
+    text: No non-facet pathology, on clinical assessment or radiology studies, that could explain the source of the pain.
     kind: exclusion
-    evidence: [Condition, DiagnosticReport, DocumentReference]
+    evidence: [Condition, DiagnosticReport, ImagingStudy, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Facet Joint Interventions
+    quote: >-
+      There is no non-facet pathology per clinical assessment or radiology studies that could explain the source of the patient’s pain, including but not limited to fracture, tumor, infection, or significant deformity.
+
+  - id: pain-scale-baseline-and-after-each-diagnostic
+    text: Pain is assessed and documented at baseline and after each diagnostic procedure, using the same pain scale each time.
+    kind: documentation
+    thresholds: { same_scale: true }
+    evidence: [Observation, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Facet Joint Interventions (footnote *)
+    quote: >-
+      Pain assessment must be performed and documented at baseline, after each diagnostic procedure using the same pain scale for each assessment.
+
+  - id: disability-scale-at-baseline
+    text: A disability scale is obtained at baseline, for use in functional assessment.
+    kind: documentation
+    evidence: [Observation, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Facet Joint Interventions (footnote *)
+    quote: >-
+      A disability scale must also be obtained at baseline to be used for functional assessment (if patient qualifies for treatment).
+
+  - id: scales-documented
+    text: The pain and disability scales used are documented in the medical record.
+    kind: documentation
+    evidence: [Observation, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations (Note)
+    quote: >-
+      Note: The scales used for measurement of pain and/or disability must be documented in the medical record.
+
+  - id: no-generalized-pain-indication
+    text: The procedure is not for a generalized pain condition (such as fibromyalgia) or a chronic centralized pain syndrome.
+    kind: exclusion
+    evidence: [Condition, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      Facet joint procedures in patients for the indication of generalized pain conditions (such as fibromyalgia) or chronic centralized pain syndromes are considered not reasonable and necessary.
+
+  - id: not-after-alif
+    text: The procedure is not performed after an anterior lumbar interbody fusion (ALIF).
+    kind: exclusion
+    evidence: [Procedure, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      The following are considered not reasonable and necessary and therefore will be denied: [...] Facet joint procedure performed after anterior lumbar interbody fusion or ALIF.
+    note: The LCD does not say whether this is limited to the fused level.
+
+  - id: ct-or-fluoroscopic-guidance
+    text: The procedure is done under CT or fluoroscopic guidance (not unguided, ultrasound-guided or MRI-guided).
+    kind: coverage
+    evidence: [Procedure, ServiceRequest, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      Facet joint interventions done without CT or fluoroscopic guidance are considered not reasonable and necessary. This includes facet joint interventions done without any guidance, performed under ultrasound guidance, or with magnetic resonance imaging (MRI).
+
+  - id: one-spinal-region-per-session
+    text: The session involves only one spinal region (cervical/thoracic or lumbar/sacral).
+    kind: coverage
+    thresholds: { max_regions_per_session: 1 }
+    evidence: [ServiceRequest, Procedure]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      Therefore, facet joint interventions (both diagnostic and therapeutic) are limited to one spinal region per session.
 
   - id: levels-1-to-2
-    text: The procedure involves only 1 to 2 levels.
+    text: One to two levels, unilateral or bilateral, per session per spine region.
     kind: coverage
     thresholds: { max_levels: 2 }
-    evidence: [ServiceRequest]
+    evidence: [ServiceRequest, Procedure]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      One to two levels, either unilateral or bilateral, are allowed per session per spine region. Three or four-level procedures are not medically necessary and therefore are non-covered.
 
-  - id: no-multiple-blocks-same-day
-    text: Multiple blocks on the same day may lead to a non-affirmed decision.
-    kind: frequency
+  - id: same-day-blocks-justified
+    text: If other blocks are given on the same day as the facet procedure, the medical necessity of each injection is clearly documented.
+    kind: documentation
+    condition: Other blocks (for example epidural, sympathetic or trigger point injections) are performed on the same day as the facet joint procedure.
+    evidence: [Procedure, ServiceRequest, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      It is not routinely necessary for multiple blocks (e.g., epidural injections, sympathetic blocks, trigger point injections, ect.) to be provided to a patient on the same day as facet joint procedures. [...] If performed, the medical necessity of each injection (at the same or a different level[s]) must be clearly documented in the medical record.
+
+  - id: medical-record-elements
+    text: The record includes the performing provider's assessment for the visit, relevant history, pertinent test or procedure results, and a signed and dated visit record or operative report.
+    kind: documentation
     severity: warning
+    evidence: [Encounter, DocumentReference, DiagnosticReport]
+    source_document: Article A58364
+    source_section: Article Text > Documentation Requirements
+    quote: >-
+      The patient’s medical record should include, but is not limited to: The assessment of the patient by the performing provider as it relates to the complaint of the patient for that visit Relevant medical history Results of pertinent tests/procedures Signed and dated office visit record/operative report (Please note that all services ordered or rendered to Medicare beneficiaries must be signed.)
+    note: Warning, not required, because the article says "should include".
+
+  # --- Diagnostic procedures (IA or MBB) ---------------------------------------------------
+  - id: ia-diagnostic-only-if-mbb-not-possible
+    text: A diagnostic intraarticular block is used only if medial branch blocks cannot be performed because of documented anatomic restrictions, or there is an indication to proceed with therapeutic intraarticular injections.
+    kind: clinical
+    condition: The diagnostic procedure is an intraarticular facet block instead of a medial branch block.
+    evidence: [Procedure, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Diagnostic Facet Joint Procedures (IA or MBB)
+    quote: >-
+      Intraarticular (IA) facet block(s) are considered reasonable and necessary as a diagnostic test only if medial branch blocks (MMB) cannot be performed due to specific documented anatomic restrictions or there is an indication to proceed with therapeutic intraarticular injections. These restrictions must be clearly documented in the medical record and made available upon request.
+
+  - id: first-diagnostic-80pct-relief
+    text: The first diagnostic procedure gave a consistent positive response of at least 80% relief of the primary (index) pain, for a duration consistent with the agent used.
+    kind: clinical
+    thresholds: { min_relief_pct: 80 }
+    evidence: [Observation, Procedure, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Diagnostic Facet Joint Procedures (IA or MBB)
+    quote: >-
+      After the first diagnostic facet joint procedure, there must be a consistent positive response of at least 80% relief of primary (index) pain (with the duration of relief being consistent with the agent used)
+
+  - id: second-diagnostic-same-level
+    text: The second diagnostic procedure is at the same level as the first, to confirm its validity.
+    kind: clinical
     evidence: [Procedure, ServiceRequest]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Diagnostic Facet Joint Procedures (IA or MBB)
+    quote: >-
+      A second diagnostic facet procedure is considered medically necessary to confirm validity of the initial diagnostic facet procedure when administered at the same level.
 
-  - id: first-mbb-80pct-relief
-    text: The first medial branch block gave at least 80% relief, measured on the same pain scale before and after and documented.
+  - id: second-diagnostic-2-weeks-after-first
+    text: The second diagnostic procedure is performed at least 2 weeks after the first, unless clinical circumstances requiring an exception are clearly documented.
+    kind: frequency
+    thresholds: { min_interval_weeks: 2, documented_exception_allowed: true }
+    evidence: [Procedure, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Diagnostic Facet Joint Procedures (IA or MBB)
+    quote: >-
+      The second diagnostic procedure may only be performed a minimum of 2 weeks after the initial diagnostic procedure. Clinical circumstances that necessitate an exception to the two-week duration may be considered on an individual basis and must be clearly documented in the medical record.
+
+  - id: diagnostic-sessions-max-4
+    text: No more than 4 diagnostic sessions per covered spinal region per rolling 12 months.
+    kind: frequency
+    thresholds: { max_sessions: 4, window_months: 12, per: spinal region }
+    evidence: [Procedure]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Diagnostic Facet Joint Procedures (IA or MBB)
+    quote: >-
+      For each covered spinal region no more than four (4) diagnostic joint sessions will be reimbursed per rolling 12 months, in recognition that the pain generator cannot always be identified with the initial and confirmatory diagnostic procedure.
+
+  - id: no-diagnostic-at-level-of-successful-rfa
+    text: The diagnostic injection or medial branch block is not at the same level as a previously successful RFA.
+    kind: exclusion
+    condition: The patient has had a previously successful RFA.
+    evidence: [Procedure, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      The following are considered not reasonable and necessary and therefore will be denied: [...] Diagnostic injections or MMB at the same level as the previously successful RFA procedure
+    note: The same section requires diagnostics to be repeated when two years or more have passed since the last RFA and the pain source is in question (see diagnostics-repeated-after-2-years). The LCD does not reconcile the two statements.
+
+  - id: injectate-allowed-substances
+    text: The injection uses anesthetic, corticosteroids, anti-inflammatories and/or contrast agents, not biologicals or other substances not FDA designated for this use.
+    kind: coverage
+    evidence: [Procedure, MedicationRequest, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      Facet joint intraarticular injections and medial branch blocks may involve the use of anesthetic, corticosteroids, anti-inflammatories and/or contrast agents, and does not include injections of biologicals or other substances not FDA designated for this use.
+
+  # --- Therapeutic facet joint injections (IA or MBB) --------------------------------------
+  - id: two-diagnostics-80pct-relief
+    text: Two medically reasonable and necessary diagnostic facet joint procedures, each giving a consistent minimum of 80% relief of the primary (index) pain.
     kind: clinical
-    thresholds: { min_relief_pct: 80, same_scale: true }
+    thresholds: { min_procedures: 2, min_relief_pct: 80 }
     evidence: [Observation, Procedure, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > B. Therapeutic Facet Joint Procedures (IA or MBB)
+    quote: >-
+      The patient has had two (2) medically reasonable and necessary diagnostic facet joint procedures with each one providing a consistent minimum of 80% relief of primary (index) pain (with the duration of relief being consistent with the agent used); AND
 
-  - id: two-mbbs-80pct-relief
-    text: At least 2 diagnostic medial branch blocks, each with consistent relief of at least 80% on the same pain scale.
+  - id: prior-therapeutic-50pct-3-months
+    text: The prior therapeutic procedure at the same site gave at least consistent 50% pain relief for at least 3 months, or at least 50% consistent improvement in previously painful movements and ADLs against baseline on the same scale.
     kind: clinical
-    thresholds: { min_blocks: 2, min_relief_pct: 80, same_scale: true }
+    condition: This is a subsequent therapeutic facet joint procedure at the same anatomic site.
+    thresholds: { min_pain_relief_pct: 50, min_duration_months: 3, min_function_improvement_pct: 50, same_scale: true }
     evidence: [Observation, Procedure, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > B. Therapeutic Facet Joint Procedures (IA or MBB)
+    quote: >-
+      Subsequent therapeutic facet joint procedures at the same anatomic site results in at least consistent 50% pain relief for at least three (3) months from the prior therapeutic procedure or at least 50% consistent improvement in the ability to perform previously painful movements and ADLs as compared to baseline measurement using the same scale; AND
 
-  - id: mbb-interval-2-weeks
-    text: At least 2 weeks since the previous medial branch block or intra-articular procedure.
-    kind: frequency
-    thresholds: { min_interval_days: 14 }
-    evidence: [Procedure]
+  - id: not-rfa-candidate-documented
+    text: The record documents why the patient is not a candidate for radiofrequency ablation.
+    kind: documentation
+    evidence: [DocumentReference, Condition, Device]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > B. Therapeutic Facet Joint Procedures (IA or MBB)
+    quote: >-
+      Documentation of why the patient is not a candidate for radiofrequency ablation (such as established spinal pseudarthrosis, implanted electrical device)
 
-  - id: mbb-sessions-max-4
-    text: No more than 4 medial branch block sessions in a rolling 12 months.
+  - id: therapeutic-sessions-max-4
+    text: No more than 4 therapeutic facet joint sessions per covered spinal region per rolling 12 months.
     kind: frequency
-    thresholds: { max_sessions: 4, window_months: 12 }
+    thresholds: { max_sessions: 4, window_months: 12, per: spinal region }
     evidence: [Procedure]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > B. Therapeutic Facet Joint Procedures (IA or MBB)
+    quote: >-
+      For each covered spinal region, no more than four (4) therapeutic facet joint sessions will be reimbursed per rolling 12 months.
 
-  - id: rfa-sessions-max-2
-    text: No more than 2 radiofrequency ablation procedures in a rolling 12 months (a session may be unilateral or bilateral).
-    kind: frequency
-    thresholds: { max_sessions: 2, window_months: 12 }
-    evidence: [Procedure]
+  # --- Facet joint denervation (thermal RFA) -----------------------------------------------
+  - id: two-mbbs-80pct-sustained-relief
+    text: At least two medically reasonable and necessary diagnostic MBBs, each giving a consistent minimum of 80% sustained relief of the primary (index) pain.
+    kind: clinical
+    thresholds: { min_blocks: 2, min_relief_pct: 80 }
+    evidence: [Observation, Procedure, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > C. Facet Joint Denervation
+    quote: >-
+      Initial thermal radiofrequency destruction after the patient has had at least two (2) medically reasonable and necessary diagnostic MBBs, with each one providing a consistent minimum of 80% sustained relief of primary (index) pain (with the duration of relief being consistent with the agent used)
 
   - id: prior-rfa-50pct-6-months
-    text: A prior ablation at the same site gave at least 50% consistent pain improvement for 6 months or more, or at least 50% consistent improvement in activities of daily living, against baseline.
+    text: The prior RFA at the same site gave a minimum of consistent 50% improvement in pain for at least 6 months, or consistent improvement in previously painful movements and ADLs against baseline on the same scale.
     kind: clinical
-    thresholds: { min_improvement_pct: 50, min_duration_months: 6 }
+    thresholds: { min_pain_improvement_pct: 50, min_duration_months: 6, same_scale: true }
     evidence: [Observation, Procedure, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > C. Facet Joint Denervation
+    quote: >-
+      Repeat thermal facet joint RFA at the same anatomic site is considered medically reasonable and necessary provided the patient had a minimum of consistent 50% improvement in pain for at least six (6) months or consistent improvement in the ability to perform previously painful movements and ADLs as compared to baseline measurement using the SAME scale.
+    note: The LCD gives no percentage for the movement and ADL alternative in this sentence, so none is encoded.
+
+  - id: rfa-sessions-max-2
+    text: No more than 2 radiofrequency sessions per covered spinal region per rolling 12 months.
+    kind: frequency
+    thresholds: { max_sessions: 2, window_months: 12, per: spinal region }
+    evidence: [Procedure]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > C. Facet Joint Denervation
+    quote: >-
+      For each covered spinal region, no more than two (2) radiofrequency sessions will be reimbursed per rolling 12 months
 
   - id: diagnostics-repeated-after-2-years
-    text: If 2 years or more have passed since the last ablation, or the pain source is unclear, diagnostic blocks have been repeated.
+    text: Diagnostic procedures have been repeated.
     kind: clinical
+    condition: Two years or more have passed since the last RFA and there is a question as to the source of the recurrent pain.
     thresholds: { years_since_last_rfa: 2 }
-    evidence: [Procedure, Observation]
+    evidence: [Procedure, Observation, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      If there is an extended time, two years or more, since the last RFA and there is a question as to the source of the recurrent pain then diagnostic procedures must be repeated.
+
+  - id: thermal-rf-only
+    text: The denervation uses thermal radiofrequency, not a non-thermal modality (chemical, low-grade thermal energy under 80 degrees Celsius, laser neurolysis or cryoablation).
+    kind: coverage
+    evidence: [Procedure, ServiceRequest, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
+    quote: >-
+      The following are considered not reasonable and necessary and therefore will be denied: [...] Non-thermal modalities for facet joint denervation including chemical, low-grade thermal energy (less than 80 degrees Celsius), laser neurolysis, and cryoablation.
 
 variants:
-  - id: first-mbb
-    title: First diagnostic medial branch block
+  - id: first-diagnostic
+    title: First diagnostic facet joint procedure
     codes: ["64490", "64491", "64493", "64494"]
     logic:
       all_of:
-        - axial-pain-3-months
-        - functional-deficit-measured
-        - conservative-care-3-months
-        - no-untreated-radiculopathy
-        - no-other-pathology
-        - levels-1-to-2
-        - no-multiple-blocks-same-day
+        - all_of: &general
+            - chronic-axial-pain-functional-deficit
+            - pain-minimum-3-months
+            - conservative-care-failed
+            - no-untreated-radiculopathy
+            - no-non-facet-pathology
+            - pain-scale-baseline-and-after-each-diagnostic
+            - disability-scale-at-baseline
+            - scales-documented
+            - no-generalized-pain-indication
+            - not-after-alif
+            - ct-or-fluoroscopic-guidance
+            - one-spinal-region-per-session
+            - levels-1-to-2
+            - same-day-blocks-justified
+            - medical-record-elements
+        - ia-diagnostic-only-if-mbb-not-possible
+        - injectate-allowed-substances
+        - diagnostic-sessions-max-4
+        - no-diagnostic-at-level-of-successful-rfa
 
-  - id: second-mbb
-    title: Second diagnostic medial branch block
+  - id: second-diagnostic
+    title: Second (confirmatory) diagnostic facet joint procedure
     codes: ["64490", "64491", "64493", "64494"]
     logic:
       all_of:
-        - axial-pain-3-months
-        - functional-deficit-measured
-        - conservative-care-3-months
-        - no-untreated-radiculopathy
-        - no-other-pathology
-        - levels-1-to-2
-        - first-mbb-80pct-relief
-        - mbb-interval-2-weeks
-        - mbb-sessions-max-4
-        - no-multiple-blocks-same-day
+        - all_of: *general
+        - ia-diagnostic-only-if-mbb-not-possible
+        - injectate-allowed-substances
+        - diagnostic-sessions-max-4
+        - no-diagnostic-at-level-of-successful-rfa
+        - first-diagnostic-80pct-relief
+        - second-diagnostic-same-level
+        - second-diagnostic-2-weeks-after-first
+
+  - id: therapeutic-injection
+    title: Therapeutic facet joint injection
+    codes: ["64490", "64491", "64493", "64494"]
+    logic:
+      all_of:
+        - all_of: *general
+        - injectate-allowed-substances
+        - two-diagnostics-80pct-relief
+        - prior-therapeutic-50pct-3-months
+        - not-rfa-candidate-documented
+        - therapeutic-sessions-max-4
 
   - id: initial-rfa
-    title: Initial radiofrequency ablation
+    title: Initial thermal radiofrequency ablation
     codes: ["64633", "64634", "64635", "64636"]
     logic:
       all_of:
-        - axial-pain-3-months
-        - functional-deficit-measured
-        - conservative-care-3-months
-        - no-untreated-radiculopathy
-        - no-other-pathology
-        - levels-1-to-2
-        - two-mbbs-80pct-relief
+        - all_of: *general
+        - two-mbbs-80pct-sustained-relief
         - rfa-sessions-max-2
+        - thermal-rf-only
 
   - id: repeat-rfa
-    title: Repeat radiofrequency ablation at the same site
+    title: Repeat thermal radiofrequency ablation at the same anatomic site
     codes: ["64633", "64634", "64635", "64636"]
     logic:
       all_of:
-        - levels-1-to-2
+        - all_of: *general
         - prior-rfa-50pct-6-months
         - rfa-sessions-max-2
         - diagnostics-repeated-after-2-years
+        - thermal-rf-only
 
+# Verbatim from LCD L38773, Limitations ("The following are considered not reasonable and
+# necessary and therefore will be denied").
 not_covered:
-  - Three- or four-level facet procedures (CPT 64492, 64495), removed from the prior-auth list in August 2024 as not medically necessary.
+  - Intraarticular and extraarticular facet joint prolotherapy
+  - Intra-facet implants
 
 notes:
-  - A third medial branch block or any intra-articular procedure needs specific documentation of why it is needed.
-  - Codes are listed for routing only; confirm descriptors against the current CPT set before relying on them.
+  - The LCD's general criteria apply to all facet joint interventions ("patients who meet ALL the following criteria"), so every variant includes them, repeat RFA included.
+  - Facet cyst aspiration or rupture (LCD section D) is a separate procedure type and is not encoded as a variant.
+  - Codes are listed for routing only; no CPT descriptors are included.

@@ -53,6 +53,10 @@ def requirements_for_code(code: str) -> list[dict[str, object]]:
             "variant_id": v.id,
             "variant": v.title,
             "criteria": [p.criterion(cid).text for cid in sorted(v.logic.criterion_ids())],
+            "sources": [
+                {"document": s.document, "version": s.version, "effective_date": s.effective_date}
+                for s in p.sources
+            ],
         }
         for p in policies().values()
         for v in p.variant_for_code(code)

@@ -1,52 +1,124 @@
 id: bariatric-surgery
 title: Bariatric Surgery for Treatment of Co-Morbid Conditions Related to Morbid Obesity
 document: NCD 100.1
-verified_on: 2026-10-09
+verified_on: 2026-10-10
 sources:
-  - title: CMS Medicare Coverage Database, NCD 100.1
-    url: https://www.cms.gov/medicare-coverage-database/view/ncd.aspx?ncdid=57
+  - document: NCD 100.1
+    title: Bariatric Surgery for Treatment of Co-Morbid Conditions Related to Morbid Obesity
+    version: "5"
+    effective_date: 2013-09-24
+    url: https://www.cms.gov/medicare-coverage-database/view/ncd.aspx?ncdid=57&ncdver=5
 
 criteria:
+  # --- Nationally covered procedures (section B) -------------------------------------------
+  - id: nationally-covered-procedure
+    text: The procedure is open or laparoscopic Roux-en-Y gastric bypass, open or laparoscopic BPD/DS (or BPD/GRDS), or laparoscopic adjustable gastric banding.
+    kind: coverage
+    evidence: [ServiceRequest, Procedure]
+    source_document: NCD 100.1
+    source_section: Indications and Limitations of Coverage > B. Nationally Covered Indications
+    quote: &covered >-
+      Effective for services performed on and after February 21, 2006, Open and laparoscopic Roux-en-Y gastric bypass (RYGBP), open and laparoscopic Biliopancreatic Diversion with Duodenal Switch (BPD/DS) or Gastric Reduction Duodenal Switch (BPD/GRDS), and laparoscopic adjustable gastric banding (LAGB) are covered for Medicare beneficiaries who have a body-mass index ≥ 35, have at least one co-morbidity related to obesity, and have been previously unsuccessful with medical treatment for obesity.
+
   - id: bmi-35-plus
-    text: Body mass index of 35 or higher.
+    text: Body-mass index of 35 or greater.
     kind: clinical
     thresholds: { min_bmi: 35 }
     evidence: [Observation]
+    source_document: NCD 100.1
+    source_section: Indications and Limitations of Coverage > B. Nationally Covered Indications
+    quote: *covered
 
   - id: obesity-comorbidity
-    text: At least one co-morbidity related to obesity (type 2 diabetes qualifies).
+    text: At least one co-morbidity related to obesity. Type 2 diabetes mellitus is a co-morbidity for this purpose.
     kind: clinical
     evidence: [Condition]
+    source_document: NCD 100.1
+    source_section: Indications and Limitations of Coverage > B. Nationally Covered Indications
+    quote: >-
+      Medicare beneficiaries who have a body-mass index ≥ 35, have at least one co-morbidity related to obesity, and have been previously unsuccessful with medical treatment for obesity. [...] Effective for services performed on and after February 12, 2009, the Centers for Medicare & Medicaid Services (CMS) determines that Type 2 diabetes mellitus is a co-morbidity for purposes of this NCD.
+    note: The NCD does not list which conditions count as co-morbidities, apart from naming type 2 diabetes.
 
   - id: failed-medical-treatment
-    text: The patient has previously been unsuccessful with medical treatment for obesity.
+    text: The beneficiary has previously been unsuccessful with medical treatment for obesity.
     kind: clinical
     evidence: [Procedure, MedicationRequest, CarePlan, DocumentReference]
+    source_document: NCD 100.1
+    source_section: Indications and Limitations of Coverage > B. Nationally Covered Indications
+    quote: *covered
+    note: The NCD states no duration or type of medical treatment, so none is encoded.
 
-  - id: covered-procedure-type
-    text: The requested procedure is a covered type - open or laparoscopic Roux-en-Y gastric bypass, open or laparoscopic BPD/DS, laparoscopic adjustable gastric banding, or laparoscopic sleeve gastrectomy where the MAC covers it.
+  # --- Stand-alone laparoscopic sleeve gastrectomy (section D, MAC discretion) -------------
+  - id: lsg-bmi-35-plus
+    text: Body-mass index of 35 kg/m2 or greater.
+    kind: clinical
+    thresholds: { min_bmi: 35 }
+    evidence: [Observation]
+    source_document: NCD 100.1
+    source_section: Indications and Limitations of Coverage > D. Other (condition a)
+    quote: >-
+      The beneficiary has a body-mass index (BMI) ≥ 35 kg/m2,
+
+  - id: lsg-obesity-comorbidity
+    text: At least one co-morbidity related to obesity.
+    kind: clinical
+    evidence: [Condition]
+    source_document: NCD 100.1
+    source_section: Indications and Limitations of Coverage > D. Other (condition b)
+    quote: >-
+      The beneficiary has at least one co-morbidity related to obesity, and,
+
+  - id: lsg-failed-medical-treatment
+    text: The beneficiary has previously been unsuccessful with medical treatment for obesity.
+    kind: clinical
+    evidence: [Procedure, MedicationRequest, CarePlan, DocumentReference]
+    source_document: NCD 100.1
+    source_section: Indications and Limitations of Coverage > D. Other (condition c)
+    quote: >-
+      The beneficiary has been previously unsuccessful with medical treatment for obesity.
+
+  - id: lsg-covered-by-local-mac
+    text: The local MAC has determined coverage of stand-alone laparoscopic sleeve gastrectomy in its jurisdiction.
     kind: coverage
     evidence: [ServiceRequest]
+    source_document: NCD 100.1
+    source_section: Indications and Limitations of Coverage > D. Other
+    quote: >-
+      Effective for services performed on and after June 27, 2012, Medicare Administrative Contractors (MACs) acting within their respective jurisdictions may determine coverage of stand-alone laparoscopic sleeve gastrectomy (LSG) for the treatment of co-morbid conditions related to obesity in Medicare beneficiaries only when all of the following conditions a.-c. are satisfied.
+    note: Whether a given MAC covers the procedure is decided outside the NCD and cannot be read from a patient chart.
 
 variants:
   - id: bariatric
-    title: Bariatric surgery
-    codes: ["43644", "43770", "43775", "43846"]
+    title: Nationally covered bariatric surgery (gastric bypass, BPD/DS, adjustable banding)
+    codes: ["43644", "43770", "43846"]
     logic:
       all_of:
+        - nationally-covered-procedure
         - bmi-35-plus
         - obesity-comorbidity
         - failed-medical-treatment
-        - covered-procedure-type
 
+  - id: sleeve-gastrectomy
+    title: Stand-alone laparoscopic sleeve gastrectomy (MAC discretion)
+    codes: ["43775"]
+    logic:
+      all_of:
+        - lsg-covered-by-local-mac
+        - lsg-bmi-35-plus
+        - lsg-obesity-comorbidity
+        - lsg-failed-medical-treatment
+
+# Verbatim from NCD 100.1, C. Nationally Non-Covered Indications.
 not_covered:
-  - Treatment for obesity alone
-  - Open adjustable gastric banding
-  - Open sleeve gastrectomy
-  - Open or laparoscopic vertical banded gastroplasty
-  - Intestinal bypass surgery
-  - Gastric balloon for obesity
+  - Treatments for obesity alone remain non-covered.
+  - Open adjustable gastric banding;
+  - Open sleeve gastrectomy;
+  - Laparoscopic sleeve gastrectomy (prior to June 27, 2012);
+  - Open and laparoscopic vertical banded gastroplasty;
+  - Intestinal bypass surgery; and,
+  - Gastric balloon for treatment of obesity.
 
 notes:
-  - Stand-alone laparoscopic sleeve gastrectomy is covered at MAC discretion under the same criteria (since June 27, 2012).
-  - Facility certification has not been required since September 24, 2013.
+  - Facility certification is no longer required for dates of service on and after September 24, 2013, so it is not encoded.
+  - Coverage of bariatric procedures the NCD does not name is left to the local MACs.
+  - Codes are listed for routing only; no CPT descriptors are included.

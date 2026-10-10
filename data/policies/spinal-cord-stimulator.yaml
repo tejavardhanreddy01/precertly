@@ -1,62 +1,235 @@
 id: spinal-cord-stimulator
-title: Implanted Spinal Neurostimulators (trial and permanent)
-document: NCD 160.7 with MAC documentation requirements
-verified_on: 2026-10-09
+title: Spinal Cord Stimulators for Chronic Pain (trial and permanent)
+document: NCD 160.7 with LCD L36204
+verified_on: 2026-10-10
 sources:
-  - title: Noridian JF, spinal neurostimulator implantation documentation
-    url: https://med.noridianmedicare.com/web/jfb/specialties/surgery/spinal-neurostimulator-implantation
-  - title: CMS Hospital OPD prior authorization program (implanted spinal neurostimulators added July 1, 2021)
-    url: https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-pre-claim-review-initiatives/prior-authorization-certain-hospital-outpatient-department-opd-services
+  - document: NCD 160.7
+    title: Electrical Nerve Stimulators
+    version: "1"
+    effective_date: 1995-08-07
+    url: https://www.cms.gov/medicare-coverage-database/view/ncd.aspx?ncdid=240&ncdver=1
+  - document: LCD L36204
+    title: Spinal Cord Stimulators for Chronic Pain
+    contractor: Noridian Healthcare Solutions, LLC (MAC Part A and Part B, Jurisdiction F)
+    version: "23"
+    effective_date: 2019-12-01
+    url: https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=36204&ver=23
+  - document: Article A57792
+    title: "Billing and Coding: Spinal Cord Stimulators for Chronic Pain"
+    contractor: Noridian Healthcare Solutions, LLC (MAC Part A and Part B, Jurisdiction F)
+    version: "12"
+    effective_date: 2024-01-01
+    url: https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=57792&ver=12
 
 criteria:
-  - id: request-type-stated
-    text: The request states whether it is for a trial or a permanent placement.
-    kind: documentation
-    evidence: [ServiceRequest]
+  # --- NCD 160.7, conditions for coverage (all must be met) --------------------------------
+  - id: late-resort-chronic-intractable-pain
+    text: The stimulator is used only as a late resort (if not a last resort) for a patient with chronic intractable pain.
+    kind: clinical
+    evidence: [Condition, DocumentReference]
+    source_document: NCD 160.7
+    source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item a)
+    quote: >-
+      The implantation of the stimulator is used only as a late resort (if not a last resort) for patients with chronic intractable pain;
+    note: The NCD states no minimum pain duration, so none is encoded.
 
-  - id: condition-and-exam-documented
-    text: Office notes document the condition requiring the procedure and a physical evaluation.
-    kind: documentation
-    evidence: [Condition, Encounter, DocumentReference]
-
-  - id: failed-prior-treatments
-    text: Treatments tried and failed are documented, such as spine surgery, physical therapy, medications, injections or psychological therapy.
+  - id: other-modalities-tried-or-unsuitable
+    text: Other treatment modalities (pharmacological, surgical, physical or psychological) were tried and did not prove satisfactory, or are judged unsuitable or contraindicated for the patient.
     kind: clinical
     evidence: [Procedure, MedicationRequest, DocumentReference]
+    source_document: NCD 160.7
+    source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item b)
+    quote: >-
+      With respect to item a, other treatment modalities (pharmacological, surgical, physical, or psychological therapies) have been tried and did not prove satisfactory, or are judged to be unsuitable or contraindicated for the given patient;
 
-  - id: psych-evaluation
-    text: An appropriate psychological evaluation is documented.
+  - id: multidisciplinary-screening
+    text: Before implantation, a multidisciplinary team carefully screened, evaluated and diagnosed the patient, including psychological and physical evaluation.
     kind: documentation
-    evidence: [Procedure, DocumentReference, Encounter]
+    evidence: [Encounter, Procedure, DocumentReference]
+    source_document: NCD 160.7
+    source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item c)
+    quote: >-
+      Patients have undergone careful screening, evaluation and diagnosis by a multidisciplinary team prior to implantation. (Such screening must include psychological, as well as physical evaluation);
 
-  - id: trial-relief-50pct
-    text: The trial produced at least 50% reduction in target pain, or at least 50% reduction in analgesic medications.
+  - id: facilities-and-personnel-available
+    text: The facilities, equipment and professional and support personnel needed for diagnosis, treatment training and follow-up of the patient are available.
+    kind: coverage
+    evidence: [DocumentReference, Encounter]
+    source_document: NCD 160.7
+    source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item d)
+    quote: >-
+      All the facilities, equipment, and professional and support personnel required for the proper diagnosis, treatment training, and follow up of the patient (including that required to satisfy item c) must be available; and
+    note: This is about the treating facility, so a patient chart will often be silent on it.
+
+  - id: trial-pain-relief-before-permanent
+    text: Pain relief was demonstrated with a temporarily implanted electrode before permanent implantation.
     kind: clinical
-    thresholds: { min_pain_reduction_pct: 50, min_analgesic_reduction_pct: 50 }
+    evidence: [Procedure, Observation, DocumentReference]
+    source_document: NCD 160.7
+    source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item e)
+    quote: >-
+      Demonstration of pain relief with a temporarily implanted electrode precedes permanent implantation.
+
+  # --- LCD L36204, patient selection for a trial -------------------------------------------
+  - id: screening-documented-in-chart
+    text: The history and the careful screening are documented in the patient chart.
+    kind: documentation
+    evidence: [DocumentReference, Encounter]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      Documentation of the history and careful screening must be available in the patient chart if requested.
+
+  - id: no-active-substance-abuse
+    text: The patient has no active substance abuse issues.
+    kind: exclusion
+    evidence: [Condition, DocumentReference]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      Patients being selected for a trial Must not have active substance abuse issues.
+
+  - id: patient-education-and-disclosure
+    text: The patient received education, discussion and disclosure, including an extensive discussion of the risks and benefits of the therapy.
+    kind: documentation
+    evidence: [DocumentReference, Encounter]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      Patients being selected for a trial [...] Must undergo proper patient education, discussion, and disclosure including an extensive discussion of the risks and benefits of this therapy.
+
+  - id: psychological-screening
+    text: The patient underwent appropriate psychological screening.
+    kind: documentation
+    evidence: [Procedure, Encounter, DocumentReference]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      Patients being selected for a trial [...] Must undergo appropriate psychological screening
+
+  - id: trials-max-2-per-region-lifetime
+    text: No more than 2 SCS trials per anatomic spinal region per patient per lifetime.
+    kind: frequency
+    thresholds: { max_trials: 2, per: anatomic spinal region, window: lifetime }
+    evidence: [Procedure]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      More than 2 SCS trials per anatomic spinal region per patient per lifetime is not considered reasonable and necessary.
+    note: The preceding sentence allows exceptions "for technical limitations for the initial trials or for use of different modalities of stimulation, including new technology".
+
+  - id: leads-max-2-or-16-contacts
+    text: Placement of a maximum of 2 leads or 16 contacts.
+    kind: coverage
+    thresholds: { max_leads: 2, max_contacts: 16 }
+    evidence: [ServiceRequest, Procedure, Device]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      Noridian will reimburse for placement of a maximum of 2 leads or 16 “contacts,” and for 2 SCS trials per anatomic spinal region per patient per lifetime (with exceptions allowed for technical limitations for the initial trials or for use of different modalities of stimulation, including new technology).
+
+  - id: repeat-trial-extenuating-circumstances
+    text: A repeat trial after a failed trial is supported by extenuating circumstances that led to the trial failure.
+    kind: clinical
+    condition: A previous spinal cord stimulator trial failed.
+    evidence: [Procedure, DocumentReference]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      If a trial fails, a repeat trial is not appropriate unless there are extenuating circumstances that lead to trial failure.
+
+  # --- LCD L36204, permanent implantation --------------------------------------------------
+  - id: trial-success-50pct-and-function
+    text: The trial gave at least a 50% reduction of target pain, or a 50% reduction of analgesic medications, and showed some element of functional improvement.
+    kind: clinical
+    thresholds: { min_pain_reduction_pct: 50, min_analgesic_reduction_pct: 50, functional_improvement: required }
     evidence: [Observation, MedicationRequest, DocumentReference]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      A successful trial should be associated with at least a 50% reduction of target pain, or 50% reduction of analgesic medications, and show some element of functional improvement.
+    note: The LCD adds that patients with reflex sympathetic dystrophy may show lower levels of improvement, and that physician judgment and experience will also be taken into account.
+
+  - id: positive-trial-documented
+    text: The patient had a positive response to the trial, with adequate documentation in the chart to support proceeding to a permanent implant.
+    kind: documentation
+    evidence: [DocumentReference, Procedure, Observation]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      Only patients who experience a positive response to a trial should proceed to a permanent implantation. All trials which proceed to permanent implant must have adequate documentation in the chart to support that decision.
+
+  - id: permanent-placed-in-asc-or-hospital
+    text: The permanent neurostimulator is placed in an ASC or hospital.
+    kind: coverage
+    evidence: [ServiceRequest, Encounter]
+    source_document: LCD L36204
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity
+    quote: >-
+      Permanent neurostimulators must be placed in an ASC or hospital.
+
+  # --- Article A57792 ----------------------------------------------------------------------
+  - id: one-permanent-stimulator-per-lifetime
+    text: One permanent spinal cord stimulator per patient per lifetime, performed in an ASC, outpatient hospital or hospital.
+    kind: frequency
+    thresholds: { max_permanent_implants: 1, window: lifetime }
+    evidence: [Procedure, Device, DocumentReference]
+    source_document: Article A57792
+    source_section: Article Text > Utilization Guidelines
+    quote: >-
+      63655 - One permanent spinal cord stimulator per patient per lifetime and must be performed in an ASC, out-patient hospital or hospital.
+    note: LCD L36204 says a stimulator that has been working well can be replaced (battery change, malfunction or end of stimulator life) without a new trial, which implies more than one implant in a lifetime. The article does not reconcile the two statements; this criterion is encoded as written.
+
+  - id: diagnosis-and-prior-therapies-in-record
+    text: The clinical record includes the elements leading to the diagnosis and the therapies tried before the decision to use a spinal cord stimulator.
+    kind: documentation
+    severity: warning
+    evidence: [Condition, DocumentReference, Procedure, MedicationRequest]
+    source_document: Article A57792
+    source_section: Article Text > Documentation Requirements
+    quote: >-
+      The clinical record should include the elements leading to the diagnosis and the therapies tried before the decision to use spinal cord stimulators (SCS).
+    note: Warning, not required, because the article says "should include".
 
 variants:
   - id: trial
     title: Spinal cord stimulator trial
     codes: ["63650"]
     logic:
-      all_of:
-        - request-type-stated
-        - condition-and-exam-documented
-        - failed-prior-treatments
-        - psych-evaluation
+      all_of: &selection
+        - late-resort-chronic-intractable-pain
+        - other-modalities-tried-or-unsuitable
+        - multidisciplinary-screening
+        - facilities-and-personnel-available
+        - screening-documented-in-chart
+        - no-active-substance-abuse
+        - patient-education-and-disclosure
+        - psychological-screening
+        - trials-max-2-per-region-lifetime
+        - leads-max-2-or-16-contacts
+        - repeat-trial-extenuating-circumstances
+        - diagnosis-and-prior-therapies-in-record
 
   - id: permanent
     title: Permanent spinal cord stimulator implant
-    codes: ["63650", "63685"]
+    codes: ["63650", "63655", "63685"]
     logic:
       all_of:
-        - request-type-stated
-        - condition-and-exam-documented
-        - failed-prior-treatments
-        - psych-evaluation
-        - trial-relief-50pct
+        - late-resort-chronic-intractable-pain
+        - other-modalities-tried-or-unsuitable
+        - multidisciplinary-screening
+        - facilities-and-personnel-available
+        - screening-documented-in-chart
+        - leads-max-2-or-16-contacts
+        - diagnosis-and-prior-therapies-in-record
+        - trial-pain-relief-before-permanent
+        - trial-success-50pct-and-function
+        - positive-trial-documented
+        - permanent-placed-in-asc-or-hospital
+        - one-permanent-stimulator-per-lifetime
 
 notes:
-  - Encoded from MAC (Noridian JF) documentation guidance; other MACs word requirements differently. Check NCD 160.7 text before adding criteria.
-  - The source does not state a minimum pain duration, so none is encoded.
+  - NCD 160.7 governs nationally. LCD L36204 is the Noridian Jurisdiction F LCD; other MACs (for example Noridian JE under L35136 and Palmetto under L37632) have their own LCDs with different wording.
+  - The LCD says no new trial is needed to replace a stimulator that has been working well (battery change, malfunction or end of stimulator life). Replacement is not encoded as a variant.
+  - NCD 160.7 also covers peripheral nerve and depth brain stimulators, which are out of scope here.
+  - Codes are listed for routing only; no CPT descriptors are included.
