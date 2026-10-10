@@ -23,20 +23,20 @@
 | Embeddable chunks left without a vector | 0 |
 | Chunks not embedded by design (labs, vitals, encounters and the rest) | 13,046 |
 
-Per patient (labels are Synthea's generated first names):
+Per case (the first 8 characters of the case id in the local database; ids are generated at ingest, so they identify rows in this run only):
 
-| Patient | Chunks | Embedded | Bedrock calls |
+| Case | Chunks | Embedded | Bedrock calls |
 | --- | --- | --- | --- |
-| Dong972 | 7,877 | 2,320 | 2,258 |
-| Sam879 | 3,146 | 897 | 843 |
-| Jae222 | 3,040 | 702 | 669 |
-| Elizabet136 | 1,063 | 378 | 367 |
-| Fredia307 | 758 | 326 | 316 |
-| Mavis612 | 720 | 259 | 251 |
-| Farah862 | 622 | 189 | 176 |
-| Florentino8 | 496 | 166 | 159 |
-| Maurice742 | 493 | 177 | 168 |
-| Laverne101 | 484 | 239 | 225 |
+| `bc5f0269` | 7,877 | 2,320 | 2,258 |
+| `77179562` | 3,146 | 897 | 843 |
+| `e30e2c4e` | 3,040 | 702 | 669 |
+| `b13b1134` | 1,063 | 378 | 367 |
+| `c94c62ae` | 758 | 326 | 316 |
+| `9f6aabe3` | 720 | 259 | 251 |
+| `9ea813ca` | 622 | 189 | 176 |
+| `27fb0a01` | 496 | 166 | 159 |
+| `ab091642` | 493 | 177 | 168 |
+| `a260e937` | 484 | 239 | 225 |
 | **Total** | **18,699** | **5,653** | **5,432** |
 
 Calls are fewer than embedded chunks because identical texts are embedded once and the vector is reused by sha256, within a patient and across patients (29 cross-patient reuses in this run).
@@ -79,14 +79,14 @@ Database time only, median of 30 runs after one warm-up, on the laptop above. Th
 
 | Case | Full-text only | Hybrid (full-text + vector + RRF) | Observations by code |
 | --- | --- | --- | --- |
-| Dong972: 7,877 chunks, 2,320 embedded | 14.3 ms | 29.2 ms | 5.3 ms |
-| Fredia307: 758 chunks, 326 embedded | 5.8 ms | 11.3 ms | 1.0 ms |
+| `bc5f0269`: 7,877 chunks, 2,320 embedded | 14.3 ms | 29.2 ms | 5.3 ms |
+| `c94c62ae`: 758 chunks, 326 embedded | 5.8 ms | 11.3 ms | 1.0 ms |
 
-End to end, including the Titan call to embed the query, a hybrid search took 490 ms (single measurement, Fredia307). The Bedrock round trip dominates.
+End to end, including the Titan call to embed the query, a hybrid search took 490 ms (single measurement, case `c94c62ae`). The Bedrock round trip dominates.
 
 ## Relevance check: one query, judged by hand
 
-Query: `chronic low back pain physical therapy`, top 5, on Fredia307. This is the patient with the most notes among the four that have a "Chronic low back pain" Condition. The chart has exactly two chunks that mention low back pain and no physical therapy at all.
+Query: `chronic low back pain physical therapy`, top 5, on case `c94c62ae`. This is the patient with the most notes among the four that have a "Chronic low back pain" Condition. The chart has exactly two chunks that mention low back pain and no physical therapy at all.
 
 | # | Chunk | Date | Full-text rank | Vector rank | Judgment |
 | --- | --- | --- | --- | --- | --- |
@@ -100,7 +100,7 @@ Query: `chronic low back pain physical therapy`, top 5, on Fredia307. This is th
 - Results 4 and 5 are wrong. With no physical therapy in the chart, the word "therapy" pulled in radiation therapy for an unrelated diagnosis.
 - Search always returns k results, so weak matches fill the tail when the evidence does not exist. The judgment step has to treat such results as no evidence, and an eval case for "similar but irrelevant evidence" should cover it.
 
-On Dong972, who has no back pain in the chart, the same query returned the three physical therapy procedures and two notes whose plan lists physical therapy. That shows the pipeline works but says nothing about relevance for back pain.
+On case `bc5f0269`, where the chart has no back pain, the same query returned the three physical therapy procedures and two notes whose plan lists physical therapy. That shows the pipeline works but says nothing about relevance for back pain.
 
 ## Limits of this baseline
 
