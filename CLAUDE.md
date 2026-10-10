@@ -55,7 +55,15 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 
 ## Status
 
-- Done: policy schema + 4 policies validated in CI, read-only policy API, Synthea script.
-- Done: FHIR chunker, Bedrock client (mocked in tests), smoke script.
-- Done: Postgres + pgvector, migrations, ingest with cached embeddings, hybrid search, observation lookups.
-- Next (core pipeline): per-criterion judgment on Bedrock with structured output and quote verification → combine via variant logic → PAS-shaped Claim bundle.
+Done:
+
+- Policy schema, 4 policies validated in CI, read-only policy API.
+- FHIR chunker, Bedrock Converse client (mocked in tests), smoke script.
+- Postgres + pgvector, migrations, ingest with cached embeddings, hybrid search, observation lookups.
+- Baseline numbers in `docs/benchmarks/ingest-and-retrieval.md` (dated 2026-10-10, not exactly reproducible).
+- Synthea pinned to v4.0.0 with a sha256 check.
+- All 4 policies re-encoded from governing NCD/LCD/article text, with verbatim quotes, sources and conditions; `scripts/verify_policy_quotes.py` checks them against the CMS Coverage API.
+
+Next: add a required `evidence_stage` field to every criterion (`chart`, `request`, `provider_attestation`, `post_service`) as its own `feat/` PR; show the stage-grouped list for review before committing.
+
+After that (core pipeline): per-criterion judgment on Bedrock with structured output and quote verification → combine via variant logic → PAS-shaped Claim bundle.
