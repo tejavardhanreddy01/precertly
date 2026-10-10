@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     # credential chain, e.g. a task role.
     aws_profile: str | None = "precertly"
 
+    embedding_model_id: str = "amazon.titan-embed-text-v2:0"
+    embedding_dimensions: int = 1024
+
+    # Matches docker-compose.yml (host port 5433).
+    database_url: str = "postgresql+asyncpg://precertly:precertly@localhost:5433/precertly"
+
 
 @lru_cache
 def get_settings() -> Settings:
