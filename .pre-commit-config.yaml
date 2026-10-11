@@ -1,0 +1,25 @@
+# Runs before every commit so a failing state cannot be committed.
+#   uv run pre-commit install        # once per clone
+#   uv run pre-commit run --all-files
+# The checks are the same three CI runs. Database tests skip when Postgres is not up.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check .
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run ruff format --check .
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: pytest
+        name: pytest -q
+        entry: uv run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true

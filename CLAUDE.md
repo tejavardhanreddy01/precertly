@@ -11,6 +11,7 @@ uv sync                                         # install
 uv run uvicorn precertly.api.main:app --reload  # API at :8000/docs
 uv run pytest -q                                # tests
 uv run ruff check . && uv run ruff format .     # lint + format
+uv run pre-commit install                       # once per clone: ruff + pytest before every commit
 data/synthea/generate.sh 10                     # synthetic FHIR patients (Java 11+)
 uv run python -m precertly.fhir <bundle-or-dir>  # chunk summary for FHIR bundles
 docker compose up -d db                         # Postgres 16 + pgvector on localhost:5433
@@ -43,6 +44,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - Schema changes go through an Alembic migration; `uv run alembic check` must report no drift.
 - DB tests need `docker compose up -d db` locally (they skip otherwise) and always run in CI.
 - Python 3.12, typed, Pydantic v2, async where I/O happens. Keep CI green: ruff + pytest.
+- The pre-commit hook (ruff check, ruff format --check, pytest -q) must pass; don't bypass it with `--no-verify`.
 - Small, focused commits with clear messages.
 
 ## Conventions
