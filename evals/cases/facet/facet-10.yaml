@@ -39,8 +39,8 @@ expected:
   - criterion: conservative-care-failed
     outcome: met
     fact: >-
-      Naproxen with minimal benefit and a 12-week course of physical therapy with no meaningful improvement in pain or function.
-    evidence: [MedicationRequest/naproxen, Procedure/physical-therapy-course, DocumentReference/note-pt-discharge, DocumentReference/note-pain-clinic-eval]
+      After the pain returned, naproxen 500 mg twice daily and a daily home exercise program from 2026-06-22 gave no meaningful improvement over three months.
+    evidence: [MedicationRequest/naproxen-recurrence, DocumentReference/note-recurrence, DocumentReference/note-repeat-rfa-planning]
 
   - criterion: no-untreated-radiculopathy
     outcome: met

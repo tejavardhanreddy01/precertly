@@ -168,6 +168,7 @@ def trim(fhir_dir: Path) -> list[Resource]:
 # --- Step 2: the facet history, generated from facts --------------------------------------
 
 REQUEST_DATE = date(2026, 10, 5)
+RECURRENCE_VISIT = date(2026, 6, 22)  # repeat-RFA cases: conservative care restarts here
 LEVELS = "L4-5 and L5-S1"
 NRS = "Numerical Rating Scale (NRS) 0-10"
 VAS = "Visual Analog Scale (VAS) 0-100 mm"
@@ -670,7 +671,35 @@ Function did not improve after the ablation: the {ODI} was 46% at the six-week v
         ]
         course = f"gave {improvement} improvement in pain ({pre}/10 to {post}/10 on the {NRS}) that lasted about {months} months, with no improvement in function"
 
+    recurrence_note = f"""History: low back pain at {LEVELS}, treated with radiofrequency ablation on {facts.rfa1.isoformat()}. The pain returned around {returned.strftime("%B %Y")} and is back to {facts.baseline_nrs}/10 on the {NRS}.
+Plan: restart naproxen 500 mg twice daily with food. Resume the home exercise program from the earlier physical therapy course, daily. Review in three months.
+"""
+    naproxen = {
+        "resourceType": "MedicationRequest",
+        "id": "naproxen-recurrence",
+        "status": "active",
+        "intent": "order",
+        "medicationCodeableConcept": {"text": "Naproxen 500 mg oral tablet"},
+        "authoredOn": RECURRENCE_VISIT.isoformat(),
+        "encounter": {"reference": "Encounter/enc-recurrence"},
+        "dosageInstruction": [{"text": "1 tablet twice daily with food"}],
+        "reasonReference": [{"reference": "Condition/chronic-low-back-pain"}],
+    }
+    resources += [
+        _encounter("enc-recurrence", RECURRENCE_VISIT, "Pain clinic follow-up"),
+        naproxen,
+        _note(
+            "note-recurrence",
+            RECURRENCE_VISIT,
+            "Pain clinic follow-up",
+            recurrence_note,
+            "enc-recurrence",
+        ),
+    ]
+
     planning = f"""History: low back pain at {LEVELS}, treated with radiofrequency ablation on {facts.rfa1.isoformat()}, which {course}. The pain returned around {returned.strftime("%B %Y")} and is now back to its earlier level. This has been the patient's only radiofrequency ablation.
+
+Conservative management since the pain returned: naproxen 500 mg twice daily and a daily home exercise program since {RECURRENCE_VISIT.isoformat()}, three months, with no meaningful improvement in pain or function.
 
 Today: pain {facts.baseline_nrs}/10 on the {NRS}, predominantly axial, across the lower lumbar spine, worse with extension and rotation, not radiating below the buttocks. The patient again cannot stand longer than 15 minutes.
 Neurological exam: strength 5/5 in both legs, sensation intact, reflexes symmetric, straight-leg raise negative on both sides. No radicular symptoms and no neurogenic claudication.

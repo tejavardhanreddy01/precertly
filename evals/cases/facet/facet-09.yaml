@@ -16,7 +16,7 @@ bundle: bundles/facet-09.json
 expected_overall: met
 tags: [clean, conditional]
 notes: >-
-  Clean repeat-RFA baseline, no changes. The prior ablation on 2025-08-04 gave (7 - 3) / 7 = 57% improvement in pain for 8 months. It was 14 months before the request, so no session falls in the last 12 months and the two-year rule for repeating diagnostics does not apply.
+  Clean repeat-RFA baseline, no changes. The prior ablation on 2025-08-04 gave (7 - 3) / 7 = 57% improvement in pain for 8 months. It was 14 months before the request, so no session falls in the last 12 months and the two-year rule for repeating diagnostics does not apply. After the pain returned, a renewed naproxen trial and home exercise failed, so conservative-care-failed does not rely on care from before the ablation.
 changed_labels: []
 expected:
   - criterion: chronic-axial-pain-functional-deficit
@@ -34,8 +34,8 @@ expected:
   - criterion: conservative-care-failed
     outcome: met
     fact: >-
-      Naproxen with minimal benefit and a 12-week course of physical therapy with no meaningful improvement in pain or function.
-    evidence: [MedicationRequest/naproxen, Procedure/physical-therapy-course, DocumentReference/note-pt-discharge, DocumentReference/note-pain-clinic-eval]
+      After the pain returned, naproxen 500 mg twice daily and a daily home exercise program from 2026-06-22 gave no meaningful improvement over three months.
+    evidence: [MedicationRequest/naproxen-recurrence, DocumentReference/note-recurrence, DocumentReference/note-repeat-rfa-planning]
 
   - criterion: no-untreated-radiculopathy
     outcome: met
