@@ -87,7 +87,7 @@ criteria:
   - id: lsg-covered-by-local-mac
     text: The local MAC has determined coverage of stand-alone laparoscopic sleeve gastrectomy in its jurisdiction.
     kind: coverage
-    evidence_stage: request
+    evidence_stage: payer
     evidence: [ServiceRequest]
     source_document: NCD 100.1
     source_section: Indications and Limitations of Coverage > D. Other

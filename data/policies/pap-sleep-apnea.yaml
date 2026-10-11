@@ -182,7 +182,7 @@ criteria:
   - id: reevaluation-day-31-to-91
     text: The treating practitioner conducted a clinical re-evaluation no sooner than the 31st day and no later than the 91st day after therapy began, and documented that the beneficiary is benefiting.
     kind: documentation
-    evidence_stage: post_service
+    evidence_stage: chart
     thresholds: { earliest_day: 31, latest_day: 91 }
     evidence: [Encounter, DocumentReference]
     source_document: LCD L33718
@@ -194,7 +194,7 @@ criteria:
   - id: symptoms-improved-in-person
     text: An in-person clinical re-evaluation by the treating practitioner documents that symptoms of obstructive sleep apnea are improved.
     kind: clinical
-    evidence_stage: post_service
+    evidence_stage: chart
     evidence: [Encounter, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > CONTINUED COVERAGE BEYOND THE FIRST THREE MONTHS OF THERAPY
@@ -204,7 +204,7 @@ criteria:
   - id: adherence-4h-70pct
     text: Objective evidence, reviewed by the treating practitioner, of PAP use of at least 4 hours per night on 70% of nights during a consecutive 30-day period in the first 3 months.
     kind: clinical
-    evidence_stage: post_service
+    evidence_stage: chart
     thresholds: { min_hours_per_night: 4, min_nights_pct: 70, window_days: 30, within_months: 3 }
     evidence: [Observation, DeviceUseStatement, DocumentReference]
     source_document: LCD L33718
@@ -215,7 +215,7 @@ criteria:
   - id: adherence-report-in-record
     text: Adherence is documented by direct download or visual inspection of usage data, in a written report reviewed by the treating practitioner and included in the medical record.
     kind: documentation
-    evidence_stage: post_service
+    evidence_stage: chart
     evidence: [DocumentReference, DeviceUseStatement, Communication]
     source_document: Article A52467
     source_section: Article Text > POLICY SPECIFIC DOCUMENTATION REQUIREMENTS

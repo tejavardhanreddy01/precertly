@@ -49,7 +49,8 @@ def test_facet_thresholds_match_the_lcd():
     assert interval == {"min_interval_weeks": 2, "documented_exception_allowed": True}
     second = facet.variant("second-diagnostic").logic.criterion_ids()
     assert {
-        "pain-scale-baseline-and-after-each-diagnostic",
+        "pain-scale-at-baseline",
+        "pain-scale-after-each-diagnostic",
         "disability-scale-at-baseline",
     } <= second
 
@@ -145,7 +146,7 @@ def test_evidence_stage_is_required():
     with pytest.raises(ValidationError, match="evidence_stage"):
         Policy.model_validate(_minimal(criteria=[criterion]))
     with pytest.raises(ValidationError):
-        Policy.model_validate(_minimal(criteria=[_criterion("a", evidence_stage="payer")]))
+        Policy.model_validate(_minimal(criteria=[_criterion("a", evidence_stage="pre_service")]))
 
 
 def test_evidence_stages_of_known_criteria():
@@ -154,7 +155,28 @@ def test_evidence_stages_of_known_criteria():
     assert facet.criterion("pain-minimum-3-months").evidence_stage is EvidenceStage.CHART
     assert facet.criterion("levels-1-to-2").evidence_stage is EvidenceStage.REQUEST
     pap = policies["pap-sleep-apnea"]
-    assert pap.criterion("adherence-4h-70pct").evidence_stage is EvidenceStage.POST_SERVICE
+    # relative to the continued-coverage request, adherence data is already in the record
+    assert pap.criterion("adherence-4h-70pct").evidence_stage is EvidenceStage.CHART
+    assert facet.criterion("thermal-rf-only").evidence_stage is EvidenceStage.POST_SERVICE
+    assert facet.criterion("same-day-blocks-justified").evidence_stage is EvidenceStage.CHART
+    lsg = policies["bariatric-surgery"].criterion("lsg-covered-by-local-mac")
+    assert lsg.evidence_stage is EvidenceStage.PAYER
     scs = policies["spinal-cord-stimulator"]
     stage = scs.criterion("facilities-and-personnel-available").evidence_stage
     assert stage is EvidenceStage.PROVIDER_ATTESTATION
+
+
+def test_pain_scale_after_diagnostics_applies_only_where_a_diagnostic_came_first():
+    facet = load_policies()["facet-joint-interventions"]
+    baseline = facet.criterion("pain-scale-at-baseline")
+    after = facet.criterion("pain-scale-after-each-diagnostic")
+    assert baseline.quote == after.quote
+    with_after = {
+        v.id
+        for v in facet.variants
+        if "pain-scale-after-each-diagnostic" in v.logic.criterion_ids()
+    }
+    # not first-diagnostic (nothing came before) and not repeat-rfa (justified by the prior
+    # RFA; repeated diagnostics are the conditional diagnostics-repeated-after-2-years)
+    assert with_after == {"second-diagnostic", "therapeutic-injection", "initial-rfa"}
+    assert all("pain-scale-at-baseline" in v.logic.criterion_ids() for v in facet.variants)

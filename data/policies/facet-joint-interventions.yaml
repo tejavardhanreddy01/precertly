@@ -71,8 +71,18 @@ criteria:
     quote: >-
       There is no non-facet pathology per clinical assessment or radiology studies that could explain the source of the patient’s pain, including but not limited to fracture, tumor, infection, or significant deformity.
 
-  - id: pain-scale-baseline-and-after-each-diagnostic
-    text: Pain is assessed and documented at baseline and after each diagnostic procedure, using the same pain scale each time.
+  - id: pain-scale-at-baseline
+    text: Pain is assessed and documented at baseline, on a named pain scale.
+    kind: documentation
+    evidence_stage: chart
+    evidence: [Observation, DocumentReference]
+    source_document: LCD L38773
+    source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Facet Joint Interventions (footnote *)
+    quote: >-
+      Pain assessment must be performed and documented at baseline, after each diagnostic procedure using the same pain scale for each assessment.
+
+  - id: pain-scale-after-each-diagnostic
+    text: Pain is assessed and documented after each diagnostic procedure, using the same pain scale as at baseline.
     kind: documentation
     evidence_stage: chart
     thresholds: { same_scale: true }
@@ -126,7 +136,7 @@ criteria:
   - id: ct-or-fluoroscopic-guidance
     text: The procedure is done under CT or fluoroscopic guidance (not unguided, ultrasound-guided or MRI-guided).
     kind: coverage
-    evidence_stage: request
+    evidence_stage: post_service
     evidence: [Procedure, ServiceRequest, DocumentReference]
     source_document: LCD L38773
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
@@ -158,7 +168,7 @@ criteria:
   - id: same-day-blocks-justified
     text: If other blocks are given on the same day as the facet procedure, the medical necessity of each injection is clearly documented.
     kind: documentation
-    evidence_stage: request
+    evidence_stage: chart
     condition: Other blocks (for example epidural, sympathetic or trigger point injections) are performed on the same day as the facet joint procedure.
     evidence: [Procedure, ServiceRequest, DocumentReference]
     source_document: LCD L38773
@@ -248,7 +258,7 @@ criteria:
   - id: injectate-allowed-substances
     text: The injection uses anesthetic, corticosteroids, anti-inflammatories and/or contrast agents, not biologicals or other substances not FDA designated for this use.
     kind: coverage
-    evidence_stage: request
+    evidence_stage: post_service
     evidence: [Procedure, MedicationRequest, DocumentReference]
     source_document: LCD L38773
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
@@ -350,7 +360,7 @@ criteria:
   - id: thermal-rf-only
     text: The denervation uses thermal radiofrequency, not a non-thermal modality (chemical, low-grade thermal energy under 80 degrees Celsius, laser neurolysis or cryoablation).
     kind: coverage
-    evidence_stage: request
+    evidence_stage: post_service
     evidence: [Procedure, ServiceRequest, DocumentReference]
     source_document: LCD L38773
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
@@ -369,7 +379,7 @@ variants:
             - conservative-care-failed
             - no-untreated-radiculopathy
             - no-non-facet-pathology
-            - pain-scale-baseline-and-after-each-diagnostic
+            - pain-scale-at-baseline
             - disability-scale-at-baseline
             - scales-documented
             - no-generalized-pain-indication
@@ -394,6 +404,7 @@ variants:
         - injectate-allowed-substances
         - diagnostic-sessions-max-4
         - no-diagnostic-at-level-of-successful-rfa
+        - pain-scale-after-each-diagnostic
         - first-diagnostic-80pct-relief
         - second-diagnostic-same-level
         - second-diagnostic-2-weeks-after-first
@@ -405,6 +416,7 @@ variants:
       all_of:
         - all_of: *general
         - injectate-allowed-substances
+        - pain-scale-after-each-diagnostic
         - two-diagnostics-80pct-relief
         - prior-therapeutic-50pct-3-months
         - not-rfa-candidate-documented
@@ -416,6 +428,7 @@ variants:
     logic:
       all_of:
         - all_of: *general
+        - pain-scale-after-each-diagnostic
         - two-mbbs-80pct-sustained-relief
         - rfa-sessions-max-2
         - thermal-rf-only
@@ -439,5 +452,6 @@ not_covered:
 
 notes:
   - The LCD's general criteria apply to all facet joint interventions ("patients who meet ALL the following criteria"), so every variant includes them, repeat RFA included.
+  - pain-scale-after-each-diagnostic is not part of repeat-rfa, because repeat RFA is justified by prior-rfa-50pct-6-months and repeated diagnostics are covered by the conditional diagnostics-repeated-after-2-years.
   - Facet cyst aspiration or rupture (LCD section D) is a separate procedure type and is not encoded as a variant.
   - Codes are listed for routing only; no CPT descriptors are included.

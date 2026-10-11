@@ -26,12 +26,18 @@ class CriterionKind(StrEnum):
 
 
 class EvidenceStage(StrEnum):
-    """Where the evidence for a criterion comes from, and so who can judge it and when."""
+    """Where the evidence for a criterion is found, relative to the request being decided.
 
-    CHART = "chart"  # the patient's clinical record as it stands before the service
-    REQUEST = "request"  # the requested service itself: procedure, levels, device, setting
-    PROVIDER_ATTESTATION = "provider_attestation"  # a provider or supplier must attest to it
-    POST_SERVICE = "post_service"  # only exists after the service has been delivered
+    The same fact can sit at different stages for different requests: PAP adherence data
+    does not exist when the first device is requested, but is ordinary chart evidence for
+    a continued-coverage request. Stages are assigned for the variants a criterion is in.
+    """
+
+    CHART = "chart"  # in the patient's record when this request is made
+    REQUEST = "request"  # a property of the requested service
+    PROVIDER_ATTESTATION = "provider_attestation"  # a provider or supplier attests to it
+    POST_SERVICE = "post_service"  # exists only after the requested service is performed
+    PAYER = "payer"  # the payer's own coverage rules or jurisdiction
 
 
 class Severity(StrEnum):
