@@ -16,7 +16,7 @@ bundle: bundles/facet-06.json
 expected_overall: insufficient
 tags: [adversarial, free-text-only]
 notes: >-
-  Two changes from the first-diagnostic baseline: the evaluation note records pain radiating down the left leg with numbness in the left foot, and the neurological exam is absent. The symptom is raised only in free text and never worked up, diagnosed or treated. The note still describes the pain as predominantly axial.
+  Two changes from the first-diagnostic baseline: the evaluation note records pain radiating down the left leg with numbness in the left foot, and the neurological exam is absent. The symptom is raised only in free text and never worked up, diagnosed or treated. The label for chronic-axial-pain-functional-deficit stays met: the record still documents the pain as predominantly axial, and the leg symptoms do not negate that.
 changed_labels:
   - criterion: no-untreated-radiculopathy
     quote: >-
