@@ -7,6 +7,9 @@
 # Requires Java 11+. Eval cases copy a generated bundle and edit it so the expected
 # verdicts are known by construction.
 #
+# Synthea simulates up to "today" unless told otherwise, so set SYNTHEA_REFERENCE_DATE
+# (YYYYMMDD) to get the same patients on any day. Eval templates are generated this way.
+#
 # Synthea is pinned to a tagged release and checked against its sha256, so the same seed
 # gives the same patients. To upgrade, change VERSION and SHA256 together.
 set -euo pipefail
@@ -18,6 +21,10 @@ COUNT="${1:-10}"
 SEED="${2:-20261009}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="${SYNTHEA_OUTPUT:-$HERE/output}"
+DATE_ARGS=()
+if [[ -n "${SYNTHEA_REFERENCE_DATE:-}" ]]; then
+  DATE_ARGS=(-r "$SYNTHEA_REFERENCE_DATE" -e "$SYNTHEA_REFERENCE_DATE")
+fi
 JAR="$HERE/bin/synthea-$VERSION.jar"
 URL="https://github.com/synthetichealth/synthea/releases/download/$VERSION/synthea-with-dependencies.jar"
 
@@ -38,6 +45,7 @@ java -jar "$JAR" \
   -p "$COUNT" \
   -s "$SEED" \
   -a 40-75 \
+  ${DATE_ARGS[@]+"${DATE_ARGS[@]}"} \
   --exporter.baseDirectory "$OUT" \
   --exporter.fhir.export true \
   --exporter.fhir_stu3.export false \

@@ -1,0 +1,116 @@
+id: facet-09
+policy: facet-joint-interventions
+policy_version:
+  LCD L38773: "32"
+  Article A58364: "42"
+variant: repeat-rfa
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: repeat thermal radiofrequency ablation
+  codes: ["64635", "64636"]
+  region: lumbar
+  levels: [L4-5, L5-S1]
+  same_day_blocks: []
+bundle: bundles/facet-09.json
+expected_overall: met
+tags: [clean, conditional]
+notes: >-
+  Clean repeat-RFA baseline, no changes. The prior ablation on 2025-08-04 gave (7 - 3) / 7 = 57% improvement in pain for 8 months. It was 14 months before the request, so no session falls in the last 12 months and the two-year rule for repeating diagnostics does not apply. After the pain returned, a renewed naproxen trial and home exercise failed, so conservative-care-failed does not rely on care from before the ablation.
+changed_labels: []
+expected:
+  - criterion: chronic-axial-pain-functional-deficit
+    outcome: met
+    fact: >-
+      Predominantly axial low back pain, moderate to severe; NRS 7/10 and ODI 48% at baseline; cannot stand longer than 15 minutes.
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline, DocumentReference/note-repeat-rfa-planning, Observation/pain-nrs-recurrence]
+
+  - criterion: pain-minimum-3-months
+    outcome: met
+    fact: >-
+      Pain began 2024-11-04; after the 2025 ablation it returned around May 2026, more than three months before the request.
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+
+  - criterion: conservative-care-failed
+    outcome: met
+    fact: >-
+      After the pain returned, naproxen 500 mg twice daily and a daily home exercise program from 2026-06-22 gave no meaningful improvement over three months.
+    evidence: [MedicationRequest/naproxen-recurrence, DocumentReference/note-recurrence, DocumentReference/note-repeat-rfa-planning]
+
+  - criterion: no-untreated-radiculopathy
+    outcome: met
+    fact: >-
+      Neurological exam documented: normal strength, sensation and reflexes, negative straight-leg raise, no radicular symptoms and no neurogenic claudication.
+    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+
+  - criterion: no-non-facet-pathology
+    outcome: met
+    fact: >-
+      Lumbar MRI shows facet arthropathy at L4-5 and L5-S1 with no fracture, tumor, infection or significant deformity.
+    evidence: [DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+
+  - criterion: pain-scale-at-baseline
+    outcome: met
+    fact: >-
+      Baseline pain 7/10 on the Numerical Rating Scale, recorded at the pain clinic evaluation before any block.
+    evidence: [Observation/pain-nrs-baseline, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: disability-scale-at-baseline
+    outcome: met
+    fact: >-
+      Oswestry Disability Index 48% at the pain clinic evaluation.
+    evidence: [Observation/odi-baseline, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: scales-documented
+    outcome: met
+    fact: >-
+      The notes name both scales, the Numerical Rating Scale (NRS) 0-10 and the Oswestry Disability Index (ODI).
+    evidence: [DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+
+  - criterion: no-generalized-pain-indication
+    outcome: met
+    fact: >-
+      The record documents no fibromyalgia and no widespread or centralized pain syndrome.
+    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+
+  - criterion: not-after-alif
+    outcome: met
+    fact: >-
+      The record documents no prior spine surgery, including no lumbar fusion.
+    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+
+  - criterion: one-spinal-region-per-session
+    outcome: met
+    fact: >-
+      The request is for the lumbar region only.
+    evidence: [request.region]
+
+  - criterion: levels-1-to-2
+    outcome: met
+    fact: >-
+      The request covers two levels, L4-5 and L5-S1.
+    evidence: [request.levels]
+
+  - criterion: same-day-blocks-justified
+    outcome: not_applicable
+    fact: >-
+      The request lists no other blocks for the same day, so the criterion's condition does not hold.
+    evidence: []
+
+  - criterion: prior-rfa-50pct-6-months
+    outcome: met
+    fact: >-
+      The ablation on 2025-08-04 gave (7 - 3) / 7 = 57% improvement in pain on the same NRS, sustained at the 1, 3, 6 and 8 month visits.
+    evidence: [Procedure/rfa1, Observation/pain-pre-rfa1, Observation/pain-post-rfa1-1mo, Observation/pain-post-rfa1-3mo, Observation/pain-post-rfa1-6mo, Observation/pain-post-rfa1-8mo, DocumentReference/note-rfa1-followup-6mo, DocumentReference/note-rfa1-followup-8mo]
+
+  - criterion: rfa-sessions-max-2
+    outcome: met
+    fact: >-
+      One prior radiofrequency session, on 2025-08-04, 14 months before the request; none in the last 12 months.
+    evidence: [Procedure/rfa1, DocumentReference/note-repeat-rfa-planning]
+
+  - criterion: diagnostics-repeated-after-2-years
+    outcome: not_applicable
+    fact: >-
+      The last ablation was 14 months before the request, less than two years, so the criterion's condition does not hold.
+    evidence: []

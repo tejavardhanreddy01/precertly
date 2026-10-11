@@ -1,0 +1,121 @@
+id: facet-06
+policy: facet-joint-interventions
+policy_version:
+  LCD L38773: "32"
+  Article A58364: "42"
+variant: first-diagnostic
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: diagnostic medial branch block
+  codes: ["64493", "64494"]
+  region: lumbar
+  levels: [L4-5, L5-S1]
+  same_day_blocks: []
+bundle: bundles/facet-06.json
+expected_overall: insufficient
+tags: [adversarial, free-text-only]
+notes: >-
+  Two changes from the first-diagnostic baseline: the evaluation note records pain radiating down the left leg with numbness in the left foot, and the neurological exam is absent. The symptom is raised only in free text and never worked up, diagnosed or treated. The label for chronic-axial-pain-functional-deficit stays met: the record still documents the pain as predominantly axial, and the leg symptoms do not negate that.
+changed_labels:
+  - criterion: no-untreated-radiculopathy
+    quote: >-
+      Absence of untreated radiculopathy or neurogenic claudication
+    why: >-
+      The record raises a possible radiculopathy and does not resolve it. Under guideline rule 3 an exclusion that is raised without being resolved is insufficient.
+expected:
+  - criterion: chronic-axial-pain-functional-deficit
+    outcome: met
+    fact: >-
+      Predominantly axial low back pain, moderate to severe; NRS 7/10 and ODI 48% at baseline; cannot stand longer than 15 minutes.
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+
+  - criterion: pain-minimum-3-months
+    outcome: met
+    fact: >-
+      Pain began 2026-04-03, six months before the request date.
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: conservative-care-failed
+    outcome: met
+    fact: >-
+      Naproxen with minimal benefit and a 12-week course of physical therapy with no meaningful improvement in pain or function.
+    evidence: [MedicationRequest/naproxen, Procedure/physical-therapy-course, DocumentReference/note-pt-discharge, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: no-untreated-radiculopathy
+    outcome: insufficient
+    fact: >-
+      The evaluation records pain radiating down the left leg with numbness in the left foot, with no neurological exam, work-up, diagnosis or treatment.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: no-non-facet-pathology
+    outcome: met
+    fact: >-
+      Lumbar MRI shows facet arthropathy at L4-5 and L5-S1 with no fracture, tumor, infection or significant deformity.
+    evidence: [DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: pain-scale-at-baseline
+    outcome: met
+    fact: >-
+      Baseline pain 7/10 on the Numerical Rating Scale, recorded at the pain clinic evaluation before any block.
+    evidence: [Observation/pain-nrs-baseline, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: disability-scale-at-baseline
+    outcome: met
+    fact: >-
+      Oswestry Disability Index 48% at the pain clinic evaluation.
+    evidence: [Observation/odi-baseline, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: scales-documented
+    outcome: met
+    fact: >-
+      The notes name both scales, the Numerical Rating Scale (NRS) 0-10 and the Oswestry Disability Index (ODI).
+    evidence: [DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+
+  - criterion: no-generalized-pain-indication
+    outcome: met
+    fact: >-
+      The record documents no fibromyalgia and no widespread or centralized pain syndrome.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: not-after-alif
+    outcome: met
+    fact: >-
+      The record documents no prior spine surgery, including no lumbar fusion.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: one-spinal-region-per-session
+    outcome: met
+    fact: >-
+      The request is for the lumbar region only.
+    evidence: [request.region]
+
+  - criterion: levels-1-to-2
+    outcome: met
+    fact: >-
+      The request covers two levels, L4-5 and L5-S1.
+    evidence: [request.levels]
+
+  - criterion: same-day-blocks-justified
+    outcome: not_applicable
+    fact: >-
+      The request lists no other blocks for the same day, so the criterion's condition does not hold.
+    evidence: []
+
+  - criterion: ia-diagnostic-only-if-mbb-not-possible
+    outcome: not_applicable
+    fact: >-
+      The requested procedure is a medial branch block, not an intraarticular block, so the criterion's condition does not hold.
+    evidence: []
+
+  - criterion: diagnostic-sessions-max-4
+    outcome: met
+    fact: >-
+      The record documents no prior diagnostic facet procedures; this would be the first session in the last 12 months.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: no-diagnostic-at-level-of-successful-rfa
+    outcome: not_applicable
+    fact: >-
+      The patient has never had radiofrequency ablation, so the criterion's condition does not hold.
+    evidence: []

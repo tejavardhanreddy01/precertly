@@ -1,0 +1,126 @@
+id: facet-05
+policy: facet-joint-interventions
+policy_version:
+  LCD L38773: "32"
+  Article A58364: "42"
+variant: initial-rfa
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: thermal radiofrequency ablation
+  codes: ["64635", "64636"]
+  region: lumbar
+  levels: [L4-5, L5-S1]
+  same_day_blocks: []
+bundle: bundles/facet-05.json
+expected_overall: not_met
+tags: [adversarial, mixed-scales]
+notes: >-
+  One change from the initial-RFA baseline: pain after the second block was recorded as 10 mm on a VAS 0-100, while baseline, the first block and the second block's pre-block score all used the NRS 0-10. No relief percentage is stated for the second block.
+changed_labels:
+  - criterion: pain-scale-after-each-diagnostic
+    quote: >-
+      after each diagnostic procedure using the same pain scale for each assessment
+    why: >-
+      The record shows a different scale was used after the second block. Under guideline rule 5 a documented fact that violates the requirement is not_met.
+  - criterion: two-mbbs-80pct-sustained-relief
+    quote: >-
+      with each one providing a consistent minimum of 80% sustained relief of primary (index) pain
+    why: >-
+      Relief for the second block needs a before-and-after comparison on one scale, which the record does not allow. Under guideline rule 5 that makes this criterion insufficient.
+expected:
+  - criterion: chronic-axial-pain-functional-deficit
+    outcome: met
+    fact: >-
+      Predominantly axial low back pain, moderate to severe; NRS 7/10 and ODI 48% at baseline; cannot stand longer than 15 minutes.
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+
+  - criterion: pain-minimum-3-months
+    outcome: met
+    fact: >-
+      Pain began 2026-04-03, six months before the request date.
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: conservative-care-failed
+    outcome: met
+    fact: >-
+      Naproxen with minimal benefit and a 12-week course of physical therapy with no meaningful improvement in pain or function.
+    evidence: [MedicationRequest/naproxen, Procedure/physical-therapy-course, DocumentReference/note-pt-discharge, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: no-untreated-radiculopathy
+    outcome: met
+    fact: >-
+      Neurological exam documented: normal strength, sensation and reflexes, negative straight-leg raise, no radicular symptoms and no neurogenic claudication.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: no-non-facet-pathology
+    outcome: met
+    fact: >-
+      Lumbar MRI shows facet arthropathy at L4-5 and L5-S1 with no fracture, tumor, infection or significant deformity.
+    evidence: [DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: pain-scale-at-baseline
+    outcome: met
+    fact: >-
+      Baseline pain 7/10 on the Numerical Rating Scale, recorded at the pain clinic evaluation before any block.
+    evidence: [Observation/pain-nrs-baseline, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: pain-scale-after-each-diagnostic
+    outcome: not_met
+    fact: >-
+      After block 2 pain was recorded as 10 mm on the Visual Analog Scale 0-100, not on the NRS 0-10 used at baseline, for block 1 and before block 2.
+    evidence: [Observation/pain-post-mbb2, DocumentReference/note-mbb2, Observation/pain-post-mbb1, Observation/pain-nrs-baseline]
+
+  - criterion: disability-scale-at-baseline
+    outcome: met
+    fact: >-
+      Oswestry Disability Index 48% at the pain clinic evaluation.
+    evidence: [Observation/odi-baseline, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: scales-documented
+    outcome: met
+    fact: >-
+      The notes name both scales, the Numerical Rating Scale (NRS) 0-10 and the Oswestry Disability Index (ODI).
+    evidence: [DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+
+  - criterion: no-generalized-pain-indication
+    outcome: met
+    fact: >-
+      The record documents no fibromyalgia and no widespread or centralized pain syndrome.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: not-after-alif
+    outcome: met
+    fact: >-
+      The record documents no prior spine surgery, including no lumbar fusion.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: one-spinal-region-per-session
+    outcome: met
+    fact: >-
+      The request is for the lumbar region only.
+    evidence: [request.region]
+
+  - criterion: levels-1-to-2
+    outcome: met
+    fact: >-
+      The request covers two levels, L4-5 and L5-S1.
+    evidence: [request.levels]
+
+  - criterion: same-day-blocks-justified
+    outcome: not_applicable
+    fact: >-
+      The request lists no other blocks for the same day, so the criterion's condition does not hold.
+    evidence: []
+
+  - criterion: two-mbbs-80pct-sustained-relief
+    outcome: insufficient
+    fact: >-
+      Block 1 gave (7 - 1) / 7 = 86% relief. Block 2's relief cannot be calculated, because its before and after scores are on different scales.
+    evidence: [Observation/pain-pre-mbb2, Observation/pain-post-mbb2, DocumentReference/note-mbb2, DocumentReference/note-rfa-planning]
+
+  - criterion: rfa-sessions-max-2
+    outcome: met
+    fact: >-
+      The record states the patient has not had radiofrequency ablation before, so there are no sessions in the last 12 months.
+    evidence: [DocumentReference/note-rfa-planning, DocumentReference/note-pain-clinic-eval]

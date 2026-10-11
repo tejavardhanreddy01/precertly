@@ -4,25 +4,45 @@ Forty hand-labeled cases (10 per procedure) with known answers, scored on every 
 
 ## Case format
 
-One YAML file per case in `evals/cases/`, plus the edited FHIR bundle in `evals/bundles/`. Build each case by copying a Synthea bundle and editing it so the expected outcome is known by construction.
+One YAML file per case in `evals/cases/<policy>/`, plus its FHIR bundle in `evals/bundles/`. Bundles are not edited by hand: `evals/build_cases.py` adds each case's history to a trimmed Synthea patient (`evals/template/patient.json`), so the expected outcome is known by construction and a bundle can always be rebuilt.
+
+```bash
+uv run python evals/build_cases.py           # rebuild evals/bundles/
+uv run python evals/build_cases.py --check   # fail if a committed bundle is stale
+```
+
+A case file, shortened (see `evals/cases/facet/facet-02.yaml` for a full one):
 
 ```yaml
 id: facet-02
 policy: facet-joint-interventions
+policy_version: { LCD L38773: "32", Article A58364: "42" }
 variant: initial-rfa
-procedure: "64635"
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: thermal radiofrequency ablation
+  codes: ["64635", "64636"]
+  region: lumbar
+  levels: [L4-5, L5-S1]
 bundle: bundles/facet-02.json
-expected:
+expected_overall: not_met        # checked against the outcome computed from the labels
+changed_labels:                  # why a label differs from the clean template
   - criterion: two-mbbs-80pct-sustained-relief
-    outcome: not_met          # second block gave 70% relief
-    evidence: ["Observation/pain-post-mbb2"]
-  - criterion: conservative-care-failed
+    quote: with each one providing a consistent minimum of 80% sustained relief
+    why: The second block reached 71%.
+expected:                        # one label per chart- or request-stage criterion
+  - criterion: two-mbbs-80pct-sustained-relief
+    outcome: not_met
+    fact: Block 2 gave (7 - 2) / 7 = 71% relief.
+    evidence: [Observation/pain-post-mbb2, DocumentReference/note-mbb2]
+  - criterion: levels-1-to-2
     outcome: met
-    evidence: ["Procedure/pt-0141"]
-  - criterion: no-untreated-radiculopathy
-    outcome: insufficient     # note mentions leg pain, no workup
-tags: [adversarial, near-miss-threshold]
+    fact: The request covers two levels.
+    evidence: [request.levels]   # request-stage labels cite the request field
 ```
+
+`tests/test_eval_cases.py` checks every case: all scored criteria are labeled, cited resources exist in the bundle and survive chunking, the computed overall outcome matches the case plan, and the committed bundle matches the build script.
 
 Outcomes: `met`, `not_met`, `insufficient`.
 
