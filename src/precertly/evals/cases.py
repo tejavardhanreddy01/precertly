@@ -32,6 +32,8 @@ class Request(BaseModel):
     """The prior-authorization request. Request-stage criteria are judged from this."""
 
     date: date
+    service_date: date = Field(description="Planned date of the requested service")
+    procedure: str = Field(description="The requested procedure, in plain words")
     codes: list[str] = Field(min_length=1)
     region: str
     levels: list[str] = Field(min_length=1)
@@ -43,8 +45,18 @@ class Label(BaseModel):
     outcome: Outcome
     fact: str = Field(min_length=1, description="The fact in the record or request it rests on")
     evidence: list[str] = Field(
-        default_factory=list, description="Resource references, e.g. 'Observation/pain-post-mbb2'"
+        default_factory=list,
+        description=(
+            "What establishes the label: resource references ('Observation/pain-post-mbb2') "
+            "and request fields ('request.levels')"
+        ),
     )
+
+    def resources(self) -> list[str]:
+        return [e for e in self.evidence if not e.startswith("request.")]
+
+    def request_fields(self) -> list[str]:
+        return [e.removeprefix("request.") for e in self.evidence if e.startswith("request.")]
 
 
 class ChangedLabel(BaseModel):

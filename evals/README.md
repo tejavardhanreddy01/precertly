@@ -20,6 +20,8 @@ policy_version: { LCD L38773: "32", Article A58364: "42" }
 variant: initial-rfa
 request:
   date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: thermal radiofrequency ablation
   codes: ["64635", "64636"]
   region: lumbar
   levels: [L4-5, L5-S1]
@@ -32,12 +34,12 @@ changed_labels:                  # why a label differs from the clean template
 expected:                        # one label per chart- or request-stage criterion
   - criterion: two-mbbs-80pct-sustained-relief
     outcome: not_met
-    fact: Block 2 gave 71% relief (NRS 7/10 to 2/10).
+    fact: Block 2 gave (7 - 2) / 7 = 71% relief.
     evidence: [Observation/pain-post-mbb2, DocumentReference/note-mbb2]
   - criterion: levels-1-to-2
     outcome: met
     fact: The request covers two levels.
-    evidence: []
+    evidence: [request.levels]   # request-stage labels cite the request field
 ```
 
 `tests/test_eval_cases.py` checks every case: all scored criteria are labeled, cited resources exist in the bundle and survive chunking, the computed overall outcome matches the case plan, and the committed bundle matches the build script.

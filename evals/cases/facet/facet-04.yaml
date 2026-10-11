@@ -1,0 +1,145 @@
+id: facet-04
+policy: facet-joint-interventions
+policy_version:
+  LCD L38773: "32"
+  Article A58364: "42"
+variant: second-diagnostic
+request:
+  date: 2026-10-05
+  service_date: 2026-10-08
+  procedure: second diagnostic medial branch block
+  codes: ["64493", "64494"]
+  region: lumbar
+  levels: [L4-5, L5-S1]
+  same_day_blocks: []
+bundle: bundles/facet-04.json
+expected_overall: met
+tags: [adversarial, documented-exception]
+notes: >-
+  Same 10-day interval as facet-03, but the follow-up note documents the clinical reason: the patient starts therapeutic anticoagulation on 2026-10-12 and spinal injections must then be deferred. Under guideline rule 6 a clearly documented exception makes the criterion met.
+changed_labels:
+  - criterion: second-diagnostic-2-weeks-after-first
+    quote: >-
+      Clinical circumstances that necessitate an exception to the two-week duration may be considered on an individual basis and must be clearly documented in the medical record.
+    why: >-
+      The interval is under two weeks, but the LCD allows an exception when the clinical circumstances are clearly documented, and they are.
+expected:
+  - criterion: chronic-axial-pain-functional-deficit
+    outcome: met
+    fact: >-
+      Predominantly axial low back pain, moderate to severe; NRS 7/10 and ODI 48% at baseline; cannot stand longer than 15 minutes.
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+
+  - criterion: pain-minimum-3-months
+    outcome: met
+    fact: >-
+      Pain began 2026-04-03, six months before the request date.
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: conservative-care-failed
+    outcome: met
+    fact: >-
+      Naproxen with minimal benefit and a 12-week course of physical therapy with no meaningful improvement in pain or function.
+    evidence: [MedicationRequest/naproxen, Procedure/physical-therapy-course, DocumentReference/note-pt-discharge, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: no-untreated-radiculopathy
+    outcome: met
+    fact: >-
+      Neurological exam documented: normal strength, sensation and reflexes, negative straight-leg raise, no radicular symptoms and no neurogenic claudication.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: no-non-facet-pathology
+    outcome: met
+    fact: >-
+      Lumbar MRI shows facet arthropathy at L4-5 and L5-S1 with no fracture, tumor, infection or significant deformity.
+    evidence: [DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: pain-scale-at-baseline
+    outcome: met
+    fact: >-
+      Baseline pain 7/10 on the Numerical Rating Scale, recorded at the pain clinic evaluation before any block.
+    evidence: [Observation/pain-nrs-baseline, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: pain-scale-after-each-diagnostic
+    outcome: met
+    fact: >-
+      Pain recorded on the same NRS 0-10 after the first block (1/10).
+    evidence: [Observation/pain-post-mbb1, DocumentReference/note-mbb1]
+
+  - criterion: disability-scale-at-baseline
+    outcome: met
+    fact: >-
+      Oswestry Disability Index 48% at the pain clinic evaluation.
+    evidence: [Observation/odi-baseline, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: scales-documented
+    outcome: met
+    fact: >-
+      The notes name both scales, the Numerical Rating Scale (NRS) 0-10 and the Oswestry Disability Index (ODI).
+    evidence: [DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+
+  - criterion: no-generalized-pain-indication
+    outcome: met
+    fact: >-
+      The record documents no fibromyalgia and no widespread or centralized pain syndrome.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: not-after-alif
+    outcome: met
+    fact: >-
+      The record documents no prior spine surgery, including no lumbar fusion.
+    evidence: [DocumentReference/note-pain-clinic-eval]
+
+  - criterion: one-spinal-region-per-session
+    outcome: met
+    fact: >-
+      The request is for the lumbar region only.
+    evidence: [request.region]
+
+  - criterion: levels-1-to-2
+    outcome: met
+    fact: >-
+      The request covers two levels, L4-5 and L5-S1.
+    evidence: [request.levels]
+
+  - criterion: same-day-blocks-justified
+    outcome: not_applicable
+    fact: >-
+      The request lists no other blocks for the same day, so the criterion's condition does not hold.
+    evidence: []
+
+  - criterion: ia-diagnostic-only-if-mbb-not-possible
+    outcome: not_applicable
+    fact: >-
+      The requested procedure is a medial branch block, not an intraarticular block, so the criterion's condition does not hold.
+    evidence: []
+
+  - criterion: first-diagnostic-80pct-relief
+    outcome: met
+    fact: >-
+      The first block on 2026-09-28 gave (7 - 1) / 7 = 86% relief, lasting about 6 hours, consistent with bupivacaine.
+    evidence: [Procedure/mbb1, Observation/pain-pre-mbb1, Observation/pain-post-mbb1, DocumentReference/note-mbb1]
+
+  - criterion: second-diagnostic-same-level
+    outcome: met
+    fact: >-
+      The request is for the same levels as the first block, L4-5 and L5-S1.
+    evidence: [request.levels, Procedure/mbb1]
+
+  - criterion: second-diagnostic-2-weeks-after-first
+    outcome: met
+    fact: >-
+      The second block is planned for 2026-10-08, 10 days after the first, and the follow-up note documents the clinical reason: anticoagulation starts on 2026-10-12, after which spinal injections must be deferred.
+    evidence: [Procedure/mbb1, request.service_date, DocumentReference/note-second-block-planning]
+
+  - criterion: diagnostic-sessions-max-4
+    outcome: met
+    fact: >-
+      One diagnostic session in the last 12 months (2026-09-28); the requested block would be the second.
+    evidence: [Procedure/mbb1, DocumentReference/note-second-block-planning]
+
+  - criterion: no-diagnostic-at-level-of-successful-rfa
+    outcome: not_applicable
+    fact: >-
+      The patient has never had radiofrequency ablation, so the criterion's condition does not hold.
+    evidence: []

@@ -1,6 +1,7 @@
 """Every eval case must agree with its policy, its bundle and the case plan."""
 
 import importlib.util
+import json
 import re
 import sys
 
@@ -33,15 +34,17 @@ def _build_module():
     return module
 
 
-def test_there_are_cases():
-    assert {"facet-01", "facet-02"} <= set(CASES)
+def test_every_planned_case_exists():
+    assert set(_plan()) == set(CASES)
+    assert len(CASES) == 11
 
 
 @pytest.mark.parametrize("case", CASES.values(), ids=list(CASES))
 def test_case_matches_its_policy_version(case):
     policy = POLICIES[case.policy]
     assert case.policy_version == {s.document: s.version for s in policy.sources}
-    assert set(case.request.codes) <= set(policy.variant(case.variant).codes)
+    # at least one requested code routes to the variant (a third-level code does not)
+    assert set(case.request.codes) & set(policy.variant(case.variant).codes)
 
 
 @pytest.mark.parametrize("case", CASES.values(), ids=list(CASES))
@@ -60,18 +63,29 @@ def test_not_applicable_only_for_conditional_criteria(case):
 
 
 @pytest.mark.parametrize("case", CASES.values(), ids=list(CASES))
-def test_cited_evidence_exists_in_the_bundle(case):
+def test_cited_evidence_exists(case):
     bundle = load_bundle(case.bundle_path())
     resources = {f"{e['resource']['resourceType']}/{e['resource']['id']}" for e in bundle["entry"]}
     chunked = {chunk.ref for chunk in chunk_bundle(bundle)}
     for label in case.expected:
-        for reference in label.evidence:
+        for reference in label.resources():
             assert reference in resources, f"{label.criterion}: {reference} not in bundle"
             # the agent only sees chunks, so cited evidence has to survive chunking
             assert reference in chunked, f"{label.criterion}: {reference} produces no chunk"
+        for field in label.request_fields():
+            assert field in type(case.request).model_fields, f"{label.criterion}: request.{field}"
+
+
+@pytest.mark.parametrize("case", CASES.values(), ids=list(CASES))
+def test_labels_cite_the_right_kind_of_evidence(case):
+    for label in case.expected:
         stage = POLICIES[case.policy].criterion(label.criterion).evidence_stage
-        if label.outcome in (Outcome.MET, Outcome.NOT_MET) and stage == "chart":
-            assert label.evidence, f"{label.criterion}: a chart label needs evidence"
+        if label.outcome is Outcome.NOT_APPLICABLE:
+            continue
+        if stage == "request":
+            assert label.request_fields(), f"{label.criterion}: cite the request field"
+        elif label.outcome in (Outcome.MET, Outcome.NOT_MET):
+            assert label.resources(), f"{label.criterion}: a chart label needs a resource"
 
 
 @pytest.mark.parametrize("case", CASES.values(), ids=list(CASES))
@@ -95,6 +109,22 @@ def test_changed_labels_quote_the_policy(case):
     assert failing <= explained
     for change in case.changed_labels:
         assert change.quote in policy.criterion(change.criterion).quote, change.criterion
+
+
+def test_planned_second_block_date_is_the_requested_service_date():
+    facts = _build_module().CASES
+    for case in CASES.values():
+        if case.variant == "second-diagnostic":
+            assert facts[case.id].planned_second_block == case.request.service_date, case.id
+        assert facts[case.id].variant == case.variant, case.id
+
+
+def test_template_patient_is_demographics_only_and_65_or_older():
+    template = json.loads((EVALS_DIR / "template" / "patient.json").read_text(encoding="utf-8"))
+    (patient,) = [r for r in template if r["resourceType"] == "Patient"]
+    assert set(patient) == {"resourceType", "id", "gender", "birthDate"}
+    request_date = next(iter(CASES.values())).request.date
+    assert patient["birthDate"] <= request_date.replace(year=request_date.year - 65).isoformat()
 
 
 def test_committed_bundles_match_the_build_script():
