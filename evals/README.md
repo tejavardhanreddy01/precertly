@@ -1,22 +1,22 @@
 # Evals
 
-Forty hand-labeled cases (10 per procedure) with known answers, scored on every PR that touches prompts, retrieval or models. The headline metric is the **false-approval rate**: criteria marked met when the label says not met.
+Forty hand-labeled cases (10 per procedure) with known answers, scored on every PR that touches prompts, retrieval or models. The headline metric is the **false-approval rate**: scored criteria the agent marks `met` when the label is `not_met` or `insufficient`. Both labels lead to a non-affirmed decision in practice, so both count. Labeling rules are in [GUIDELINES.md](GUIDELINES.md).
 
 ## Case format
 
 One YAML file per case in `evals/cases/`, plus the edited FHIR bundle in `evals/bundles/`. Build each case by copying a Synthea bundle and editing it so the expected outcome is known by construction.
 
 ```yaml
-id: facet-rfa-014
+id: facet-02
 policy: facet-joint-interventions
 variant: initial-rfa
 procedure: "64635"
-bundle: bundles/facet-rfa-014.json
+bundle: bundles/facet-02.json
 expected:
-  - criterion: two-mbbs-80pct-relief
+  - criterion: two-mbbs-80pct-sustained-relief
     outcome: not_met          # second block gave 70% relief
     evidence: ["Observation/pain-post-mbb2"]
-  - criterion: conservative-care-3-months
+  - criterion: conservative-care-failed
     outcome: met
     evidence: ["Procedure/pt-0141"]
   - criterion: no-untreated-radiculopathy
