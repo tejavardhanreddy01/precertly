@@ -63,7 +63,9 @@ Done:
 - Baseline numbers in `docs/benchmarks/ingest-and-retrieval.md` (dated 2026-10-10, not exactly reproducible).
 - Synthea pinned to v4.0.0 with a sha256 check.
 - All 4 policies re-encoded from governing NCD/LCD/article text, with verbatim quotes, sources and conditions; `scripts/verify_policy_quotes.py` checks them against the CMS Coverage API.
+- Required `evidence_stage` on every criterion (`chart`, `request`, `provider_attestation`, `post_service`, `payer`), defined relative to the request being decided.
+- Annotation guideline (`evals/GUIDELINES.md`) and the facet case plan (`evals/cases/facet/PLAN.md`).
 
-Next: add a required `evidence_stage` field to every criterion (`chart`, `request`, `provider_attestation`, `post_service`) as its own `feat/` PR; show the stage-grouped list for review before committing.
+Next: build the 11 facet cases in `evals/cases/facet/PLAN.md`: a template patient from a pinned Synthea v4.0.0 bundle, trimmed, then one bundle + YAML case file per row; show me facet-01 and facet-02 for review before building the rest.
 
 After that (core pipeline): per-criterion judgment on Bedrock with structured output and quote verification → combine via variant logic → PAS-shaped Claim bundle.
