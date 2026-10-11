@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from precertly.policies import LogicNode, Policy, load_policies
+from precertly.policies import EvidenceStage, LogicNode, Policy, load_policies
 
 EXPECTED = {
     "facet-joint-interventions",
@@ -82,6 +82,7 @@ def _criterion(criterion_id, **overrides):
         "id": criterion_id,
         "text": criterion_id.upper(),
         "kind": "clinical",
+        "evidence_stage": "chart",
         "quote": "The beneficiary has X.",
         "source_document": "NCD 0",
         "source_section": "B",
@@ -136,3 +137,24 @@ def test_criterion_needs_a_quote():
     bad = _minimal(criteria=[_criterion("a", quote="")])
     with pytest.raises(ValidationError):
         Policy.model_validate(bad)
+
+
+def test_evidence_stage_is_required():
+    criterion = _criterion("a")
+    del criterion["evidence_stage"]
+    with pytest.raises(ValidationError, match="evidence_stage"):
+        Policy.model_validate(_minimal(criteria=[criterion]))
+    with pytest.raises(ValidationError):
+        Policy.model_validate(_minimal(criteria=[_criterion("a", evidence_stage="payer")]))
+
+
+def test_evidence_stages_of_known_criteria():
+    policies = load_policies()
+    facet = policies["facet-joint-interventions"]
+    assert facet.criterion("pain-minimum-3-months").evidence_stage is EvidenceStage.CHART
+    assert facet.criterion("levels-1-to-2").evidence_stage is EvidenceStage.REQUEST
+    pap = policies["pap-sleep-apnea"]
+    assert pap.criterion("adherence-4h-70pct").evidence_stage is EvidenceStage.POST_SERVICE
+    scs = policies["spinal-cord-stimulator"]
+    stage = scs.criterion("facilities-and-personnel-available").evidence_stage
+    assert stage is EvidenceStage.PROVIDER_ATTESTATION

@@ -26,6 +26,7 @@ criteria:
   - id: late-resort-chronic-intractable-pain
     text: The stimulator is used only as a late resort (if not a last resort) for a patient with chronic intractable pain.
     kind: clinical
+    evidence_stage: chart
     evidence: [Condition, DocumentReference]
     source_document: NCD 160.7
     source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item a)
@@ -36,6 +37,7 @@ criteria:
   - id: other-modalities-tried-or-unsuitable
     text: Other treatment modalities (pharmacological, surgical, physical or psychological) were tried and did not prove satisfactory, or are judged unsuitable or contraindicated for the patient.
     kind: clinical
+    evidence_stage: chart
     evidence: [Procedure, MedicationRequest, DocumentReference]
     source_document: NCD 160.7
     source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item b)
@@ -45,6 +47,7 @@ criteria:
   - id: multidisciplinary-screening
     text: Before implantation, a multidisciplinary team carefully screened, evaluated and diagnosed the patient, including psychological and physical evaluation.
     kind: documentation
+    evidence_stage: chart
     evidence: [Encounter, Procedure, DocumentReference]
     source_document: NCD 160.7
     source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item c)
@@ -54,6 +57,7 @@ criteria:
   - id: facilities-and-personnel-available
     text: The facilities, equipment and professional and support personnel needed for diagnosis, treatment training and follow-up of the patient are available.
     kind: coverage
+    evidence_stage: provider_attestation
     evidence: [DocumentReference, Encounter]
     source_document: NCD 160.7
     source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item d)
@@ -64,6 +68,7 @@ criteria:
   - id: trial-pain-relief-before-permanent
     text: Pain relief was demonstrated with a temporarily implanted electrode before permanent implantation.
     kind: clinical
+    evidence_stage: chart
     evidence: [Procedure, Observation, DocumentReference]
     source_document: NCD 160.7
     source_section: Indications and Limitations of Coverage > B.2 Conditions for Coverage (item e)
@@ -74,6 +79,7 @@ criteria:
   - id: screening-documented-in-chart
     text: The history and the careful screening are documented in the patient chart.
     kind: documentation
+    evidence_stage: chart
     evidence: [DocumentReference, Encounter]
     source_document: LCD L36204
     source_section: Coverage Indications, Limitations, and/or Medical Necessity
@@ -83,6 +89,7 @@ criteria:
   - id: no-active-substance-abuse
     text: The patient has no active substance abuse issues.
     kind: exclusion
+    evidence_stage: chart
     evidence: [Condition, DocumentReference]
     source_document: LCD L36204
     source_section: Coverage Indications, Limitations, and/or Medical Necessity
@@ -92,6 +99,7 @@ criteria:
   - id: patient-education-and-disclosure
     text: The patient received education, discussion and disclosure, including an extensive discussion of the risks and benefits of the therapy.
     kind: documentation
+    evidence_stage: chart
     evidence: [DocumentReference, Encounter]
     source_document: LCD L36204
     source_section: Coverage Indications, Limitations, and/or Medical Necessity
@@ -101,6 +109,7 @@ criteria:
   - id: psychological-screening
     text: The patient underwent appropriate psychological screening.
     kind: documentation
+    evidence_stage: chart
     evidence: [Procedure, Encounter, DocumentReference]
     source_document: LCD L36204
     source_section: Coverage Indications, Limitations, and/or Medical Necessity
@@ -110,6 +119,7 @@ criteria:
   - id: trials-max-2-per-region-lifetime
     text: No more than 2 SCS trials per anatomic spinal region per patient per lifetime.
     kind: frequency
+    evidence_stage: chart
     thresholds: { max_trials: 2, per: anatomic spinal region, window: lifetime }
     evidence: [Procedure]
     source_document: LCD L36204
@@ -121,6 +131,7 @@ criteria:
   - id: leads-max-2-or-16-contacts
     text: Placement of a maximum of 2 leads or 16 contacts.
     kind: coverage
+    evidence_stage: request
     thresholds: { max_leads: 2, max_contacts: 16 }
     evidence: [ServiceRequest, Procedure, Device]
     source_document: LCD L36204
@@ -131,6 +142,7 @@ criteria:
   - id: repeat-trial-extenuating-circumstances
     text: A repeat trial after a failed trial is supported by extenuating circumstances that led to the trial failure.
     kind: clinical
+    evidence_stage: chart
     condition: A previous spinal cord stimulator trial failed.
     evidence: [Procedure, DocumentReference]
     source_document: LCD L36204
@@ -142,6 +154,7 @@ criteria:
   - id: trial-success-50pct-and-function
     text: The trial gave at least a 50% reduction of target pain, or a 50% reduction of analgesic medications, and showed some element of functional improvement.
     kind: clinical
+    evidence_stage: chart
     thresholds: { min_pain_reduction_pct: 50, min_analgesic_reduction_pct: 50, functional_improvement: required }
     evidence: [Observation, MedicationRequest, DocumentReference]
     source_document: LCD L36204
@@ -153,6 +166,7 @@ criteria:
   - id: positive-trial-documented
     text: The patient had a positive response to the trial, with adequate documentation in the chart to support proceeding to a permanent implant.
     kind: documentation
+    evidence_stage: chart
     evidence: [DocumentReference, Procedure, Observation]
     source_document: LCD L36204
     source_section: Coverage Indications, Limitations, and/or Medical Necessity
@@ -162,6 +176,7 @@ criteria:
   - id: permanent-placed-in-asc-or-hospital
     text: The permanent neurostimulator is placed in an ASC or hospital.
     kind: coverage
+    evidence_stage: request
     evidence: [ServiceRequest, Encounter]
     source_document: LCD L36204
     source_section: Coverage Indications, Limitations, and/or Medical Necessity
@@ -172,6 +187,7 @@ criteria:
   - id: one-permanent-stimulator-per-lifetime
     text: One permanent spinal cord stimulator per patient per lifetime, performed in an ASC, outpatient hospital or hospital.
     kind: frequency
+    evidence_stage: chart
     thresholds: { max_permanent_implants: 1, window: lifetime }
     evidence: [Procedure, Device, DocumentReference]
     source_document: Article A57792
@@ -183,6 +199,7 @@ criteria:
   - id: diagnosis-and-prior-therapies-in-record
     text: The clinical record includes the elements leading to the diagnosis and the therapies tried before the decision to use a spinal cord stimulator.
     kind: documentation
+    evidence_stage: chart
     severity: warning
     evidence: [Condition, DocumentReference, Procedure, MedicationRequest]
     source_document: Article A57792

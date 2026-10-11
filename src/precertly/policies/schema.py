@@ -25,6 +25,15 @@ class CriterionKind(StrEnum):
     COVERAGE = "coverage"  # the requested service itself must be a covered type
 
 
+class EvidenceStage(StrEnum):
+    """Where the evidence for a criterion comes from, and so who can judge it and when."""
+
+    CHART = "chart"  # the patient's clinical record as it stands before the service
+    REQUEST = "request"  # the requested service itself: procedure, levels, device, setting
+    PROVIDER_ATTESTATION = "provider_attestation"  # a provider or supplier must attest to it
+    POST_SERVICE = "post_service"  # only exists after the service has been delivered
+
+
 class Severity(StrEnum):
     REQUIRED = "required"  # failing it means criteria are not met
     WARNING = "warning"  # policy says it may lead to denial; flag, don't fail
@@ -34,6 +43,7 @@ class Criterion(BaseModel):
     id: str = Field(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")
     text: str
     kind: CriterionKind
+    evidence_stage: EvidenceStage
     severity: Severity = Severity.REQUIRED
     thresholds: dict[str, Any] = Field(default_factory=dict)
     evidence: list[str] = Field(
