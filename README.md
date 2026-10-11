@@ -27,6 +27,7 @@ Each policy is encoded in [`data/policies/`](data/policies) as atomic criteria p
 uv sync
 uv run uvicorn precertly.api.main:app --reload   # http://localhost:8000/docs
 uv run pytest
+uv run pre-commit install                        # optional: run ruff and pytest before each commit
 ```
 
 Chunk a FHIR bundle (or a directory of them) and see what the agent will be able to cite:
