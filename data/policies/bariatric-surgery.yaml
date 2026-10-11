@@ -14,6 +14,7 @@ criteria:
   - id: nationally-covered-procedure
     text: The procedure is open or laparoscopic Roux-en-Y gastric bypass, open or laparoscopic BPD/DS (or BPD/GRDS), or laparoscopic adjustable gastric banding.
     kind: coverage
+    evidence_stage: request
     evidence: [ServiceRequest, Procedure]
     source_document: NCD 100.1
     source_section: Indications and Limitations of Coverage > B. Nationally Covered Indications
@@ -23,6 +24,7 @@ criteria:
   - id: bmi-35-plus
     text: Body-mass index of 35 or greater.
     kind: clinical
+    evidence_stage: chart
     thresholds: { min_bmi: 35 }
     evidence: [Observation]
     source_document: NCD 100.1
@@ -32,6 +34,7 @@ criteria:
   - id: obesity-comorbidity
     text: At least one co-morbidity related to obesity. Type 2 diabetes mellitus is a co-morbidity for this purpose.
     kind: clinical
+    evidence_stage: chart
     evidence: [Condition]
     source_document: NCD 100.1
     source_section: Indications and Limitations of Coverage > B. Nationally Covered Indications
@@ -42,6 +45,7 @@ criteria:
   - id: failed-medical-treatment
     text: The beneficiary has previously been unsuccessful with medical treatment for obesity.
     kind: clinical
+    evidence_stage: chart
     evidence: [Procedure, MedicationRequest, CarePlan, DocumentReference]
     source_document: NCD 100.1
     source_section: Indications and Limitations of Coverage > B. Nationally Covered Indications
@@ -52,6 +56,7 @@ criteria:
   - id: lsg-bmi-35-plus
     text: Body-mass index of 35 kg/m2 or greater.
     kind: clinical
+    evidence_stage: chart
     thresholds: { min_bmi: 35 }
     evidence: [Observation]
     source_document: NCD 100.1
@@ -62,6 +67,7 @@ criteria:
   - id: lsg-obesity-comorbidity
     text: At least one co-morbidity related to obesity.
     kind: clinical
+    evidence_stage: chart
     evidence: [Condition]
     source_document: NCD 100.1
     source_section: Indications and Limitations of Coverage > D. Other (condition b)
@@ -71,6 +77,7 @@ criteria:
   - id: lsg-failed-medical-treatment
     text: The beneficiary has previously been unsuccessful with medical treatment for obesity.
     kind: clinical
+    evidence_stage: chart
     evidence: [Procedure, MedicationRequest, CarePlan, DocumentReference]
     source_document: NCD 100.1
     source_section: Indications and Limitations of Coverage > D. Other (condition c)
@@ -80,6 +87,7 @@ criteria:
   - id: lsg-covered-by-local-mac
     text: The local MAC has determined coverage of stand-alone laparoscopic sleeve gastrectomy in its jurisdiction.
     kind: coverage
+    evidence_stage: payer
     evidence: [ServiceRequest]
     source_document: NCD 100.1
     source_section: Indications and Limitations of Coverage > D. Other

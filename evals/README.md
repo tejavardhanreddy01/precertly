@@ -28,6 +28,20 @@ Outcomes: `met`, `not_met`, `insufficient`.
 
 Some criteria have a `condition` in the policy file (for example, a rule that applies only to a repeat procedure). When the condition does not hold for a case, label the criterion `not_applicable` in `expected`; the scorer leaves it out of accuracy and false-approval counts. `not_applicable` is a label for scoring only: the agent's outcomes stay `met`, `not_met` and `insufficient`.
 
+## Evidence stages
+
+Every criterion has an `evidence_stage`, defined relative to the request being decided:
+
+| Stage | Meaning |
+| --- | --- |
+| `chart` | In the patient's record when this request is made |
+| `request` | A property of the requested service |
+| `provider_attestation` | A provider or supplier attests to it |
+| `post_service` | Exists only after the requested service is performed |
+| `payer` | The payer's own coverage rules or jurisdiction |
+
+The same fact can sit at different stages for different requests. PAP adherence data does not exist when the first device is requested, but it is chart evidence for a continued-coverage request, which is the only variant those criteria appear in.
+
 ## Mix per procedure
 
 - 5 clean cases: clearly meets or clearly fails.

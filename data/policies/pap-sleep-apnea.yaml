@@ -21,6 +21,7 @@ criteria:
   - id: in-person-evaluation-before-sleep-test
     text: An in-person clinical evaluation by the treating practitioner, before the sleep test, to assess for obstructive sleep apnea.
     kind: documentation
+    evidence_stage: chart
     evidence: [Encounter, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion A)
@@ -30,6 +31,7 @@ criteria:
   - id: ahi-15-plus
     text: AHI or RDI greater than or equal to 15 events per hour, with a minimum of 30 events.
     kind: clinical
+    evidence_stage: chart
     thresholds: { min_ahi: 15, min_events: 30 }
     evidence: [Observation, DiagnosticReport, DocumentReference]
     source_document: LCD L33718
@@ -40,6 +42,7 @@ criteria:
   - id: ahi-5-to-14
     text: AHI or RDI greater than or equal to 5 and less than or equal to 14 events per hour, with a minimum of 10 events.
     kind: clinical
+    evidence_stage: chart
     thresholds: { min_ahi: 5, max_ahi: 14, min_events: 10 }
     evidence: [Observation, DiagnosticReport, DocumentReference]
     source_document: LCD L33718
@@ -51,6 +54,7 @@ criteria:
   - id: osa-symptom-or-condition
     text: Documented excessive daytime sleepiness, impaired cognition, mood disorders or insomnia; or hypertension, ischemic heart disease or history of stroke.
     kind: clinical
+    evidence_stage: chart
     evidence: [Condition, Observation, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion B.2.a and B.2.b)
@@ -60,6 +64,7 @@ criteria:
   - id: short-study-event-minimum
     text: When the AHI or RDI is based on less than 2 hours of sleep or recording, the recorded events reach at least 30 without symptoms or at least 10 with symptoms.
     kind: clinical
+    evidence_stage: chart
     condition: The AHI or RDI was calculated from less than 2 hours of sleep or recording time.
     thresholds: { min_events_without_symptoms: 30, min_events_with_symptoms: 10 }
     evidence: [DiagnosticReport, Observation, DocumentReference]
@@ -71,6 +76,7 @@ criteria:
   - id: supplier-instruction
     text: The beneficiary or caregiver received instruction from the supplier in the proper use and care of the equipment.
     kind: documentation
+    evidence_stage: provider_attestation
     evidence: [DocumentReference, Communication]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion C)
@@ -81,6 +87,7 @@ criteria:
   - id: sleep-test-type
     text: The sleep test is a facility-based polysomnogram (Type I) or an inpatient hospital-based or home-based sleep test (Types II, III, IV, Other).
     kind: documentation
+    evidence_stage: chart
     evidence: [DiagnosticReport, Procedure, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
@@ -90,6 +97,7 @@ criteria:
   - id: sleep-test-meets-medicare-validity
     text: The sleep test meets the Medicare requirements for a valid sleep test in NCD 240.4.1 and the applicable A/B MAC LCD and billing article.
     kind: documentation
+    evidence_stage: provider_attestation
     evidence: [DiagnosticReport, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
@@ -100,6 +108,7 @@ criteria:
   - id: sleep-test-fda-approved-device
     text: The sleep test is approved by the FDA as a diagnostic device.
     kind: documentation
+    evidence_stage: provider_attestation
     evidence: [DiagnosticReport, Device, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
@@ -109,6 +118,7 @@ criteria:
   - id: sleep-test-ordered-by-treating-practitioner
     text: The sleep test was ordered by the beneficiary's treating practitioner.
     kind: documentation
+    evidence_stage: chart
     evidence: [ServiceRequest, DiagnosticReport, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
@@ -118,6 +128,7 @@ criteria:
   - id: sleep-test-qualified-entity
     text: The sleep test was conducted by an entity that qualifies as a Medicare provider of sleep tests and complies with state regulatory requirements.
     kind: documentation
+    evidence_stage: provider_attestation
     evidence: [DiagnosticReport, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Sleep Tests
@@ -128,6 +139,7 @@ criteria:
   - id: cpap-tried-and-ineffective
     text: A single-level CPAP device (E0601) was tried and proven ineffective in a therapeutic trial, in a facility or at home.
     kind: clinical
+    evidence_stage: chart
     evidence: [DeviceUseStatement, Procedure, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > INITIAL COVERAGE (criterion D)
@@ -137,6 +149,7 @@ criteria:
   - id: interface-fit-addressed
     text: Before the change to E0470, the practitioner documented that an appropriate interface was properly fit and the beneficiary uses it without difficulty.
     kind: documentation
+    evidence_stage: chart
     evidence: [DocumentReference, Encounter]
     source_document: Article A52467
     source_section: Article Text > POLICY SPECIFIC DOCUMENTATION REQUIREMENTS > INITIAL EVALUATION
@@ -146,6 +159,7 @@ criteria:
   - id: cpap-pressure-settings-failed
     text: Before the change to E0470, the practitioner documented that the current E0601 pressure prevents the beneficiary from tolerating therapy and that lower pressures failed to control symptoms, improve sleep quality or reduce the AHI/RDI to acceptable levels.
     kind: documentation
+    evidence_stage: chart
     evidence: [DocumentReference, Observation, Encounter]
     source_document: Article A52467
     source_section: Article Text > POLICY SPECIFIC DOCUMENTATION REQUIREMENTS > INITIAL EVALUATION
@@ -155,6 +169,7 @@ criteria:
   - id: new-evaluation-after-3-months-on-cpap
     text: A new initial in-person clinical evaluation was done for the switch to E0470 (a new sleep test is not required).
     kind: documentation
+    evidence_stage: chart
     condition: The beneficiary used an E0601 for more than 3 months before being switched to an E0470.
     thresholds: { months_on_e0601_over: 3 }
     evidence: [Encounter, DocumentReference, DeviceUseStatement]
@@ -167,6 +182,7 @@ criteria:
   - id: reevaluation-day-31-to-91
     text: The treating practitioner conducted a clinical re-evaluation no sooner than the 31st day and no later than the 91st day after therapy began, and documented that the beneficiary is benefiting.
     kind: documentation
+    evidence_stage: chart
     thresholds: { earliest_day: 31, latest_day: 91 }
     evidence: [Encounter, DocumentReference]
     source_document: LCD L33718
@@ -178,6 +194,7 @@ criteria:
   - id: symptoms-improved-in-person
     text: An in-person clinical re-evaluation by the treating practitioner documents that symptoms of obstructive sleep apnea are improved.
     kind: clinical
+    evidence_stage: chart
     evidence: [Encounter, DocumentReference]
     source_document: LCD L33718
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > CONTINUED COVERAGE BEYOND THE FIRST THREE MONTHS OF THERAPY
@@ -187,6 +204,7 @@ criteria:
   - id: adherence-4h-70pct
     text: Objective evidence, reviewed by the treating practitioner, of PAP use of at least 4 hours per night on 70% of nights during a consecutive 30-day period in the first 3 months.
     kind: clinical
+    evidence_stage: chart
     thresholds: { min_hours_per_night: 4, min_nights_pct: 70, window_days: 30, within_months: 3 }
     evidence: [Observation, DeviceUseStatement, DocumentReference]
     source_document: LCD L33718
@@ -197,6 +215,7 @@ criteria:
   - id: adherence-report-in-record
     text: Adherence is documented by direct download or visual inspection of usage data, in a written report reviewed by the treating practitioner and included in the medical record.
     kind: documentation
+    evidence_stage: chart
     evidence: [DocumentReference, DeviceUseStatement, Communication]
     source_document: Article A52467
     source_section: Article Text > POLICY SPECIFIC DOCUMENTATION REQUIREMENTS

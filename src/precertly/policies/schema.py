@@ -25,6 +25,21 @@ class CriterionKind(StrEnum):
     COVERAGE = "coverage"  # the requested service itself must be a covered type
 
 
+class EvidenceStage(StrEnum):
+    """Where the evidence for a criterion is found, relative to the request being decided.
+
+    The same fact can sit at different stages for different requests: PAP adherence data
+    does not exist when the first device is requested, but is ordinary chart evidence for
+    a continued-coverage request. Stages are assigned for the variants a criterion is in.
+    """
+
+    CHART = "chart"  # in the patient's record when this request is made
+    REQUEST = "request"  # a property of the requested service
+    PROVIDER_ATTESTATION = "provider_attestation"  # a provider or supplier attests to it
+    POST_SERVICE = "post_service"  # exists only after the requested service is performed
+    PAYER = "payer"  # the payer's own coverage rules or jurisdiction
+
+
 class Severity(StrEnum):
     REQUIRED = "required"  # failing it means criteria are not met
     WARNING = "warning"  # policy says it may lead to denial; flag, don't fail
@@ -34,6 +49,7 @@ class Criterion(BaseModel):
     id: str = Field(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")
     text: str
     kind: CriterionKind
+    evidence_stage: EvidenceStage
     severity: Severity = Severity.REQUIRED
     thresholds: dict[str, Any] = Field(default_factory=dict)
     evidence: list[str] = Field(
