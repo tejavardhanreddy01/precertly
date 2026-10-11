@@ -68,7 +68,8 @@ Done:
 - All 4 policies re-encoded from governing NCD/LCD/article text, with verbatim quotes, sources and conditions; `scripts/verify_policy_quotes.py` checks them against the CMS Coverage API.
 - Required `evidence_stage` on every criterion (`chart`, `request`, `provider_attestation`, `post_service`, `payer`), defined relative to the request being decided.
 - Annotation guideline (`evals/GUIDELINES.md`) and the facet case plan (`evals/cases/facet/PLAN.md`).
+- Eleven facet eval cases (`evals/cases/facet/`), with bundles built by `evals/build_cases.py` and tests tying each case to the policy, its bundle and the case plan.
 
-Next: build the 11 facet cases in `evals/cases/facet/PLAN.md`: a template patient from a pinned Synthea v4.0.0 bundle, trimmed, then one bundle + YAML case file per row; show me facet-01 and facet-02 for review before building the rest.
+Next: the judgment step (core pipeline part 3): per-criterion judgment on Bedrock with structured output and quote verification, combined through the variant logic. Build it and measure it against the 11 facet cases before writing cases for the other three procedures.
 
-After that (core pipeline): per-criterion judgment on Bedrock with structured output and quote verification → combine via variant logic → PAS-shaped Claim bundle.
+After that: the PAS-shaped Claim bundle, then eval cases for PAP, spinal cord stimulator and bariatric surgery.
