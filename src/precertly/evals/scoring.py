@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from pydantic import BaseModel
 
 from precertly.evals.cases import EvalCase
@@ -22,6 +24,9 @@ class CriterionScore(BaseModel):
     correct: bool
     false_approval: bool  # agent says met, label says not_met or insufficient
     invalidated: bool
+    # The model gave no usable answer at all and the verdict was set to insufficient. A
+    # subset of invalidated; the rest are citations or quotes that did not verify.
+    unusable_answer: bool = False
     cited: list[str]
     cited_in_label: int
 
@@ -68,7 +73,11 @@ class Summary(BaseModel):
     # citations does not dominate
     citation_precision_macro: float | None
     citation_precision_by_criterion: dict[str, CitationPrecision]
-    invalidated_verdicts: int
+    invalidated_verdicts: int  # quote_invalidations + unusable_answers
+    quote_invalidations: int
+    unusable_answers: int
+    unusable_answers_by_case: dict[str, int]
+    unusable_answers_by_criterion: dict[str, int]
     input_tokens: int
     output_tokens: int
     llm_calls: int
@@ -94,6 +103,7 @@ def score_case(case: EvalCase, judgment: CaseJudgment) -> CaseScore:
                 correct=correct,
                 false_approval=predicted is Outcome.MET and label.outcome in NEGATIVE,
                 invalidated=verdict.invalidated is not None,
+                unusable_answer=verdict.model_outcome == "none",
                 cited=cited,
                 cited_in_label=sum(resource in label.evidence for resource in cited),
             )
@@ -150,6 +160,16 @@ def summarize(scores: list[CaseScore]) -> Summary:
         citation_precision_macro=macro,
         citation_precision_by_criterion=by_criterion,
         invalidated_verdicts=sum(c.invalidated for c in criteria),
+        quote_invalidations=sum(c.invalidated and not c.unusable_answer for c in criteria),
+        unusable_answers=sum(c.unusable_answer for c in criteria),
+        unusable_answers_by_case={
+            score.case_id: count
+            for score in scores
+            if (count := sum(c.unusable_answer for c in score.criteria))
+        },
+        unusable_answers_by_criterion=dict(
+            Counter(c.criterion for c in criteria if c.unusable_answer)
+        ),
         input_tokens=sum(s.input_tokens for s in scores),
         output_tokens=sum(s.output_tokens for s in scores),
         llm_calls=len(criteria),

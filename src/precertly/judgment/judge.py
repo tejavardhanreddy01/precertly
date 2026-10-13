@@ -27,6 +27,11 @@ from precertly.judgment.prompt import SYSTEM, build_prompt, handles
 from precertly.llm import LLMUsage, StructuredOutputError
 from precertly.policies import Criterion, Policy
 
+# Settings that change what the model is asked or allowed to say. They are recorded in every
+# results file, and a run may only be resumed under the same values.
+MAX_TOKENS = 800
+TEMPERATURE = 0.0
+
 
 class StructuredLLM(Protocol):
     async def structured(self, prompt: str, schema: type, **options: Any) -> Any: ...
@@ -77,7 +82,7 @@ async def judge_criterion(
     request: PriorAuthRequest,
     chunks: list[EvidenceChunk],
     *,
-    max_tokens: int = 800,
+    max_tokens: int = MAX_TOKENS,
 ) -> CriterionVerdict:
     """One verdict for one criterion from the evidence given (request chunks included)."""
     try:
@@ -86,6 +91,7 @@ async def judge_criterion(
             ModelJudgment,
             system=SYSTEM,
             max_tokens=max_tokens,
+            temperature=TEMPERATURE,
         )
     except StructuredOutputError as error:
         # No usable answer is not a reason to stop the case, and never a reason to

@@ -244,3 +244,80 @@ def test_runner_saves_after_every_case_and_can_be_resumed(tmp_path, monkeypatch)
     assert finished["cases_run"] == ["facet-01", "facet-02", "facet-03"]
     assert finished["complete"] is True
     assert finished["summary"]["cases"] == 3
+
+
+def test_unusable_answers_are_counted_apart_from_quote_invalidations():
+    case = CASES["facet-01"]
+    first, second = case.expected[0], case.expected[1]
+    no_answer = _verdict(first, "insufficient", cite=[], invalidated="no structured answer: x")
+    no_answer.model_outcome = "none"
+    bad_quote = _verdict(second, "insufficient", cite=[], invalidated="quote not found in E3")
+    overrides = {first.criterion: no_answer, second.criterion: bad_quote}
+    summary = summarize(
+        [score_case(case, _judgment(case, overrides, overall=Outcome.INSUFFICIENT))]
+    )
+
+    assert summary.invalidated_verdicts == 2
+    assert (summary.quote_invalidations, summary.unusable_answers) == (1, 1)
+    assert summary.unusable_answers_by_case == {"facet-01": 1}
+    assert summary.unusable_answers_by_criterion == {first.criterion: 1}
+
+
+def _payload(case_ids, *, sha="abc", unusable=(), flip=()):
+    from precertly.evals.run import IDENTITY
+
+    cases = []
+    for case_id in case_ids:
+        judgment = _judgment(CASES[case_id])
+        for verdict in judgment.verdicts:
+            if (case_id, verdict.criterion) in unusable:
+                verdict.model_outcome, verdict.outcome = "none", "insufficient"
+            if (case_id, verdict.criterion) in flip:
+                verdict.outcome = "insufficient"
+        cases.append({"case_id": case_id, "verdicts": judgment.model_dump(mode="json")})
+    return {key: "same" for key in IDENTITY} | {"git_sha": sha, "git_dirty": False, "cases": cases}
+
+
+def test_a_pair_is_clean_only_with_identical_settings_and_no_unusable_answers():
+    from precertly.evals.compare import compare
+
+    ids = ["facet-01", "facet-02"]
+    criterion = CASES["facet-01"].expected[0].criterion
+
+    same = compare(_payload(ids), _payload(ids))
+    assert same["clean"] and same["verdicts_differ"] == []
+    assert same["evidence_identical"] == same["verdicts"] == 32
+
+    noisy = compare(_payload(ids), _payload(ids, flip={("facet-01", criterion)}))
+    assert noisy["clean"]  # differing verdicts are the noise being measured, not a defect
+    assert noisy["verdicts_differ"] == [
+        {"case": "facet-01", "criterion": criterion, "a": "met", "b": "insufficient"}
+    ]
+
+    broken = compare(_payload(ids), _payload(ids, unusable={("facet-02", criterion)}))
+    assert not broken["clean"]
+    assert broken["unusable_answers"] == {"a": [], "b": [f"facet-02/{criterion}"]}
+    assert "run b has 1 unusable model answer(s)" in broken["not_clean_because"]
+
+    other_commit = compare(_payload(ids), _payload(ids, sha="def"))
+    assert "git_sha differs" in other_commit["not_clean_because"]
+
+
+def test_resume_also_refuses_different_policy_versions_or_judgment_settings():
+    from precertly.evals.run import resume_conflicts, run_metadata
+
+    current = run_metadata() | {"git_dirty": False}
+    assert {"judgment", "policies"} <= set(current)
+    assert current["judgment"] == {"max_tokens": 800, "temperature": 0.0, "top_k": 8}
+    assert current["policies"]["facet-joint-interventions"] == {
+        "LCD L38773": "32",
+        "Article A58364": "42",
+    }
+
+    newer_policy = current | {
+        "policies": current["policies"] | {"facet-joint-interventions": {"LCD L38773": "33"}}
+    }
+    assert any("policies" in c for c in resume_conflicts(newer_policy, current))
+
+    other_settings = current | {"judgment": current["judgment"] | {"max_tokens": 400}}
+    assert any("judgment" in c for c in resume_conflicts(other_settings, current))

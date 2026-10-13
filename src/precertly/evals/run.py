@@ -29,6 +29,7 @@ from precertly.evals.scoring import CaseScore, Summary, score_case, summarize
 from precertly.fhir import chunk_bundle, load_bundle
 from precertly.ingest import estimate_embedding, ingest_bundle
 from precertly.judgment import SYSTEM, CaseJudgment, ChartEvidence, judge_case
+from precertly.judgment.judge import MAX_TOKENS, TEMPERATURE
 from precertly.judgment.prompt import PROMPT_VERSION
 from precertly.llm import BedrockClient, BedrockEmbedder
 from precertly.policies import load_policies
@@ -137,12 +138,29 @@ def run_metadata() -> dict[str, object]:
             "embedding_model_id": settings.embedding_model_id,
             "embedding_dimensions": settings.embedding_dimensions,
         },
+        "judgment": {
+            "max_tokens": MAX_TOKENS,
+            "temperature": TEMPERATURE,
+            "top_k": settings.judgment_top_k,
+        },
+        "policies": {
+            policy.id: {source.document: source.version for source in policy.sources}
+            for policy in load_policies().values()
+        },
         "annotation": "single annotator; not clinically validated",
     }
 
 
 # A results file is one run: every case in it must come from the same code and settings.
-IDENTITY = ("git_sha", "model_id", "prompt_version", "system_prompt_sha256", "retrieval")
+IDENTITY = (
+    "git_sha",
+    "model_id",
+    "prompt_version",
+    "system_prompt_sha256",
+    "retrieval",
+    "judgment",
+    "policies",
+)
 
 
 def resume_conflicts(existing: dict[str, object], current: dict[str, object]) -> list[str]:
@@ -184,10 +202,17 @@ def _report(summary: Summary, scores: list[CaseScore]) -> str:
         f"Citation precision: {percent(summary.citation_precision)} overall"
         f" ({summary.citations_in_label} of {summary.citations} cited resources are in the label),"
         f" {percent(summary.citation_precision_macro)} macro-averaged over criteria",
-        f"Invalidated verdicts: {summary.invalidated_verdicts} of {summary.llm_calls}",
+        f"Invalidated verdicts: {summary.invalidated_verdicts} of {summary.llm_calls}"
+        f" ({summary.quote_invalidations} citation or quote, "
+        f"{summary.unusable_answers} unusable model answers)",
         f"Tokens: {summary.input_tokens:,} in, {summary.output_tokens:,} out",
-        "Citation precision by criterion:",
     ]
+    if summary.unusable_answers:
+        lines += [
+            f"Unusable answers by case: {summary.unusable_answers_by_case}",
+            f"Unusable answers by criterion: {summary.unusable_answers_by_criterion}",
+        ]
+    lines.append("Citation precision by criterion:")
     for criterion, precision in sorted(
         summary.citation_precision_by_criterion.items(), key=lambda item: item[1].precision
     ):
