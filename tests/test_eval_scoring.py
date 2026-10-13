@@ -9,8 +9,10 @@ USAGE = LLMUsage(model_id="fake", input_tokens=1000, output_tokens=100, latency_
 
 def _verdict(label, outcome=None, *, applicable=True, cite=None, invalidated=None):
     """A verdict that agrees with the label unless told otherwise."""
-    if outcome is None:
-        outcome = "met" if label.outcome is Outcome.NOT_APPLICABLE else label.outcome.value
+    if outcome is None and label.outcome is Outcome.NOT_APPLICABLE:
+        outcome, applicable = "met", False
+    elif outcome is None:
+        outcome = label.outcome.value
     resources = label.evidence if cite is None else cite
     return CriterionVerdict(
         criterion=label.criterion,
@@ -49,10 +51,9 @@ def test_a_judgment_that_matches_every_label_scores_perfectly():
     assert summary.criterion_accuracy == 1.0
     assert (summary.false_approvals, summary.case_false_approvals) == (0, 0)
     assert summary.citation_precision == 1.0
-    # not_applicable labels are left out of the accuracy count
+    # every label counts, not_applicable ones included
     labels = [label for case in CASES.values() for label in case.expected]
-    not_applicable = sum(label.outcome is Outcome.NOT_APPLICABLE for label in labels)
-    assert summary.scored_criteria == len(labels) - not_applicable
+    assert summary.scored_criteria == summary.criteria_correct == len(labels)
     assert summary.llm_calls == len(labels)
     assert summary.input_tokens == 1000 * len(labels)
 
@@ -96,14 +97,32 @@ def test_citation_precision_counts_resources_outside_the_label():
     assert (scored.cited_in_label, len(scored.cited)) == (1, 2)
 
 
-def test_any_agent_outcome_is_accepted_for_a_not_applicable_label():
+def test_not_applicable_label_is_correct_only_if_the_agent_says_the_condition_does_not_hold():
     case = CASES["facet-01"]
     label = next(x for x in case.expected if x.outcome is Outcome.NOT_APPLICABLE)
+
+    def scored(verdict):
+        score = score_case(case, _judgment(case, {label.criterion: verdict}))
+        return next(c for c in score.criteria if c.criterion == label.criterion), score
+
+    agrees, _ = scored(_verdict(label, "met", applicable=False, cite=[]))
+    assert (agrees.correct, agrees.false_approval) == (True, False)
+
     for outcome in ("met", "not_met", "insufficient"):
-        answer = {label.criterion: _verdict(label, outcome, cite=[])}
-        score = score_case(case, _judgment(case, answer))
-        scored = next(c for c in score.criteria if c.criterion == label.criterion)
-        assert (scored.scored, scored.correct, scored.false_approval) == (False, False, False)
+        judged, score = scored(_verdict(label, outcome, applicable=True, cite=[]))
+        assert (judged.correct, judged.false_approval) == (False, False)
+        summary = summarize([score])
+        assert summary.criteria_correct == summary.scored_criteria - 1
+
+
+def test_citation_precision_ignores_not_applicable_labels():
+    case = CASES["facet-01"]
+    label = next(x for x in case.expected if x.outcome is Outcome.NOT_APPLICABLE)
+    cited = {
+        label.criterion: _verdict(label, "met", applicable=False, cite=["request.same_day_blocks"])
+    }
+    summary = summarize([score_case(case, _judgment(case, cited))])
+    assert summary.citation_precision == 1.0
 
 
 def test_results_metadata_records_what_is_needed_to_repeat_a_run():

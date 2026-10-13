@@ -15,7 +15,9 @@ The answer key is the policy file in `data/policies/`, which encodes the governi
 
 `not_met` and `insufficient` both lead to a non-affirmed prior-authorization decision in practice, with the provider free to resubmit. Neither is a soft outcome.
 
-`not_applicable` is a scoring label only. The agent outputs `met`, `not_met` or `insufficient`; the scorer accepts any agent outcome for a `not_applicable` criterion and leaves it out of accuracy counts.
+`not_applicable` is a label, not an agent outcome. The agent outputs `met`, `not_met` or `insufficient`, and for a criterion with a `condition` it also reports whether the condition holds. A `not_applicable` label is correct only if the agent reports that the condition does not hold, and it counts in criterion accuracy like any other label. An earlier version of this guideline accepted any agent outcome here; that was wrong, because the overall outcome depends on these criteria and a wrong verdict on one changes the case.
+
+Going the other way, if the agent reports that a condition does not hold where the label is `met`, `not_met` or `insufficient`, the verdict is scored as `met`, because that is its effect on the case outcome. Against a `not_met` or `insufficient` label that is a false approval.
 
 ## What gets labeled
 

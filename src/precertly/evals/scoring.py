@@ -17,7 +17,8 @@ class CriterionScore(BaseModel):
     # met, because that is its effect on the case outcome.
     predicted: Outcome
     agent_not_applicable: bool
-    scored: bool  # False for not_applicable labels: any agent outcome is accepted
+    # For a not_applicable label: correct only if the agent also found that the condition
+    # does not hold. The case outcome depends on these criteria, so they are scored.
     correct: bool
     false_approval: bool  # agent says met, label says not_met or insufficient
     invalidated: bool
@@ -51,7 +52,7 @@ class Summary(BaseModel):
     scored_criteria: int
     criteria_correct: int
     criterion_accuracy: float | None
-    negative_labels: int  # scored labels that are not_met or insufficient
+    negative_labels: int  # labels that are not_met or insufficient
     false_approvals: int
     false_approval_rate: float | None  # false approvals / negative labels
     citations: int
@@ -69,7 +70,10 @@ def score_case(case: EvalCase, judgment: CaseJudgment) -> CaseScore:
     for label in case.expected:
         verdict = verdicts[label.criterion]
         predicted = Outcome(verdict.outcome)
-        scored = label.outcome is not Outcome.NOT_APPLICABLE
+        if label.outcome is Outcome.NOT_APPLICABLE:
+            correct = not verdict.applicable
+        else:
+            correct = predicted == label.outcome
         cited = sorted({c.resource for c in verdict.citations})
         criteria.append(
             CriterionScore(
@@ -77,8 +81,7 @@ def score_case(case: EvalCase, judgment: CaseJudgment) -> CaseScore:
                 expected=label.outcome,
                 predicted=predicted,
                 agent_not_applicable=not verdict.applicable,
-                scored=scored,
-                correct=scored and predicted == label.outcome,
+                correct=correct,
                 false_approval=predicted is Outcome.MET and label.outcome in NEGATIVE,
                 invalidated=verdict.invalidated is not None,
                 cited=cited,
@@ -103,19 +106,19 @@ def _rate(numerator: int, denominator: int) -> float | None:
 
 def summarize(scores: list[CaseScore]) -> Summary:
     criteria = [c for score in scores for c in score.criteria]
-    scored = [c for c in criteria if c.scored]
-    negatives = [c for c in scored if c.expected in NEGATIVE]
-    # Citation precision is measured where the label lists evidence to compare against.
-    citing = [c for c in scored if c.cited]
+    negatives = [c for c in criteria if c.expected in NEGATIVE]
+    # Citation precision is measured where the label lists evidence to compare against;
+    # not_applicable labels list none.
+    citing = [c for c in criteria if c.cited and c.expected is not Outcome.NOT_APPLICABLE]
     citations = sum(len(c.cited) for c in citing)
     in_label = sum(c.cited_in_label for c in citing)
     return Summary(
         cases=len(scores),
         cases_correct=sum(s.overall_correct for s in scores),
         case_false_approvals=sum(s.overall_false_approval for s in scores),
-        scored_criteria=len(scored),
-        criteria_correct=sum(c.correct for c in scored),
-        criterion_accuracy=_rate(sum(c.correct for c in scored), len(scored)),
+        scored_criteria=len(criteria),
+        criteria_correct=sum(c.correct for c in criteria),
+        criterion_accuracy=_rate(sum(c.correct for c in criteria), len(criteria)),
         negative_labels=len(negatives),
         false_approvals=sum(c.false_approval for c in negatives),
         false_approval_rate=_rate(sum(c.false_approval for c in negatives), len(negatives)),

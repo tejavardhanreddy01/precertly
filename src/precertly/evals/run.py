@@ -84,11 +84,11 @@ async def _run(cases: list[EvalCase]) -> list[tuple[CaseScore, CaseJudgment]]:
                     llm, policies[case.policy], case.variant, case.request, evidence
                 )
             score = score_case(case, judgment)
-            wrong = [c.criterion for c in score.criteria if c.scored and not c.correct]
+            wrong = [c.criterion for c in score.criteria if not c.correct]
             print(
                 f"{case.id}: overall {score.predicted_overall.value} "
                 f"(expected {score.expected_overall.value}); "
-                f"{len(wrong)} of {sum(c.scored for c in score.criteria)} criteria wrong"
+                f"{len(wrong)} of {len(score.criteria)} criteria wrong"
                 + (f": {', '.join(wrong)}" if wrong else ""),
                 flush=True,
             )

@@ -46,7 +46,7 @@ expected:                        # one label per chart- or request-stage criteri
 
 Outcomes: `met`, `not_met`, `insufficient`.
 
-Some criteria have a `condition` in the policy file (for example, a rule that applies only to a repeat procedure). When the condition does not hold for a case, label the criterion `not_applicable` in `expected`; the scorer leaves it out of accuracy and false-approval counts. `not_applicable` is a label for scoring only: the agent's outcomes stay `met`, `not_met` and `insufficient`.
+Some criteria have a `condition` in the policy file (for example, a rule that applies only to a repeat procedure). When the condition does not hold for a case, label the criterion `not_applicable` in `expected`. The label is correct only if the agent also reports that the condition does not hold, and it counts in criterion accuracy. `not_applicable` is never an agent outcome: the agent's outcomes stay `met`, `not_met` and `insufficient`.
 
 ## Running
 
@@ -55,7 +55,7 @@ uv run python -m precertly.evals.run --estimate   # calls, tokens and time; no A
 uv run python -m precertly.evals.run              # real run: needs the local database and AWS credentials
 ```
 
-A real run ingests each case, judges every chart- and request-stage criterion, and writes all verdicts, rationales and citations to `evals/results/`. A criterion the agent finds not applicable counts as `met` when scoring, because that is its effect on the case outcome.
+A real run ingests each case, judges every chart- and request-stage criterion, and writes all verdicts, rationales and citations to `evals/results/`. Where the label is not `not_applicable`, a criterion the agent finds not applicable counts as `met` when scoring, because that is its effect on the case outcome.
 
 ## Evidence stages
 
