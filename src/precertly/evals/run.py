@@ -18,6 +18,7 @@ import hashlib
 import json
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -133,6 +134,35 @@ def run_metadata() -> dict[str, object]:
     }
 
 
+# A results file is one run: every case in it must come from the same code and settings.
+IDENTITY = ("git_sha", "model_id", "prompt_version", "system_prompt_sha256", "retrieval")
+
+
+def resume_conflicts(existing: dict[str, object], current: dict[str, object]) -> list[str]:
+    """Why cases cannot be added to an existing results file; empty if they can."""
+    conflicts = [
+        f"{key}: file has {existing.get(key)!r}, this run has {current.get(key)!r}"
+        for key in IDENTITY
+        if existing.get(key) != current.get(key)
+    ]
+    for name, metadata in (("file", existing), ("this run", current)):
+        if metadata.get("git_dirty"):
+            conflicts.append(f"{name} was produced from uncommitted changes")
+    return conflicts
+
+
+def load_results(path: Path) -> tuple[dict[str, object], list[tuple[CaseScore, CaseJudgment]]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    results = [
+        (
+            CaseScore.model_validate({k: v for k, v in entry.items() if k != "verdicts"}),
+            CaseJudgment.model_validate(entry["verdicts"]),
+        )
+        for entry in payload["cases"]
+    ]
+    return payload, results
+
+
 def _report(summary: Summary, scores: list[CaseScore]) -> str:
     def percent(value: float | None) -> str:
         return "n/a" if value is None else f"{value:.1%}"
@@ -164,6 +194,12 @@ def main() -> int:
     parser.add_argument("--cases", help="comma-separated case ids (default: all)")
     parser.add_argument("--estimate", action="store_true", help="print the size of the run")
     parser.add_argument("--out", type=Path, help="results file (default: evals/results/...)")
+    parser.add_argument(
+        "--resume",
+        type=Path,
+        help="add the cases not yet in this results file; refused unless the git sha, "
+        "model, prompt and retrieval settings are identical",
+    )
     args = parser.parse_args()
 
     available = load_cases()
@@ -177,19 +213,44 @@ def main() -> int:
         _estimate(cases)
         return 0
 
-    results = asyncio.run(_run(cases))
+    metadata = run_metadata()
+    previous: list[tuple[CaseScore, CaseJudgment]] = []
+    seconds_so_far = 0.0
+    if args.resume:
+        existing, previous = load_results(args.resume)
+        conflicts = resume_conflicts(existing, metadata)
+        if conflicts:
+            print("cannot resume into " + str(args.resume) + ":", file=sys.stderr)
+            for conflict in conflicts:
+                print(f"  {conflict}", file=sys.stderr)
+            return 1
+        done = {score.case_id for score, _ in previous}
+        cases = [case for case in cases if case.id not in done]
+        seconds_so_far = float(existing.get("wall_seconds", 0.0))
+        metadata["run_date"] = existing["run_date"]
+
+    started = time.perf_counter()
+    results = previous + asyncio.run(_run(cases))
+    seconds = seconds_so_far + time.perf_counter() - started
+    order = list(available)
+    results.sort(key=lambda result: order.index(result[0].case_id))
     scores = [score for score, _ in results]
     summary = summarize(scores)
     settings = get_settings()
-    out = args.out or (
-        EVALS_DIR
-        / "results"
-        / f"{date.today().isoformat()}-{settings.bedrock_model_id.replace(':', '-')}.json"
+    out = (
+        args.resume
+        or args.out
+        or (
+            EVALS_DIR
+            / "results"
+            / f"{date.today().isoformat()}-{settings.bedrock_model_id.replace(':', '-')}.json"
+        )
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        **run_metadata(),
-        "cases_run": [case.id for case in cases],
+        **metadata,
+        "wall_seconds": round(seconds, 1),
+        "cases_run": [score.case_id for score in scores],
         "summary": summary.model_dump(),
         "cases": [
             {**score.model_dump(mode="json"), "verdicts": judgment.model_dump(mode="json")}

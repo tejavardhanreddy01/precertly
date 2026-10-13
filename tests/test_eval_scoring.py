@@ -161,3 +161,40 @@ def test_results_metadata_records_what_is_needed_to_repeat_a_run():
     assert retrieval["top_k"] == 8
     assert (retrieval["rrf_k"], retrieval["candidates_per_ranking"]) == (60, 50)
     assert retrieval["weights"] == {"full_text": 1.0, "vector": 1.0}
+
+
+def test_resume_requires_identical_code_and_settings():
+    from precertly.evals.run import resume_conflicts, run_metadata
+
+    current = run_metadata() | {"git_dirty": False}
+    assert resume_conflicts(dict(current), current) == []
+
+    other_commit = current | {"git_sha": "0000000"}
+    assert any("git_sha" in c for c in resume_conflicts(other_commit, current))
+
+    other_k = current | {"retrieval": current["retrieval"] | {"top_k": 12}}
+    assert any("retrieval" in c for c in resume_conflicts(other_k, current))
+
+    other_prompt = current | {"prompt_version": "1"}
+    assert any("prompt_version" in c for c in resume_conflicts(other_prompt, current))
+
+    dirty = current | {"git_dirty": True}
+    assert any("uncommitted" in c for c in resume_conflicts(dirty, current))
+    assert any("uncommitted" in c for c in resume_conflicts(dict(current), dirty))
+
+
+def test_results_file_round_trips(tmp_path):
+    import json
+
+    from precertly.evals.run import load_results
+
+    case = CASES["facet-02"]
+    judgment = _judgment(case)
+    score = score_case(case, judgment)
+    entry = {**score.model_dump(mode="json"), "verdicts": judgment.model_dump(mode="json")}
+    path = tmp_path / "results.json"
+    path.write_text(json.dumps({"run_date": "2026-10-13", "cases": [entry]}))
+
+    _, ((loaded_score, loaded_judgment),) = load_results(path)
+    assert loaded_score == score
+    assert loaded_judgment == judgment
