@@ -31,7 +31,8 @@ REGIONS = {
     "sacral": "lumbar_sacral",
 }
 
-PAIN_SCORE_CODES = frozenset({f"{LOINC}|72514-3"})  # pain severity, 0-10 numeric rating
+# Pain severity: 72514-3 (0-10 numeric rating) and 38214-3 (visual analog).
+PAIN_SCORE_CODES = frozenset({f"{LOINC}|72514-3", f"{LOINC}|38214-3"})
 DISABILITY_SCORE_CODES = frozenset({f"{LOINC}|97909-6"})  # Oswestry Disability Index score
 
 
