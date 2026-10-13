@@ -104,3 +104,14 @@ def test_any_agent_outcome_is_accepted_for_a_not_applicable_label():
         score = score_case(case, _judgment(case, answer))
         scored = next(c for c in score.criteria if c.criterion == label.criterion)
         assert (scored.scored, scored.correct, scored.false_approval) == (False, False, False)
+
+
+def test_results_metadata_records_what_is_needed_to_repeat_a_run():
+    from precertly.evals.run import run_metadata
+
+    metadata = run_metadata()
+    assert {"run_date", "git_sha", "git_dirty", "model_id", "prompt_version"} <= set(metadata)
+    retrieval = metadata["retrieval"]
+    assert retrieval["top_k"] == 8
+    assert (retrieval["rrf_k"], retrieval["candidates_per_ranking"]) == (60, 50)
+    assert retrieval["weights"] == {"full_text": 1.0, "vector": 1.0}

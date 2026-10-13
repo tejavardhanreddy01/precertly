@@ -23,6 +23,7 @@ from precertly.db.models import ChartChunk
 
 RRF_K = 60  # the constant from the original RRF paper; damps the weight of top ranks
 MAX_QUERY_TERMS = 64
+DEFAULT_CANDIDATES = 50  # rows taken from each ranking before fusion
 
 
 class QueryEmbedder(Protocol):
@@ -92,7 +93,7 @@ async def hybrid_search(
     *,
     embedder: QueryEmbedder | None = None,
     k: int = 10,
-    candidates: int = 50,
+    candidates: int = DEFAULT_CANDIDATES,
     resource_types: Sequence[str] | None = None,
 ) -> list[SearchHit]:
     """Top-k chunks of a case for a query. Without an embedder this is full-text only."""

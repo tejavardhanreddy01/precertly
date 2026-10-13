@@ -27,8 +27,10 @@ from precertly.evals.scoring import CaseScore, Summary, score_case, summarize
 from precertly.fhir import chunk_bundle, load_bundle
 from precertly.ingest import estimate_embedding, ingest_bundle
 from precertly.judgment import SYSTEM, CaseJudgment, ChartEvidence, judge_case
+from precertly.judgment.prompt import PROMPT_VERSION
 from precertly.llm import BedrockClient, BedrockEmbedder
 from precertly.policies import load_policies
+from precertly.retrieval.search import DEFAULT_CANDIDATES, RRF_K
 from precertly.settings import get_settings
 
 
@@ -96,13 +98,39 @@ async def _run(cases: list[EvalCase]) -> list[tuple[CaseScore, CaseJudgment]]:
     return results
 
 
-def _git_sha() -> str:
+def _git(*args: str) -> str:
     try:
         return subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True
+            ["git", *args], capture_output=True, text=True, check=True
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
+
+
+def run_metadata() -> dict[str, object]:
+    """What a results file needs for the run to be compared or repeated."""
+    settings = get_settings()
+    return {
+        "run_date": date.today().isoformat(),
+        "git_sha": _git("rev-parse", "--short", "HEAD"),
+        # True if the code that ran differs from that commit
+        "git_dirty": bool(_git("status", "--porcelain", "--untracked-files=no")),
+        "model_id": settings.bedrock_model_id,
+        "prompt_version": PROMPT_VERSION,
+        "system_prompt_sha256": hashlib.sha256(SYSTEM.encode()).hexdigest(),
+        "retrieval": {
+            "top_k": settings.judgment_top_k,
+            "method": "hybrid: Postgres full-text + pgvector cosine, reciprocal rank fusion",
+            "rrf_k": RRF_K,
+            "candidates_per_ranking": DEFAULT_CANDIDATES,
+            # RRF sums 1 / (rrf_k + rank) over both rankings with no per-ranking weight
+            "weights": {"full_text": 1.0, "vector": 1.0},
+            "query": "criterion text + policy quote",
+            "embedding_model_id": settings.embedding_model_id,
+            "embedding_dimensions": settings.embedding_dimensions,
+        },
+        "annotation": "single annotator; not clinically validated",
+    }
 
 
 def _report(summary: Summary, scores: list[CaseScore]) -> str:
@@ -153,13 +181,8 @@ def main() -> int:
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "date": date.today().isoformat(),
-        "git_sha": _git_sha(),
-        "model": settings.bedrock_model_id,
-        "embedding_model": settings.embedding_model_id,
-        "top_k": settings.judgment_top_k,
-        "system_prompt_sha256": hashlib.sha256(SYSTEM.encode()).hexdigest(),
-        "annotation": "single annotator; not clinically validated",
+        **run_metadata(),
+        "cases_run": [case.id for case in cases],
         "summary": summary.model_dump(),
         "cases": [
             {**score.model_dump(mode="json"), "verdicts": judgment.model_dump(mode="json")}

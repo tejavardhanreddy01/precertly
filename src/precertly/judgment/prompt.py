@@ -5,6 +5,10 @@ from __future__ import annotations
 from precertly.judgment.models import EvidenceChunk, PriorAuthRequest
 from precertly.policies import Criterion
 
+# Bump when SYSTEM or build_prompt changes what the model reads, so results files can be
+# compared across prompt changes.
+PROMPT_VERSION = "1"
+
 SYSTEM = """You check one Medicare coverage criterion against one patient's record for a prior-authorization request. A human reviewer makes the final decision; you report what the record shows.
 
 Decide only from the evidence provided. Do not use outside knowledge about the patient and do not assume facts the evidence does not state.
