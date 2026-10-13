@@ -39,6 +39,19 @@ Two runs from the same commit and settings do not give the same verdicts, even t
 - (c) Zero new false approvals in either run.
 - (d) facet-11, facet-06 and facet-01 are expected unchanged. Everything else is reported as within the noise band.
 
+**How it was run.** Both runs are from commit `206d985` with `--rules`. Run 1a was interrupted when the session that started it ended, after case 8; it was resumed with `--resume` for the last three cases, on the same commit, with the resume checks passing. Run 1b ran in one piece.
+
+**The pair is not clean.** Run 1b has one verdict where the model returned no usable answer (facet-04, `no-diagnostic-at-level-of-successful-rfa`, judged by the model alone because no rule result applied). Both files are marked accordingly.
+
+**Result against the success criteria:**
+
+- (a) Held: all 38 decided rule results match their labels.
+- (b) Held: the four named verdicts are wrong in all four baseline runs and right in both experiment runs, each decided by code.
+- (c) Held: no false approval in either run that was absent from every baseline run. facet-05 is no longer a false approval in either run.
+- (d) As expected: facet-11 and facet-01 are unchanged (wrong in all six runs). facet-06 is wrong in 1a and right in 1b, as it was in two of four baseline runs.
+
+**A regression the criteria did not anticipate.** Two verdicts that are right in all four baseline runs are wrong in both experiment runs: facet-03 `second-diagnostic-2-weeks-after-first` and facet-03 `diagnostic-sessions-max-4`. Both are partial rule results. In each the model reached the right outcome and cited the computed fact as its evidence, using a handle that is not an evidence item ("COMPUTED FACT", "computed"). The verifier rejects any handle that was not in the prompt, so the verdict was invalidated to `insufficient`. The same thing happened in 7 of the 20 partial verdicts across the two runs. This is a defect in how the partial path combines a computed fact with citation checking, not a model reasoning error. It has not been fixed; any fix is a separate, pre-registered experiment. The prompts and answers are in `2026-10-13-experiment-1-partial-prompts.md`.
+
 **Known limits of the rules:**
 
 - A pain score is recognized only by its LOINC code (72514-3 numeric rating, 38214-3 visual analog). An observation without one of those codes is missing data to the rules: they return absent and the model judges.
