@@ -11947,5 +11947,12 @@
         ]
       }
     }
-  ]
+  ],
+  "pair": {
+    "with": "2026-10-13-baseline-v1b.json",
+    "clean": true,
+    "not_clean_because": [],
+    "verdicts_differ": 3,
+    "unusable_answers": 0
+  }
 }

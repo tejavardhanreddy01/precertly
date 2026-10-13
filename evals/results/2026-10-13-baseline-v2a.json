@@ -12133,5 +12133,12 @@
         ]
       }
     }
-  ]
+  ],
+  "pair": {
+    "with": "2026-10-13-baseline-v2b.json",
+    "clean": true,
+    "not_clean_because": [],
+    "verdicts_differ": 14,
+    "unusable_answers": 0
+  }
 }
