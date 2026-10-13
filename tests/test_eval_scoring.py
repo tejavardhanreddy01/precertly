@@ -1,3 +1,5 @@
+import pytest
+
 from precertly.evals import load_cases
 from precertly.evals.scoring import score_case, summarize
 from precertly.judgment import CaseJudgment, CriterionVerdict, Outcome, VerifiedCitation
@@ -198,3 +200,47 @@ def test_results_file_round_trips(tmp_path):
     _, ((loaded_score, loaded_judgment),) = load_results(path)
     assert loaded_score == score
     assert loaded_judgment == judgment
+
+
+def test_runner_saves_after_every_case_and_can_be_resumed(tmp_path, monkeypatch):
+    """A run that dies part-way leaves a file --resume can finish."""
+    import json
+    import sys
+
+    from precertly.evals import run
+
+    monkeypatch.setattr(run, "run_metadata", lambda: {"run_date": "2026-10-13", "git_sha": "abc"})
+    out = tmp_path / "results.json"
+    seen_on_disk = []
+
+    def fake_run(crash_after=None):
+        async def _run(cases, save):
+            results = []
+            for number, case in enumerate(cases, start=1):
+                judgment = _judgment(case)
+                results.append((score_case(case, judgment), judgment))
+                save(results)
+                seen_on_disk.append(json.loads(out.read_text())["cases_run"])
+                if number == crash_after:
+                    raise RuntimeError("Bedrock went away")
+            return results
+
+        return _run
+
+    ids = "facet-01,facet-02,facet-03"
+    monkeypatch.setattr(run, "_run", fake_run(crash_after=2))
+    monkeypatch.setattr(sys, "argv", ["run", "--cases", ids, "--out", str(out)])
+    with pytest.raises(RuntimeError):
+        run.main()
+    partial = json.loads(out.read_text())
+    assert partial["cases_run"] == ["facet-01", "facet-02"]
+    assert partial["complete"] is False
+    assert seen_on_disk == [["facet-01"], ["facet-01", "facet-02"]]
+
+    monkeypatch.setattr(run, "_run", fake_run())
+    monkeypatch.setattr(sys, "argv", ["run", "--cases", ids, "--resume", str(out)])
+    assert run.main() == 0
+    finished = json.loads(out.read_text())
+    assert finished["cases_run"] == ["facet-01", "facet-02", "facet-03"]
+    assert finished["complete"] is True
+    assert finished["summary"]["cases"] == 3

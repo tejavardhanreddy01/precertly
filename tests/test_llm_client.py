@@ -149,3 +149,21 @@ def test_other_client_errors_are_not_swallowed():
     with pytest.raises(ClientError):
         asyncio.run(client.structured("judge", Verdict))
     assert len(fake.requests) == 1
+
+
+def test_an_empty_model_message_is_retried_without_sending_it_back():
+    empty = _response()  # no content blocks at all
+    client, fake = _client(empty, _tool_use(outcome="met", reason="ok"))
+    result = asyncio.run(client.structured("judge", Verdict))
+
+    assert result.data.outcome == "met"
+    assert result.usage.calls == 2
+    # the retry is the original conversation; an empty assistant turn would be rejected
+    assert fake.requests[1]["messages"] == fake.requests[0]["messages"]
+
+
+def test_structured_error_carries_the_tokens_spent():
+    client, _ = _client(_response(), _response())
+    with pytest.raises(StructuredOutputError, match="empty message") as raised:
+        asyncio.run(client.structured("judge", Verdict))
+    assert raised.value.usage.input_tokens == 80

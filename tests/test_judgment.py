@@ -223,3 +223,18 @@ def test_not_applicable_criteria_count_as_satisfied():
     judgment, _, _ = _judge_case({"same-day-blocks-justified": skipped})
     assert judgment.overall is Outcome.MET
     assert judgment.outcomes()["same-day-blocks-justified"] is Outcome.NOT_APPLICABLE
+
+
+def test_no_usable_model_answer_becomes_insufficient_instead_of_crashing():
+    from precertly.llm import StructuredOutputError
+
+    class BrokenLLM:
+        async def structured(self, prompt, schema, **options):
+            usage = LLMUsage(model_id="fake", input_tokens=200, output_tokens=0, latency_ms=1)
+            raise StructuredOutputError("ModelJudgment: empty message", usage=usage)
+
+    criterion = FACET.criterion("levels-1-to-2")
+    verdict = asyncio.run(judge_criterion(BrokenLLM(), criterion, REQUEST, CHUNKS))
+    assert (verdict.outcome, verdict.model_outcome) == ("insufficient", "none")
+    assert "no structured answer" in verdict.invalidated
+    assert verdict.usage.input_tokens == 200

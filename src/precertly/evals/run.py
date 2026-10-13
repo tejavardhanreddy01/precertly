@@ -19,6 +19,7 @@ import json
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
@@ -58,12 +59,16 @@ def _estimate(cases: list[EvalCase]) -> None:
     )
 
 
-async def _run(cases: list[EvalCase]) -> list[tuple[CaseScore, CaseJudgment]]:
+Result = tuple[CaseScore, CaseJudgment]
+
+
+async def _run(cases: list[EvalCase], save: Callable[[list[Result]], None]) -> list[Result]:
+    """Judge and score the cases, calling save after each one so a crash loses one case."""
     settings = get_settings()
     policies = load_policies()
     llm, embedder = BedrockClient(settings), BedrockEmbedder(settings)
     sessions = session_factory()
-    results = []
+    results: list[Result] = []
     try:
         for case in cases:
             async with sessions() as session:
@@ -94,6 +99,7 @@ async def _run(cases: list[EvalCase]) -> list[tuple[CaseScore, CaseJudgment]]:
                 flush=True,
             )
             results.append((score, judgment))
+            save(results)
     finally:
         await get_engine().dispose()
     return results
@@ -230,13 +236,6 @@ def main() -> int:
         seconds_so_far = float(existing.get("wall_seconds", 0.0))
         metadata["run_date"] = existing["run_date"]
 
-    started = time.perf_counter()
-    results = previous + asyncio.run(_run(cases))
-    seconds = seconds_so_far + time.perf_counter() - started
-    order = list(available)
-    results.sort(key=lambda result: order.index(result[0].case_id))
-    scores = [score for score, _ in results]
-    summary = summarize(scores)
     settings = get_settings()
     out = (
         args.resume
@@ -248,17 +247,33 @@ def main() -> int:
         )
     )
     out.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        **metadata,
-        "wall_seconds": round(seconds, 1),
-        "cases_run": [score.case_id for score in scores],
-        "summary": summary.model_dump(),
-        "cases": [
-            {**score.model_dump(mode="json"), "verdicts": judgment.model_dump(mode="json")}
-            for score, judgment in results
-        ],
-    }
-    out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    order = list(available)
+    wanted_ids = {case.id for case in cases} | {score.case_id for score, _ in previous}
+    started = time.perf_counter()
+
+    def save(new_results: list[Result]) -> Summary:
+        results = sorted(previous + new_results, key=lambda r: order.index(r[0].case_id))
+        summary = summarize([score for score, _ in results])
+        payload = {
+            **metadata,
+            # False while cases are still to come; such a file can be finished with --resume
+            "complete": {score.case_id for score, _ in results} == wanted_ids,
+            "wall_seconds": round(seconds_so_far + time.perf_counter() - started, 1),
+            "cases_run": [score.case_id for score, _ in results],
+            "summary": summary.model_dump(),
+            "cases": [
+                {**score.model_dump(mode="json"), "verdicts": judgment.model_dump(mode="json")}
+                for score, judgment in results
+            ],
+        }
+        out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return summary
+
+    new_results = asyncio.run(_run(cases, save))
+    summary = save(new_results)
+    scores = sorted(
+        (score for score, _ in previous + new_results), key=lambda s: order.index(s.case_id)
+    )
     print("\n" + _report(summary, scores))
     print(f"\nwrote {out}")
     return 0

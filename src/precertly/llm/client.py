@@ -58,6 +58,10 @@ class StructuredResponse[T: BaseModel](BaseModel):
 class StructuredOutputError(Exception):
     """The model did not return output matching the schema, even after a retry."""
 
+    def __init__(self, message: str, usage: LLMUsage | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage  # tokens spent on the failed attempts
+
 
 def _rejects_tool_choice(error: ClientError) -> bool:
     detail = error.response.get("Error", {})
@@ -137,7 +141,13 @@ class BedrockClient:
                 messages, spec, system=system, max_tokens=max_tokens, temperature=temperature
             )
             total = usage if total is None else total + usage
-            tool_use = next((b["toolUse"] for b in message["content"] if "toolUse" in b), None)
+            content = message.get("content") or []
+            tool_use = next((b["toolUse"] for b in content if "toolUse" in b), None)
+            if not content:
+                # Bedrock rejects a conversation containing an empty message, so there is
+                # nothing to reply to: ask again from the start.
+                problem = "the model returned an empty message"
+                continue
             if tool_use is None:
                 problem = "the model answered without calling the tool"
                 feedback: dict[str, Any] = {"text": f"Call the {name} tool with your answer."}
@@ -157,7 +167,7 @@ class BedrockClient:
                     }
             messages += [message, {"role": "user", "content": [feedback]}]
 
-        raise StructuredOutputError(f"{schema.__name__}: {problem}")
+        raise StructuredOutputError(f"{schema.__name__}: {problem}", usage=total)
 
     async def _call_tool(
         self, messages: list[Message], spec: dict[str, Any], **options: Any

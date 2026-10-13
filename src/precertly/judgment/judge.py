@@ -24,6 +24,7 @@ from precertly.judgment.models import (
     VerifiedCitation,
 )
 from precertly.judgment.prompt import SYSTEM, build_prompt, handles
+from precertly.llm import LLMUsage, StructuredOutputError
 from precertly.policies import Criterion, Policy
 
 
@@ -79,12 +80,26 @@ async def judge_criterion(
     max_tokens: int = 800,
 ) -> CriterionVerdict:
     """One verdict for one criterion from the evidence given (request chunks included)."""
-    response = await llm.structured(
-        build_prompt(criterion, request, chunks),
-        ModelJudgment,
-        system=SYSTEM,
-        max_tokens=max_tokens,
-    )
+    try:
+        response = await llm.structured(
+            build_prompt(criterion, request, chunks),
+            ModelJudgment,
+            system=SYSTEM,
+            max_tokens=max_tokens,
+        )
+    except StructuredOutputError as error:
+        # No usable answer is not a reason to stop the case, and never a reason to
+        # approve: the criterion is left for the reviewer as insufficient.
+        return CriterionVerdict(
+            criterion=criterion.id,
+            outcome="insufficient",
+            confidence=0.0,
+            rationale="The model returned no usable answer for this criterion.",
+            invalidated=f"no structured answer: {error}",
+            model_outcome="none",
+            chunk_ids=[chunk.id for chunk in chunks],
+            usage=error.usage or LLMUsage(model_id="unknown", calls=0),
+        )
     judgment: ModelJudgment = response.data
     citations, invalid = verify(judgment, chunks)
     applicable = not (criterion.condition and judgment.condition_holds is False)
