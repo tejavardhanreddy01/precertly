@@ -121,7 +121,8 @@ def run_metadata() -> dict[str, object]:
         "system_prompt_sha256": hashlib.sha256(SYSTEM.encode()).hexdigest(),
         "retrieval": {
             "top_k": settings.judgment_top_k,
-            "method": "hybrid: Postgres full-text + pgvector cosine, reciprocal rank fusion",
+            "method": "hybrid: Postgres full-text + exact pgvector cosine, reciprocal rank fusion",
+            "tie_break": "resource type, resource id, chunk index",
             "rrf_k": RRF_K,
             "candidates_per_ranking": DEFAULT_CANDIDATES,
             # RRF sums 1 / (rrf_k + rank) over both rankings with no per-ranking weight

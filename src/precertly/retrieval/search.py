@@ -16,7 +16,7 @@ from datetime import date
 from typing import Protocol
 
 from pydantic import BaseModel
-from sqlalchemy import ARRAY, Select, Text, any_, bindparam, exists, func, or_, select, text
+from sqlalchemy import ARRAY, Select, Text, any_, bindparam, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from precertly.db.models import ChartChunk
@@ -24,6 +24,13 @@ from precertly.db.models import ChartChunk
 RRF_K = 60  # the constant from the original RRF paper; damps the weight of top ranks
 MAX_QUERY_TERMS = 64
 DEFAULT_CANDIDATES = 50  # rows taken from each ranking before fusion
+# Ties are broken by what the chunk is, never by its row id: row ids are random per ingest,
+# and with them the same chart returned different evidence after every re-ingest.
+STABLE_ORDER = (
+    ChartChunk.fhir_resource_type,
+    ChartChunk.fhir_resource_id,
+    ChartChunk.chunk_index,
+)
 
 
 class QueryEmbedder(Protocol):
@@ -105,7 +112,7 @@ async def hybrid_search(
         statement = (
             select(ChartChunk.id)
             .where(ChartChunk.tsv.op("@@")(parsed))
-            .order_by(func.ts_rank_cd(ChartChunk.tsv, parsed).desc(), ChartChunk.id)
+            .order_by(func.ts_rank_cd(ChartChunk.tsv, parsed).desc(), *STABLE_ORDER)
             .limit(candidates)
         )
         fts_ids = list(await session.scalars(_scoped(statement, case_id, resource_types)))
@@ -114,16 +121,33 @@ async def hybrid_search(
     vector_ids: list[uuid.UUID] = []
     if embedder is not None:
         vector = await embedder.embed(query)
-        # Keep scanning the HNSW index until enough rows pass the case filter; without
-        # this an approximate scan can return fewer than `candidates` for a small case.
-        await session.execute(text("SET LOCAL hnsw.iterative_scan = 'strict_order'"))
+        # Exact nearest neighbours over this case's chunks. A case has at most a few
+        # thousand embedded chunks, and the HNSW index is approximate: its results depend
+        # on the order rows were inserted, so the same chart could rank differently after
+        # a re-ingest. The materialized CTE keeps the planner from using that index here.
+        in_case = _scoped(
+            select(
+                ChartChunk.id,
+                ChartChunk.embedding,
+                ChartChunk.fhir_resource_type,
+                ChartChunk.fhir_resource_id,
+                ChartChunk.chunk_index,
+            ).where(ChartChunk.embedding.is_not(None)),
+            case_id,
+            resource_types,
+        ).cte("in_case")
+        in_case = in_case.prefix_with("MATERIALIZED")
         statement = (
-            select(ChartChunk.id)
-            .where(ChartChunk.embedding.is_not(None))
-            .order_by(ChartChunk.embedding.cosine_distance(vector), ChartChunk.id)
+            select(in_case.c.id)
+            .order_by(
+                in_case.c.embedding.cosine_distance(vector),
+                in_case.c.fhir_resource_type,
+                in_case.c.fhir_resource_id,
+                in_case.c.chunk_index,
+            )
             .limit(candidates)
         )
-        vector_ids = list(await session.scalars(_scoped(statement, case_id, resource_types)))
+        vector_ids = list(await session.scalars(statement))
         rankings.append(vector_ids)
 
     fused = reciprocal_rank_fusion(rankings)[:k]
