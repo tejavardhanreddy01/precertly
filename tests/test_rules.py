@@ -16,6 +16,7 @@ FACET = load_policies()["facet-joint-interventions"]
 SERVICE = date(2026, 10, 19)
 NRS = {"system": "http://loinc.org", "code": "72514-3"}
 ODI = {"system": "http://loinc.org", "code": "97909-6"}
+VAS = {"system": "http://loinc.org", "code": "38214-3"}
 SITE = "Lumbar facet joints L4-5 and L5-S1, bilateral"
 
 
@@ -227,7 +228,7 @@ def test_first_diagnostic_relief_other_branches():
     assert outcome(run(criterion, [])) == "absent"
     assert outcome(run(criterion, block("mbb1", day, post=None))) == "absent"
     # the only score after the block is on another scale: relief cannot be calculated
-    other_scale = block("mbb1", day, post=10, coding=None, unit="mm")
+    other_scale = block("mbb1", day, post=10, coding=VAS, unit="mm")
     assert outcome(run(criterion, other_scale)) == "insufficient"
     # 85% and 60% both recorded: one reaches the minimum, so code does not fail it
     mixed = [*block("mbb1", day, 20, 3), score("late", day, 8, clock="11:00", encounter="mbb1")]
@@ -250,7 +251,7 @@ def test_two_blocks_relief():
     criterion = "two-mbbs-80pct-sustained-relief"
     first, second = days_before(42), days_before(21)
     good, bad = block("mbb1", first), block("mbb2", second, 7, 2)
-    other_scale = block("mbb2", second, post=10, coding=None, unit="mm")
+    other_scale = block("mbb2", second, post=10, coding=VAS, unit="mm")
     unscored = block("mbb2", second, post=None)
 
     assert outcome(run(criterion, [])) == "absent"
@@ -268,6 +269,39 @@ def test_two_blocks_relief():
     assert outcome(run(criterion, [*good, *block("mbb2", second), *third])) == "partial"
 
 
+def test_an_uncoded_score_is_missing_data_not_a_different_scale():
+    """Code decides nothing on an observation it cannot identify as a pain score."""
+    day, earlier = days_before(21), days_before(42)
+    uncoded = block("mbb2", day, post=10, coding=None, unit="mm")
+    good = block("mbb1", earlier)
+    assert (
+        outcome(
+            run(
+                "first-diagnostic-80pct-relief", block("mbb1", day, post=10, coding=None, unit="mm")
+            )
+        )
+        == "absent"
+    )
+    assert outcome(run("two-mbbs-80pct-sustained-relief", [*good, *uncoded])) == "absent"
+    assert outcome(run("pain-scale-after-each-diagnostic", [BASELINE, *good, *uncoded])) == "absent"
+    # an uncoded score beside a coded one changes nothing
+    extra = score("extra", day, 55, clock="10:30", coding=None, unit="mm", encounter="mbb2")
+    both_coded = [BASELINE, *good, *block("mbb2", day), extra]
+    assert outcome(run("pain-scale-after-each-diagnostic", both_coded)) == "met"
+    uncoded_follow_up = [*prior_rfa(), score("f", date(2026, 2, 4), 3, coding=None, unit="mm")]
+    assert outcome(run("prior-rfa-50pct-6-months", uncoded_follow_up)) == "absent"
+
+
+def test_same_scale_means_the_same_pain_code_whatever_the_unit():
+    day = days_before(21)
+    resources = [
+        procedure("mbb1", day, "64493"),
+        score("pre", day, 7, clock="09:00", encounter="mbb1"),
+    ]
+    other_unit = score("post", day, 1, clock="10:00", unit="score", encounter="mbb1")
+    assert outcome(run("first-diagnostic-80pct-relief", [*resources, other_unit])) == "partial"
+
+
 # --- same scale after each diagnostic block --------------------------------------------
 
 
@@ -277,7 +311,7 @@ def test_pain_scale_after_each_diagnostic():
     both = [BASELINE, *block("mbb1", first), *block("mbb2", second)]
     assert outcome(run(criterion, both)) == "met"
 
-    vas_only = block("mbb2", second, post=10, coding=None, unit="mm")
+    vas_only = block("mbb2", second, post=10, coding=VAS, unit="mm")
     result = run(criterion, [BASELINE, *block("mbb1", first), *vas_only])
     assert outcome(result) == "not_met" and "Procedure/mbb2" in result.statement
 
@@ -313,7 +347,7 @@ def test_pain_scale_missing_data_is_absent_never_not_met_and_never_met():
 
 def test_a_documented_wrong_scale_outranks_a_missing_score():
     first, second = days_before(42), days_before(21)
-    vas_only = block("mbb1", first, post=10, coding=None, unit="mm")
+    vas_only = block("mbb1", first, post=10, coding=VAS, unit="mm")
     resources = [BASELINE, *vas_only, *block("mbb2", second, post=None)]
     assert outcome(run("pain-scale-after-each-diagnostic", resources)) == "not_met"
 
@@ -346,6 +380,7 @@ def test_site_text_that_matches_the_request(text):
         "L4-5 and L5-S1; L3-4 not treated",  # anything else in the text
         "L4-5 and L5-S1 facet joints, see note",
         "left L4-5",
+        "Lumbar facet joints",  # a region and no levels
         "Cervical L4-5",  # region word contradicts the levels
         "L4-5 and C5-6",  # two regions
         "",
@@ -447,7 +482,7 @@ def test_prior_rfa_never_decides_not_met():
     assert result.kind == "partial" and "daily activities is not computed" in result.statement
     single = prior_rfa((SIX_MONTHS, 3))
     assert outcome(run(criterion, single)) == "partial"  # one score is too thin to call it
-    vas = [*prior_rfa((date(2025, 11, 3), 3)), score("vas", SIX_MONTHS, 30, coding=None, unit="mm")]
+    vas = [*prior_rfa((date(2025, 11, 3), 3)), score("vas", SIX_MONTHS, 30, coding=VAS, unit="mm")]
     assert outcome(run(criterion, vas)) == "partial"
     no_baseline = [
         procedure("rfa1", RFA_DAY, "64635"),

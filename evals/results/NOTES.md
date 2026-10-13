@@ -41,7 +41,7 @@ Two runs from the same commit and settings do not give the same verdicts, even t
 
 **Known limits of the rules:**
 
-- A rating scale with no code is treated as a possible pain scale, so a pain score recorded on a different, uncoded scale is seen as a mismatch. Another uncoded questionnaire in the same encounter would be read the same way. That can only make a result stricter or send it to the model.
+- A pain score is recognized only by its LOINC code (72514-3 numeric rating, 38214-3 visual analog). An observation without one of those codes is missing data to the rules: they return absent and the model judges.
 - The injection codes do not separate diagnostic from therapeutic injections, or medial branch blocks from intraarticular ones, so rules count "facet injection sessions".
 - Body-site levels are read from free text by a strict whole-string grammar and nothing else. This is the only place code reads free text to decide `met`.
 - The two-score minimum for the prior-ablation rule is a conservative routing choice, not a policy threshold.

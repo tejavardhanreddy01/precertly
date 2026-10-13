@@ -272,15 +272,6 @@ def second_diagnostic_interval(
 # --- (c) relief and scales -------------------------------------------------------------
 
 
-def _is_pain_like(score: ScoreFact) -> bool:
-    """A pain score, or a rating on a scale code cannot name. Known non-pain instruments
-    (the disability index) are left out. An unnamed scale is kept so that a pain score
-    recorded on a different, uncoded scale is seen as a mismatch instead of ignored; the
-    cost is that some other uncoded questionnaire would be read the same way, which can
-    only push a result toward stricter or toward the model."""
-    return score.is_pain or score.unrecognized_scale
-
-
 class _Block(BaseModel):
     status: Literal["pass", "fail", "not_comparable", "absent"]
     statement: str
@@ -290,12 +281,14 @@ class _Block(BaseModel):
 def _around(
     chart: StructuredChart, procedure: ProcedureFact
 ) -> tuple[list[ScoreFact], list[ScoreFact]] | None:
-    """Pain-like scores before and after a procedure in its own encounter, by time of day.
+    """Coded pain scores before and after a procedure in its own encounter, by time of day.
+    An observation without a recognized pain code is not a pain score to code: it is left
+    out, so the rule sees a missing score and returns absent instead of guessing.
     None when the order cannot be established: no encounter, a date-only timestamp on
     either side, or a score timed exactly at the procedure."""
     if procedure.encounter is None or procedure.start.time is None or procedure.end.time is None:
         return None
-    scores = [s for s in chart.scores if s.encounter == procedure.encounter and _is_pain_like(s)]
+    scores = [s for s in chart.scores if s.encounter == procedure.encounter and s.is_pain]
     before, after = [], []
     for score in scores:
         if score.when.time is None:
@@ -326,7 +319,7 @@ def _relief(chart: StructuredChart, procedure: ProcedureFact, minimum_pct: int) 
         )
     pre = before[-1]
     inputs = [procedure.ref, pre.ref, *(s.ref for s in after)]
-    comparable = [s for s in after if s.scale == pre.scale]
+    comparable = [s for s in after if s.pain_scale == pre.pain_scale]
     if not comparable or pre.value <= 0:
         return _Block(
             status="not_comparable",
@@ -428,7 +421,7 @@ def pain_scale_after_each_diagnostic(
         around = _around(chart, procedure)
         after = around[1] if around else []
         inputs += [procedure.ref, *(s.ref for s in after)]
-        if any(s.scale == baseline.scale for s in after):
+        if any(s.pain_scale == baseline.pain_scale for s in after):
             continue  # assessed on the baseline scale, whatever else was also recorded
         (violations if after else unscored).append(procedure.ref)
     scale = f"{baseline.value:g} {baseline.unit} at baseline ({baseline.ref})"
@@ -545,7 +538,7 @@ def prior_rfa_improvement(
     minimum = criterion.thresholds["min_pain_improvement_pct"]
 
     later = sorted(
-        (s for s in chart.scores if _is_pain_like(s) and day < s.when.day < request.service_date),
+        (s for s in chart.scores if s.is_pain and day < s.when.day < request.service_date),
         key=lambda s: (s.when.day, s.ref),
     )
     if not later:
@@ -575,7 +568,7 @@ def prior_rfa_improvement(
     problems = []
     if closing is None:
         problems.append(f"no coded score {months} months or more after the ablation")
-    if any(s.scale != baseline.scale for s in window):
+    if any(s.pain_scale != baseline.pain_scale for s in window):
         problems.append("a score in the window is on a different scale")
     # Integer arithmetic for "at least N%": 100 * (baseline - score) >= N * baseline.
     elif any(100 * (baseline.value - s.value) < minimum * baseline.value for s in window):

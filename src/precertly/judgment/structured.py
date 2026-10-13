@@ -31,7 +31,9 @@ REGIONS = {
     "sacral": "lumbar_sacral",
 }
 
-# Pain severity: 72514-3 (0-10 numeric rating) and 38214-3 (visual analog).
+# Pain severity scales code can recognize: 72514-3 (0-10 numeric rating) and 38214-3 (visual
+# analog). A score is a pain score only if it carries one of these codes, and two pain
+# scores are on the same scale only if they carry the same one.
 PAIN_SCORE_CODES = frozenset({f"{LOINC}|72514-3", f"{LOINC}|38214-3"})
 DISABILITY_SCORE_CODES = frozenset({f"{LOINC}|97909-6"})  # Oswestry Disability Index score
 
@@ -77,25 +79,20 @@ class ScoreFact:
     value: float
     when: Moment
     encounter: str | None
-    survey: bool  # category "survey": a questionnaire or rating scale
-
-    @property
-    def scale(self) -> tuple[frozenset[str], str | None]:
-        """Two scores are comparable only when code and unit are the same."""
-        return (self.codes, self.unit)
 
     @property
     def is_pain(self) -> bool:
         return bool(self.codes & PAIN_SCORE_CODES)
 
     @property
-    def is_disability(self) -> bool:
-        return bool(self.codes & DISABILITY_SCORE_CODES)
+    def pain_scale(self) -> frozenset[str]:
+        """The pain scale this score is on. Empty for anything that is not a coded pain
+        score, which code then treats as missing, never as a different scale."""
+        return self.codes & PAIN_SCORE_CODES
 
     @property
-    def unrecognized_scale(self) -> bool:
-        """A rating scale we have no code for. It may be a pain scale; code cannot tell."""
-        return self.survey and not self.codes
+    def is_disability(self) -> bool:
+        return bool(self.codes & DISABILITY_SCORE_CODES)
 
 
 def _encounter(resource: dict[str, Any]) -> str | None:
@@ -145,11 +142,6 @@ class StructuredChart:
                 value = quantity.get("value")
                 if when is None or isinstance(value, bool) or not isinstance(value, int | float):
                     continue
-                categories = {
-                    c.get("code")
-                    for cat in r.get("category") or []
-                    for c in cat.get("coding") or []
-                }
                 scores.append(
                     ScoreFact(
                         ref=ref,
@@ -158,7 +150,6 @@ class StructuredChart:
                         value=float(value),
                         when=when,
                         encounter=_encounter(r),
-                        survey="survey" in categories,
                     )
                 )
         return cls(tuple(procedures), tuple(scores))
