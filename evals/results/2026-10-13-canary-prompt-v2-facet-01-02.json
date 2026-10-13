@@ -1,0 +1,2185 @@
+{
+  "run_date": "2026-10-13",
+  "git_sha": "28ecd04",
+  "git_dirty": false,
+  "model_id": "us.amazon.nova-2-lite-v1:0",
+  "prompt_version": "2",
+  "system_prompt_sha256": "6d41380bbeb047e162b719e606cd7ed24c2c4cb72d034a1f314243984054d97b",
+  "retrieval": {
+    "top_k": 8,
+    "method": "hybrid: Postgres full-text + pgvector cosine, reciprocal rank fusion",
+    "rrf_k": 60,
+    "candidates_per_ranking": 50,
+    "weights": {
+      "full_text": 1.0,
+      "vector": 1.0
+    },
+    "query": "criterion text + policy quote",
+    "embedding_model_id": "amazon.titan-embed-text-v2:0",
+    "embedding_dimensions": 1024
+  },
+  "annotation": "single annotator; not clinically validated",
+  "wall_seconds": 128.9,
+  "cases_run": [
+    "facet-01",
+    "facet-02"
+  ],
+  "summary": {
+    "cases": 2,
+    "cases_correct": 1,
+    "case_false_approvals": 0,
+    "scored_criteria": 32,
+    "criteria_correct": 28,
+    "criterion_accuracy": 0.875,
+    "negative_labels": 1,
+    "false_approvals": 0,
+    "false_approval_rate": 0.0,
+    "citations": 53,
+    "citations_in_label": 38,
+    "citation_precision": 0.717,
+    "citation_precision_macro": 0.7852,
+    "citation_precision_by_criterion": {
+      "pain-minimum-3-months": {
+        "cited": 3,
+        "in_label": 3,
+        "precision": 1.0
+      },
+      "conservative-care-failed": {
+        "cited": 6,
+        "in_label": 5,
+        "precision": 0.8333
+      },
+      "no-untreated-radiculopathy": {
+        "cited": 3,
+        "in_label": 2,
+        "precision": 0.6667
+      },
+      "no-non-facet-pathology": {
+        "cited": 2,
+        "in_label": 2,
+        "precision": 1.0
+      },
+      "pain-scale-at-baseline": {
+        "cited": 4,
+        "in_label": 2,
+        "precision": 0.5
+      },
+      "pain-scale-after-each-diagnostic": {
+        "cited": 7,
+        "in_label": 1,
+        "precision": 0.1429
+      },
+      "disability-scale-at-baseline": {
+        "cited": 2,
+        "in_label": 2,
+        "precision": 1.0
+      },
+      "scales-documented": {
+        "cited": 3,
+        "in_label": 3,
+        "precision": 1.0
+      },
+      "no-generalized-pain-indication": {
+        "cited": 2,
+        "in_label": 2,
+        "precision": 1.0
+      },
+      "not-after-alif": {
+        "cited": 2,
+        "in_label": 2,
+        "precision": 1.0
+      },
+      "one-spinal-region-per-session": {
+        "cited": 5,
+        "in_label": 3,
+        "precision": 0.6
+      },
+      "levels-1-to-2": {
+        "cited": 4,
+        "in_label": 2,
+        "precision": 0.5
+      },
+      "two-mbbs-80pct-sustained-relief": {
+        "cited": 6,
+        "in_label": 6,
+        "precision": 1.0
+      },
+      "rfa-sessions-max-2": {
+        "cited": 4,
+        "in_label": 3,
+        "precision": 0.75
+      }
+    },
+    "invalidated_verdicts": 3,
+    "input_tokens": 109427,
+    "output_tokens": 8161,
+    "llm_calls": 32
+  },
+  "cases": [
+    {
+      "case_id": "facet-01",
+      "variant": "initial-rfa",
+      "expected_overall": "met",
+      "predicted_overall": "insufficient",
+      "criteria": [
+        {
+          "criterion": "chronic-axial-pain-functional-deficit",
+          "expected": "met",
+          "predicted": "insufficient",
+          "agent_not_applicable": false,
+          "correct": false,
+          "false_approval": false,
+          "invalidated": true,
+          "cited": [],
+          "cited_in_label": 0
+        },
+        {
+          "criterion": "pain-minimum-3-months",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "conservative-care-failed",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval",
+            "DocumentReference/note-pcp",
+            "DocumentReference/note-pt-discharge"
+          ],
+          "cited_in_label": 3
+        },
+        {
+          "criterion": "no-untreated-radiculopathy",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "no-non-facet-pathology",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "pain-scale-at-baseline",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-mbb1",
+            "DocumentReference/note-mbb2",
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "pain-scale-after-each-diagnostic",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-rfa-planning"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "disability-scale-at-baseline",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "scales-documented",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-mbb1",
+            "DocumentReference/note-mbb2",
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 3
+        },
+        {
+          "criterion": "no-generalized-pain-indication",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "not-after-alif",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "one-spinal-region-per-session",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "request.region",
+            "request.same_day_blocks"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "levels-1-to-2",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-rfa-planning",
+            "request.levels",
+            "request.region"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "same-day-blocks-justified",
+          "expected": "not_applicable",
+          "predicted": "met",
+          "agent_not_applicable": true,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "request.same_day_blocks"
+          ],
+          "cited_in_label": 0
+        },
+        {
+          "criterion": "two-mbbs-80pct-sustained-relief",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-mbb1",
+            "DocumentReference/note-mbb2",
+            "DocumentReference/note-rfa-planning"
+          ],
+          "cited_in_label": 3
+        },
+        {
+          "criterion": "rfa-sessions-max-2",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-rfa-planning",
+            "request.region"
+          ],
+          "cited_in_label": 1
+        }
+      ],
+      "input_tokens": 55052,
+      "output_tokens": 4293,
+      "llm_latency_ms": 23514.89150186535,
+      "verdicts": {
+        "policy": "facet-joint-interventions",
+        "variant": "initial-rfa",
+        "verdicts": [
+          {
+            "criterion": "chronic-axial-pain-functional-deficit",
+            "outcome": "insufficient",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows moderate to severe chronic low back pain that is predominantly axial (across the lower lumbar spine, no radiation below the buttocks) causing a functional deficit. The pain is documented as 7/10 on the Numerical Rating Scale (NRS) and the disability is documented as 48% on the Oswestry Disability Index (ODI), indicating severe disability. These measurements satisfy the requirement for functional deficit measured on a pain or disability scale.",
+            "citations": [],
+            "invalidated": "quote not found in DocumentReference/note-pain-clinic-eval#0: 'Pain: 7/10 on the Numerical Rating Scale (NRS) 0-10. Disability: 48% on the Oswe'",
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-pcp#0",
+              "DocumentReference/note-rfa-planning#0",
+              "Condition/chronic-low-back-pain#0",
+              "DocumentReference/note-pt-discharge#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3417,
+              "output_tokens": 256,
+              "latency_ms": 1712.9178749746643,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "pain-minimum-3-months",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The criterion requires pain present for a minimum of 3 months. The evidence shows the patient has had low back pain since 2026-04-03, which is more than 3 months before the request date of 2026-10-05. The pain clinic initial evaluation dated 2026-08-10 states: 'History: low back pain since 2026-04-03, now present for 4 months.' This satisfies the minimum duration requirement.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "History: low back pain since 2026-04-03, now present for 4 months.",
+                "char_start": 43,
+                "char_end": 109
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/note-pcp#0",
+              "DocumentReference/8ce34cbb-7dcb-26e3-5bed-84b486df6b87#0",
+              "DocumentReference/note-pain-clinic-eval#1"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3648,
+              "output_tokens": 198,
+              "latency_ms": 1164.314999943599,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "conservative-care-failed",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows documented failure to respond to noninvasive conservative management. The patient had low back pain for 4 months (since 2026-04-03) and was treated with naproxen since 2026-04-10 with minimal benefit, and a 12-week course of physical therapy from 2026-05-04 to 2026-08-03 with no meaningful improvement in pain or function. These are both forms of noninvasive conservative management as defined in the LCD. The pain has been present for more than 3 months, satisfying the duration requirement. Therefore, the criterion is met.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Conservative management: naproxen 500 mg twice daily since 2026-04-10 with minimal benefit; a 12-week course of physical therapy (2026-05-04 to 2026-08-03) with no meaningful improvement in pain or function.",
+                "char_start": 421,
+                "char_end": 628
+              },
+              {
+                "chunk_id": "DocumentReference/note-pt-discharge#0",
+                "quote": "Outcome: no meaningful improvement in pain or function. Pain 7/10 at discharge, unchanged from the start of therapy. Still unable to stand longer than 15 minutes.",
+                "char_start": 261,
+                "char_end": 423
+              },
+              {
+                "chunk_id": "DocumentReference/note-pcp#0",
+                "quote": "Plan: naproxen 500 mg twice daily with food. Referral to physical therapy.",
+                "char_start": 371,
+                "char_end": 445
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/note-pcp#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "Procedure/physical-therapy-course#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3453,
+              "output_tokens": 334,
+              "latency_ms": 1531.6022079787217,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "no-untreated-radiculopathy",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence documents a neurological exam showing no radicular symptoms and no neurogenic claudication. Specifically, the neurological exam states: \"Straight-leg raise negative on both sides. No radicular symptoms and no neurogenic claudication.\" This directly addresses and rules out the presence of untreated radiculopathy or neurogenic claudication. The criterion requires the absence of these conditions, and the evidence confirms their absence through a documented neurological assessment.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Neurological exam: strength 5/5 in both legs. Sensation intact to light touch. Reflexes 2+ and symmetric at the knees and ankles. Straight-leg raise negative on both sides. No radicular symptoms and no neurogenic claudication.",
+                "char_start": 991,
+                "char_end": 1217
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "Procedure/mbb1#0",
+              "Procedure/mbb2#0",
+              "DiagnosticReport/mri-lumbar#1",
+              "Condition/37b75dda-e187-ae40-414b-45a7d13c6c03#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3282,
+              "output_tokens": 221,
+              "latency_ms": 1234.9438749952242,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "no-non-facet-pathology",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows that the lumbar MRI of 2026-07-20 demonstrates facet arthropathy at L4-5 and L5-S1 with no fracture, tumor, infection or significant deformity. The clinical assessment in the pain clinic initial evaluation of 2026-08-10 also documents no radicular symptoms, no neurogenic claudication, and neurological exam is intact. There is no evidence of non-facet pathology that could explain the source of the patient's pain. The criterion requires absence of non-facet pathology per clinical assessment or radiology studies, and the evidence confirms this absence.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Imaging: lumbar MRI of 2026-07-20 shows facet arthropathy at L4-5 and L5-S1 with no fracture, tumor, infection or significant deformity.",
+                "char_start": 1344,
+                "char_end": 1480
+              },
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Neurological exam: strength 5/5 in both legs. Sensation intact to light touch. Reflexes 2+ and symmetric at the knees and ankles. Straight-leg raise negative on both sides. No radicular symptoms and no neurogenic claudication.",
+                "char_start": 991,
+                "char_end": 1217
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/8ce34cbb-7dcb-26e3-5bed-84b486df6b87#0",
+              "DocumentReference/7fc433c4-3564-21a6-91ec-bd0bd3789198#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/f6ba0ccb-1752-effe-1bd8-851cd71b38a1#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/ab44a957-6c29-abeb-f2e2-bdc75e3bd474#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3975,
+              "output_tokens": 303,
+              "latency_ms": 1601.2441249913536,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "pain-scale-at-baseline",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows that pain was assessed and documented at baseline using the Numerical Rating Scale (NRS) 0-10. The initial evaluation on 2026-08-10 documents baseline pain as 7/10 on the NRS [E8]. The plan states that pain will be recorded on the same NRS before and after each block [E9], and this is demonstrated in the procedure notes for both diagnostic medial branch blocks, each of which records pre-block pain on the NRS [E13][E14]. Therefore, the criterion that pain is assessed and documented at baseline on a named pain scale is met.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Pain: 7/10 on the Numerical Rating Scale (NRS) 0-10.",
+                "char_start": 663,
+                "char_end": 715
+              },
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#1",
+                "quote": "Pain will be recorded on the same Numerical Rating Scale (NRS) 0-10 before and after each block.",
+                "char_start": 238,
+                "char_end": 334
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb2#0",
+                "quote": "Before the block: 7/10 on the Numerical Rating Scale (NRS) 0-10, index low back pain with extension and rotation.",
+                "char_start": 405,
+                "char_end": 518
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb1#0",
+                "quote": "Before the block: 7/10 on the Numerical Rating Scale (NRS) 0-10, index low back pain with extension and rotation.",
+                "char_start": 405,
+                "char_end": 518
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "Procedure/37b75dda-e187-ae40-3fe0-44a111f0124f#0",
+              "Procedure/37b75dda-e187-ae40-213e-cb6b2965b6a8#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "Procedure/37b75dda-e187-ae40-6a57-5132b29802be#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3174,
+              "output_tokens": 350,
+              "latency_ms": 2079.711208003573,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "pain-scale-after-each-diagnostic",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows that after each diagnostic procedure (medial branch blocks), pain was assessed and documented using the Numerical Rating Scale (NRS) 0-10, the same scale used at baseline. Both blocks documented pain scores before and after using NRS, satisfying the requirement for pain assessment after each diagnostic procedure with the same scale.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-rfa-planning#0",
+                "quote": "Results of the diagnostic medial branch blocks at L4-5 and L5-S1:\n- Block 1 on 2026-08-24: pain 7/10 before and 1/10 after on the Numerical Rating Scale (NRS) 0-10, (7 - 1) / 7 = 86% relief.\n- Block 2 on 2026-09-14, 3 weeks after the first: pain 7/10 before and 1/10 after on the Numerical Rating Scale (NRS) 0-10, (7 - 1) / 7 = 86% relief.",
+                "char_start": 34,
+                "char_end": 374
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "Procedure/37b75dda-e187-ae40-213e-cb6b2965b6a8#0",
+              "Procedure/37b75dda-e187-ae40-3fe0-44a111f0124f#0",
+              "Procedure/37b75dda-e187-ae40-c32d-2b462ed8cf28#0",
+              "Procedure/37b75dda-e187-ae40-8504-3a42ff391522#0",
+              "Procedure/37b75dda-e187-ae40-5b70-175be4e23f55#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-pain-clinic-eval#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 2935,
+              "output_tokens": 283,
+              "latency_ms": 1329.8277089488693,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "disability-scale-at-baseline",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows that a disability scale was obtained at baseline. The pain clinic initial evaluation on 2026-08-10 documents a disability score of 48% on the Oswestry Disability Index (ODI), classified as severe disability. This satisfies the requirement for a disability scale at baseline for functional assessment as specified in the policy text.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Pain and function at baseline:\n- Pain: 7/10 on the Numerical Rating Scale (NRS) 0-10.\n- Disability: 48% on the Oswestry Disability Index (ODI), severe disability.",
+                "char_start": 630,
+                "char_end": 792
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "Procedure/37b75dda-e187-ae40-3fe0-44a111f0124f#0",
+              "DocumentReference/7fc433c4-3564-21a6-91ec-bd0bd3789198#0",
+              "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2#1",
+              "DocumentReference/ab44a957-6c29-abeb-f2e2-bdc75e3bd474#0",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/note-pain-clinic-eval#1"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3550,
+              "output_tokens": 195,
+              "latency_ms": 1090.978708001785,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "scales-documented",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows that the Numerical Rating Scale (NRS) 0-10 and the Oswestry Disability Index (ODI) are documented in the medical record. Specifically, the initial evaluation on 2026-08-10 records baseline pain as 7/10 on the NRS and disability as 48% on the ODI. Subsequent procedure notes and follow-ups consistently use the NRS for pain assessment. This satisfies the requirement that the scales used for measurement of pain and/or disability must be documented.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Pain: 7/10 on the Numerical Rating Scale (NRS) 0-10.",
+                "char_start": 663,
+                "char_end": 715
+              },
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Disability: 48% on the Oswestry Disability Index (ODI), severe disability.",
+                "char_start": 718,
+                "char_end": 792
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb2#0",
+                "quote": "Before the block: 7/10 on the Numerical Rating Scale (NRS) 0-10, index low back pain with extension and rotation.",
+                "char_start": 405,
+                "char_end": 518
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb2#0",
+                "quote": "30 minutes after the block: 1/10 on the same scale, with the same provocative movements.",
+                "char_start": 521,
+                "char_end": 609
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb1#0",
+                "quote": "Before the block: 7/10 on the Numerical Rating Scale (NRS) 0-10, index low back pain with extension and rotation.",
+                "char_start": 405,
+                "char_end": 518
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb1#0",
+                "quote": "30 minutes after the block: 1/10 on the same scale, with the same provocative movements.",
+                "char_start": 521,
+                "char_end": 609
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/7fc433c4-3564-21a6-91ec-bd0bd3789198#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3693,
+              "output_tokens": 384,
+              "latency_ms": 1783.6364170070738,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "no-generalized-pain-indication",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows the patient has chronic axial low back pain localized to the lumbar spine with facet arthropathy at L4-5 and L5-S1, confirmed by positive diagnostic medial branch blocks. There is no documentation of generalized pain conditions such as fibromyalgia or chronic centralized pain syndromes. The history explicitly states \"No history of fibromyalgia or any widespread or centralized pain syndrome.\" Therefore, the procedure is not for a generalized pain condition as prohibited by the criterion.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Past history: no prior spine surgery, including no lumbar fusion. No history of fibromyalgia or any widespread or centralized pain syndrome. No prior radiofrequency ablation or spinal injections.",
+                "char_start": 794,
+                "char_end": 989
+              },
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#1",
+                "quote": "Assessment: chronic axial low back pain, most consistent with lumbar facet syndrome at L4-5 and L5-S1.",
+                "char_start": 0,
+                "char_end": 102
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/8ce34cbb-7dcb-26e3-5bed-84b486df6b87#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "Procedure/mbb2#0",
+              "Procedure/mbb1#0",
+              "DocumentReference/771daebe-064d-3403-07ae-f308433dd783#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3529,
+              "output_tokens": 242,
+              "latency_ms": 1344.4315420347266,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "not-after-alif",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The criterion states that the procedure is not performed after an anterior lumbar interbody fusion (ALIF). The evidence shows no history of lumbar fusion or any spine surgery prior to the requested procedure. The patient has never had an ALIF, as confirmed by the history documentation stating \"No prior spine surgery, including no lumbar fusion.\" Therefore, the requested facet joint procedure is not being performed after an ALIF, satisfying the criterion.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Past history: no prior spine surgery, including no lumbar fusion. No history of fibromyalgia or any widespread or centralized pain syndrome. No prior radiofrequency ablation or spinal injections.",
+                "char_start": 794,
+                "char_end": 989
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "Procedure/mbb1#0",
+              "Procedure/mbb2#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-mbb2#0",
+              "Procedure/37b75dda-e187-ae40-f6e7-8385846bf707#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/note-mbb1#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3287,
+              "output_tokens": 199,
+              "latency_ms": 1194.512041984126,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "one-spinal-region-per-session",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The request specifies a single spinal region (lumbar) for the thermal radiofrequency ablation, and no other injections are planned for the same day. This satisfies the criterion that the session involves only one spinal region per session.",
+            "citations": [
+              {
+                "chunk_id": "request.region",
+                "quote": "Spinal region: lumbar",
+                "char_start": 0,
+                "char_end": 21
+              },
+              {
+                "chunk_id": "request.same_day_blocks",
+                "quote": "Other blocks planned for the same day: none",
+                "char_start": 0,
+                "char_end": 43
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "Procedure/mbb1#0",
+              "Procedure/mbb2#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-rfa-planning#0",
+              "Procedure/37b75dda-e187-ae40-c5ed-5ffe4c89afec#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3335,
+              "output_tokens": 150,
+              "latency_ms": 903.0882500228472,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "levels-1-to-2",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The requested procedure involves thermal radiofrequency ablation at two lumbar levels (L4-5 and L5-S1). The policy allows one to two levels per session per spine region. The evidence confirms the patient is being treated at exactly two levels in the lumbar spine region, which meets the coverage criterion of maximum two levels allowed per session per spine region.",
+            "citations": [
+              {
+                "chunk_id": "request.region",
+                "quote": "Spinal region: lumbar",
+                "char_start": 0,
+                "char_end": 21
+              },
+              {
+                "chunk_id": "request.levels",
+                "quote": "Levels: L4-5, L5-S1",
+                "char_start": 0,
+                "char_end": 19
+              },
+              {
+                "chunk_id": "DocumentReference/note-rfa-planning#0",
+                "quote": "Plan: request prior authorization for thermal radiofrequency ablation of the medial branch nerves at L4-5 and L5-S1 (lumbar region, two levels).",
+                "char_start": 503,
+                "char_end": 647
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "Procedure/mbb2#0",
+              "Procedure/mbb1#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2#1"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3306,
+              "output_tokens": 222,
+              "latency_ms": 1461.1938339658082,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "same-day-blocks-justified",
+            "outcome": "met",
+            "applicable": false,
+            "confidence": 1.0,
+            "rationale": "The criterion applies only if other blocks are performed on the same day as the facet procedure. The request states that no other blocks are planned for the same day as the facet procedure (E7). Therefore, the condition does not hold, and the criterion does not apply. When the condition does not hold, the outcome is met by policy definition.",
+            "citations": [
+              {
+                "chunk_id": "request.same_day_blocks",
+                "quote": "Other blocks planned for the same day: none",
+                "char_start": 0,
+                "char_end": 43
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2#1",
+              "Procedure/mbb1#0",
+              "DocumentReference/note-rfa-planning#0",
+              "Procedure/mbb2#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3367,
+              "output_tokens": 159,
+              "latency_ms": 1140.2204590267502,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "two-mbbs-80pct-sustained-relief",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows two diagnostic medial branch blocks (MBBs) at L4-5 and L5-S1. Each block provided 86% relief of the primary (index) pain, which exceeds the required minimum of 80% sustained relief. The relief duration of about 6 hours is consistent with the bupivacaine used, satisfying the policy's requirement for consistent relief duration with the agent used. Both blocks were medically reasonable and necessary as they were performed to confirm the diagnosis of lumbar facet syndrome before considering radiofrequency ablation.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-rfa-planning#0",
+                "quote": "Results of the diagnostic medial branch blocks at L4-5 and L5-S1:\n- Block 1 on 2026-08-24: pain 7/10 before and 1/10 after on the Numerical Rating Scale (NRS) 0-10, (7 - 1) / 7 = 86% relief.\n- Block 2 on 2026-09-14, 3 weeks after the first: pain 7/10 before and 1/10 after on the Numerical Rating Scale (NRS) 0-10, (7 - 1) / 7 = 86% relief.\nIn each case relief lasted about 6 hours, consistent with bupivacaine.",
+                "char_start": 34,
+                "char_end": 445
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb2#0",
+                "quote": "Pain assessment:\n- Before the block: 7/10 on the Numerical Rating Scale (NRS) 0-10, index low back pain with extension and rotation.\n- 30 minutes after the block: 1/10 on the same scale, with the same provocative movements.\n- Relief of index pain, from today's pre-block score: (7 - 1) / 7 = 86%.\nThe patient kept a pain diary; relief lasted about 6 hours, consistent with the duration of bupivacaine, and pain then returned to its earlier level.",
+                "char_start": 386,
+                "char_end": 832
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb1#0",
+                "quote": "Pain assessment:\n- Before the block: 7/10 on the Numerical Rating Scale (NRS) 0-10, index low back pain with extension and rotation.\n- 30 minutes after the block: 1/10 on the same scale, with the same provocative movements.\n- Relief of index pain, from today's pre-block score: (7 - 1) / 7 = 86%.\nThe patient kept a pain diary; relief lasted about 6 hours, consistent with the duration of bupivacaine, and pain then returned to its earlier level.",
+                "char_start": 386,
+                "char_end": 832
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2#1",
+              "Procedure/mbb2#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3636,
+              "output_tokens": 607,
+              "latency_ms": 2570.6887919805013,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "rfa-sessions-max-2",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows this is the patient's first and only radiofrequency ablation request for the lumbar region. The patient has not had any prior radiofrequency sessions in the lumbar region within the rolling 12 months prior to the request date of 2026-10-05. The criterion allows up to 2 sessions per covered spinal region per rolling 12 months, and this would be the first session, so it meets the requirement.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-rfa-planning#0",
+                "quote": "The patient has not had radiofrequency ablation before.",
+                "char_start": 447,
+                "char_end": 502
+              },
+              {
+                "chunk_id": "request.region",
+                "quote": "Spinal region: lumbar",
+                "char_start": 0,
+                "char_end": 21
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2#1",
+              "Procedure/physical-therapy-course#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3465,
+              "output_tokens": 190,
+              "latency_ms": 1371.5794580057263,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          }
+        ],
+        "overall": "insufficient",
+        "reviewer_checklist": [
+          {
+            "criterion": "ct-or-fluoroscopic-guidance",
+            "evidence_stage": "post_service",
+            "text": "The procedure is done under CT or fluoroscopic guidance (not unguided, ultrasound-guided or MRI-guided)."
+          },
+          {
+            "criterion": "medical-record-elements",
+            "evidence_stage": "post_service",
+            "text": "The record includes the performing provider's assessment for the visit, relevant history, pertinent test or procedure results, and a signed and dated visit record or operative report."
+          },
+          {
+            "criterion": "thermal-rf-only",
+            "evidence_stage": "post_service",
+            "text": "The denervation uses thermal radiofrequency, not a non-thermal modality (chemical, low-grade thermal energy under 80 degrees Celsius, laser neurolysis or cryoablation)."
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "facet-02",
+      "variant": "initial-rfa",
+      "expected_overall": "not_met",
+      "predicted_overall": "not_met",
+      "criteria": [
+        {
+          "criterion": "chronic-axial-pain-functional-deficit",
+          "expected": "met",
+          "predicted": "insufficient",
+          "agent_not_applicable": false,
+          "correct": false,
+          "false_approval": false,
+          "invalidated": true,
+          "cited": [],
+          "cited_in_label": 0
+        },
+        {
+          "criterion": "pain-minimum-3-months",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "Condition/chronic-low-back-pain",
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 2
+        },
+        {
+          "criterion": "conservative-care-failed",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "Condition/chronic-low-back-pain",
+            "DocumentReference/note-pain-clinic-eval",
+            "DocumentReference/note-pt-discharge"
+          ],
+          "cited_in_label": 2
+        },
+        {
+          "criterion": "no-untreated-radiculopathy",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DiagnosticReport/mri-lumbar",
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "no-non-facet-pathology",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "pain-scale-at-baseline",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "pain-scale-after-each-diagnostic",
+          "expected": "met",
+          "predicted": "insufficient",
+          "agent_not_applicable": false,
+          "correct": false,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "request.codes",
+            "request.date",
+            "request.levels",
+            "request.procedure",
+            "request.region",
+            "request.service_date"
+          ],
+          "cited_in_label": 0
+        },
+        {
+          "criterion": "disability-scale-at-baseline",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "scales-documented",
+          "expected": "met",
+          "predicted": "insufficient",
+          "agent_not_applicable": false,
+          "correct": false,
+          "false_approval": false,
+          "invalidated": true,
+          "cited": [],
+          "cited_in_label": 0
+        },
+        {
+          "criterion": "no-generalized-pain-indication",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "not-after-alif",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "one-spinal-region-per-session",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "request.levels",
+            "request.region",
+            "request.same_day_blocks"
+          ],
+          "cited_in_label": 2
+        },
+        {
+          "criterion": "levels-1-to-2",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "request.levels"
+          ],
+          "cited_in_label": 1
+        },
+        {
+          "criterion": "same-day-blocks-justified",
+          "expected": "not_applicable",
+          "predicted": "met",
+          "agent_not_applicable": true,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "request.same_day_blocks"
+          ],
+          "cited_in_label": 0
+        },
+        {
+          "criterion": "two-mbbs-80pct-sustained-relief",
+          "expected": "not_met",
+          "predicted": "not_met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-mbb1",
+            "DocumentReference/note-mbb2",
+            "DocumentReference/note-rfa-planning"
+          ],
+          "cited_in_label": 3
+        },
+        {
+          "criterion": "rfa-sessions-max-2",
+          "expected": "met",
+          "predicted": "met",
+          "agent_not_applicable": false,
+          "correct": true,
+          "false_approval": false,
+          "invalidated": false,
+          "cited": [
+            "DocumentReference/note-pain-clinic-eval",
+            "DocumentReference/note-rfa-planning"
+          ],
+          "cited_in_label": 2
+        }
+      ],
+      "input_tokens": 54375,
+      "output_tokens": 3868,
+      "llm_latency_ms": 22002.730999025516,
+      "verdicts": {
+        "policy": "facet-joint-interventions",
+        "variant": "initial-rfa",
+        "verdicts": [
+          {
+            "criterion": "chronic-axial-pain-functional-deficit",
+            "outcome": "insufficient",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows moderate to severe chronic low back pain (7/10 on NRS) that is predominantly axial and causes a functional deficit measured on a disability scale (48% on ODI, severe disability). The pain is described as moderate to severe, axial, and causes functional limitations such as inability to stand longer than 15 minutes and inability to perform gardening or housework. The ODI score of 48% indicates severe disability, satisfying the requirement for a functional deficit measured on a pain or disability scale.",
+            "citations": [],
+            "invalidated": "quote not found in DocumentReference/note-pain-clinic-eval#0: 'Pain: 7/10 on the Numerical Rating Scale (NRS) 0-10. Disability: 48% on the Oswe'",
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-pcp#0",
+              "Condition/chronic-low-back-pain#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-pt-discharge#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3417,
+              "output_tokens": 219,
+              "latency_ms": 1799.8819999629632,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "pain-minimum-3-months",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows the patient has had low back pain since 2026-04-03, which is more than 3 months before the request date of 2026-10-05. The pain clinic initial evaluation from 2026-08-10 states: 'History: low back pain since 2026-04-03, now present for 4 months.' This satisfies the minimum duration requirement of 3 months.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "History: low back pain since 2026-04-03, now present for 4 months.",
+                "char_start": 43,
+                "char_end": 109
+              },
+              {
+                "chunk_id": "Condition/chronic-low-back-pain#0",
+                "quote": "Condition: Chronic low back pain (SNOMED 278860009)\nClinical status: active\nVerification: confirmed\nOnset: 2026-04-03\nRecorded: 2026-04-10",
+                "char_start": 0,
+                "char_end": 138
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/note-pcp#0",
+              "Condition/chronic-low-back-pain#0",
+              "DocumentReference/f6ba0ccb-1752-effe-1bd8-851cd71b38a1#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3547,
+              "output_tokens": 246,
+              "latency_ms": 1224.267499987036,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "conservative-care-failed",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows documented failure to respond to noninvasive conservative management. The patient had low back pain for 4 months (since 2026-04-03) and was treated with naproxen (NSAID) since 2026-04-10 with minimal benefit, and a 12-week course of physical therapy from 2026-05-04 to 2026-08-03 with no meaningful improvement in pain or function. These are both forms of noninvasive conservative management as defined in the LCD. The pain has been present for more than 3 months, satisfying the duration requirement. Therefore, the criterion is met.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Conservative management: naproxen 500 mg twice daily since 2026-04-10 with minimal benefit; a 12-week course of physical therapy (2026-05-04 to 2026-08-03) with no meaningful improvement in pain or function.",
+                "char_start": 421,
+                "char_end": 628
+              },
+              {
+                "chunk_id": "DocumentReference/note-pt-discharge#0",
+                "quote": "Outcome: no meaningful improvement in pain or function. Pain 7/10 at discharge, unchanged from the start of therapy. Still unable to stand longer than 15 minutes.",
+                "char_start": 261,
+                "char_end": 423
+              },
+              {
+                "chunk_id": "Condition/chronic-low-back-pain#0",
+                "quote": "Condition: Chronic low back pain (SNOMED 278860009)\nClinical status: active\nVerification: confirmed\nOnset: 2026-04-03",
+                "char_start": 0,
+                "char_end": 117
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pcp#0",
+              "DocumentReference/note-mbb2#0",
+              "Procedure/physical-therapy-course#0",
+              "Condition/chronic-low-back-pain#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3400,
+              "output_tokens": 356,
+              "latency_ms": 1571.1117499740794,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "no-untreated-radiculopathy",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows no untreated radiculopathy or neurogenic claudication. The neurological exam documented no radicular symptoms and no neurogenic claudication. The MRI showed no nerve root compression. The patient has axial low back pain without radiation below the buttocks, and the diagnostic medial branch blocks targeted facet joints, confirming facet syndrome without radicular involvement. There is no documentation of radiculopathy caused by a facet joint synovial cyst.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Neurological exam: strength 5/5 in both legs. Sensation intact to light touch. Reflexes 2+ and symmetric at the knees and ankles. Straight-leg raise negative on both sides. No radicular symptoms and no neurogenic claudication.",
+                "char_start": 991,
+                "char_end": 1217
+              },
+              {
+                "chunk_id": "DiagnosticReport/mri-lumbar#1",
+                "quote": "Impression: Facet arthropathy at L4-5 and L5-S1. No fracture, tumor, infection or significant deformity. No nerve root compression.",
+                "char_start": 525,
+                "char_end": 656
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "Procedure/mbb2#0",
+              "Procedure/mbb1#0",
+              "DiagnosticReport/mri-lumbar#1",
+              "Condition/37b75dda-e187-ae40-414b-45a7d13c6c03#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3282,
+              "output_tokens": 265,
+              "latency_ms": 1423.1457500136457,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "no-non-facet-pathology",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows that the lumbar MRI of 2026-07-20 specifically states there is facet arthropathy at L4-5 and L5-S1 with no fracture, tumor, infection or significant deformity. The clinical assessment in the pain clinic evaluation also documents no radicular symptoms, no neurogenic claudication, and neurological exam is normal. The documented pathology is limited to facet arthropathy which is the intended treatment target for radiofrequency ablation. There is no evidence of non-facet pathology that could explain the pain.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Imaging: lumbar MRI of 2026-07-20 shows facet arthropathy at L4-5 and L5-S1 with no fracture, tumor, infection or significant deformity.",
+                "char_start": 1344,
+                "char_end": 1480
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/7fc433c4-3564-21a6-91ec-bd0bd3789198#0",
+              "DocumentReference/8ce34cbb-7dcb-26e3-5bed-84b486df6b87#0",
+              "DocumentReference/f6ba0ccb-1752-effe-1bd8-851cd71b38a1#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/ab44a957-6c29-abeb-f2e2-bdc75e3bd474#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3975,
+              "output_tokens": 226,
+              "latency_ms": 1394.7863330249675,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "pain-scale-at-baseline",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows that pain was assessed and documented at baseline using a named pain scale. In the initial evaluation on 2026-08-10, pain is documented as '7/10 on the Numerical Rating Scale (NRS) 0-10.' This satisfies the requirement for a baseline pain assessment on a named scale. The policy requires pain assessment at baseline, and this is met.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Pain: 7/10 on the Numerical Rating Scale (NRS) 0-10.",
+                "char_start": 663,
+                "char_end": 715
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "Procedure/37b75dda-e187-ae40-3fe0-44a111f0124f#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "Procedure/37b75dda-e187-ae40-8504-3a42ff391522#0",
+              "Procedure/37b75dda-e187-ae40-ee69-4a1aa423f681#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3174,
+              "output_tokens": 180,
+              "latency_ms": 1160.90770898154,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "pain-scale-after-each-diagnostic",
+            "outcome": "insufficient",
+            "applicable": true,
+            "confidence": 0.9,
+            "rationale": "The evidence does not contain any documentation of pain assessments before or after any diagnostic procedures. The requested procedure is a thermal radiofrequency ablation scheduled for 2026-10-19, but there are no records of pain scale documentation at baseline or after any diagnostic procedures. Without pain scale documentation, we cannot determine if the same pain scale was used consistently.",
+            "citations": [
+              {
+                "chunk_id": "request.date",
+                "quote": "Request date: 2026-10-05",
+                "char_start": 0,
+                "char_end": 24
+              },
+              {
+                "chunk_id": "request.service_date",
+                "quote": "Planned date of service: 2026-10-19",
+                "char_start": 0,
+                "char_end": 35
+              },
+              {
+                "chunk_id": "request.procedure",
+                "quote": "Requested procedure: thermal radiofrequency ablation",
+                "char_start": 0,
+                "char_end": 52
+              },
+              {
+                "chunk_id": "request.codes",
+                "quote": "Procedure codes: 64635, 64636",
+                "char_start": 0,
+                "char_end": 29
+              },
+              {
+                "chunk_id": "request.region",
+                "quote": "Spinal region: lumbar",
+                "char_start": 0,
+                "char_end": 21
+              },
+              {
+                "chunk_id": "request.levels",
+                "quote": "Levels: L4-5, L5-S1",
+                "char_start": 0,
+                "char_end": 19
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "insufficient",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "Procedure/37b75dda-e187-ae40-3fe0-44a111f0124f#0",
+              "Procedure/37b75dda-e187-ae40-5b70-175be4e23f55#0",
+              "Procedure/37b75dda-e187-ae40-8504-3a42ff391522#0",
+              "Procedure/37b75dda-e187-ae40-c32d-2b462ed8cf28#0",
+              "Procedure/37b75dda-e187-ae40-213e-cb6b2965b6a8#0",
+              "Procedure/37b75dda-e187-ae40-acd7-3df41c80f273#0",
+              "Procedure/37b75dda-e187-ae40-fff7-edf95e267f9c#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 2445,
+              "output_tokens": 265,
+              "latency_ms": 1332.8980000223964,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "disability-scale-at-baseline",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows a disability scale was obtained at baseline. The 2026-08-10 pain clinic initial evaluation documents a disability score of 48% on the Oswestry Disability Index (ODI), classified as severe disability. This satisfies the requirement for a disability scale at baseline for functional assessment.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Pain and function at baseline:\n- Pain: 7/10 on the Numerical Rating Scale (NRS) 0-10.\n- Disability: 48% on the Oswestry Disability Index (ODI), severe disability.",
+                "char_start": 630,
+                "char_end": 792
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "Procedure/37b75dda-e187-ae40-3fe0-44a111f0124f#0",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/7fc433c4-3564-21a6-91ec-bd0bd3789198#0",
+              "DocumentReference/ab44a957-6c29-abeb-f2e2-bdc75e3bd474#0",
+              "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2#1",
+              "DocumentReference/note-pain-clinic-eval#1"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3550,
+              "output_tokens": 187,
+              "latency_ms": 1096.3491250295192,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "scales-documented",
+            "outcome": "insufficient",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The policy requires that the scales used for measurement of pain and/or disability must be documented in the medical record. The evidence shows that the Numerical Rating Scale (NRS) 0-10 and the Oswestry Disability Index (ODI) are documented as the scales used to measure pain and disability. Specifically, the initial evaluation note from 2026-08-10 documents baseline pain as 7/10 on the NRS and disability as 48% on the ODI. Subsequent follow-up notes also reference the NRS for pain assessment before and after diagnostic blocks. Therefore, the criterion is met.",
+            "citations": [],
+            "invalidated": "quote not found in DocumentReference/note-mbb1#0: 'Pain: 7/10 on the Numerical Rating Scale (NRS) 0-10'",
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/7fc433c4-3564-21a6-91ec-bd0bd3789198#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3693,
+              "output_tokens": 400,
+              "latency_ms": 1705.6600410141982,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "no-generalized-pain-indication",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows the patient has chronic axial low back pain localized to the lumbar spine with facet arthropathy at L4-5 and L5-S1, confirmed by positive diagnostic medial branch blocks. There is no documentation of generalized pain conditions such as fibromyalgia or chronic centralized pain syndromes. The history explicitly states \"No history of fibromyalgia or any widespread or centralized pain syndrome.\" Therefore, the procedure is not for a generalized pain condition as prohibited by the criterion.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Past history: no prior spine surgery, including no lumbar fusion. No history of fibromyalgia or any widespread or centralized pain syndrome. No prior radiofrequency ablation or spinal injections.",
+                "char_start": 794,
+                "char_end": 989
+              },
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#1",
+                "quote": "Assessment: chronic axial low back pain, most consistent with lumbar facet syndrome at L4-5 and L5-S1.",
+                "char_start": 0,
+                "char_end": 102
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/8ce34cbb-7dcb-26e3-5bed-84b486df6b87#0",
+              "Procedure/mbb2#0",
+              "DocumentReference/8a804714-d88f-1efa-b374-09a2ded1640b#0",
+              "Procedure/mbb1#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3532,
+              "output_tokens": 242,
+              "latency_ms": 1222.8296250104904,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "not-after-alif",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The criterion states that the procedure is not performed after an anterior lumbar interbody fusion (ALIF). The evidence shows the patient has no history of lumbar fusion, including no prior spine surgery. The requested procedure is a thermal radiofrequency ablation planned for 2026-10-19, which occurs after diagnostic medial branch blocks but before any ALIF. Since there is no ALIF documented, the criterion is met.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Past history: no prior spine surgery, including no lumbar fusion.",
+                "char_start": 794,
+                "char_end": 859
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "Procedure/mbb2#0",
+              "Procedure/mbb1#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "Procedure/37b75dda-e187-ae40-5b70-175be4e23f55#0",
+              "Procedure/37b75dda-e187-ae40-1674-33cf97dc9b5c#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/note-mbb2#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3113,
+              "output_tokens": 176,
+              "latency_ms": 1633.1212079967372,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "one-spinal-region-per-session",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The request involves thermal radiofrequency ablation at lumbar levels L4-5 and L5-S1, which are both within the lumbar/sacral spinal region. The policy limits facet joint interventions to one spinal region per session, and the evidence confirms only the lumbar region is treated with no other regions or blocks planned for the same day. Therefore, the session involves only one spinal region as required.",
+            "citations": [
+              {
+                "chunk_id": "request.region",
+                "quote": "Spinal region: lumbar",
+                "char_start": 0,
+                "char_end": 21
+              },
+              {
+                "chunk_id": "request.levels",
+                "quote": "Levels: L4-5, L5-S1",
+                "char_start": 0,
+                "char_end": 19
+              },
+              {
+                "chunk_id": "request.same_day_blocks",
+                "quote": "Other blocks planned for the same day: none",
+                "char_start": 0,
+                "char_end": 43
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "Procedure/mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "Procedure/mbb1#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-rfa-planning#0",
+              "Procedure/37b75dda-e187-ae40-c5ed-5ffe4c89afec#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3335,
+              "output_tokens": 208,
+              "latency_ms": 1267.1039159758948,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "levels-1-to-2",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows the requested procedure involves two levels (L4-5 and L5-S1) in the lumbar spine region. The policy allows up to two levels per session per spine region, and the request specifies only these two levels with no additional levels planned for the same day. Therefore, the criterion is met.",
+            "citations": [
+              {
+                "chunk_id": "request.levels",
+                "quote": "Levels: L4-5, L5-S1",
+                "char_start": 0,
+                "char_end": 19
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "Procedure/mbb2#0",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "Procedure/mbb1#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3444,
+              "output_tokens": 156,
+              "latency_ms": 1039.8405420128256,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "same-day-blocks-justified",
+            "outcome": "met",
+            "applicable": false,
+            "confidence": 1.0,
+            "rationale": "The criterion applies only if other blocks are given on the same day as the facet procedure. The request states that no other blocks are planned for the same day as the facet procedure [E7]. Therefore, the condition does not hold, and the criterion is met by default.",
+            "citations": [
+              {
+                "chunk_id": "request.same_day_blocks",
+                "quote": "Other blocks planned for the same day: none",
+                "char_start": 0,
+                "char_end": 43
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2#1",
+              "DocumentReference/note-rfa-planning#0",
+              "Procedure/mbb2#0",
+              "Procedure/mbb1#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3367,
+              "output_tokens": 145,
+              "latency_ms": 1019.2425420391373,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "two-mbbs-80pct-sustained-relief",
+            "outcome": "not_met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The criterion requires at least two diagnostic medial branch blocks (MBBs) each giving a consistent minimum of 80% sustained relief of the primary pain. The first MBB on 2026-08-24 provided 86% relief, meeting the threshold. The second MBB on 2026-09-14 provided 71% relief, which is below the required 80% threshold. Therefore, the criterion is not met.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-rfa-planning#0",
+                "quote": "Block 1 on 2026-08-24: pain 7/10 before and 1/10 after on the Numerical Rating Scale (NRS) 0-10, (7 - 1) / 7 = 86% relief.",
+                "char_start": 102,
+                "char_end": 224
+              },
+              {
+                "chunk_id": "DocumentReference/note-rfa-planning#0",
+                "quote": "Block 2 on 2026-09-14, 3 weeks after the first: pain 7/10 before and 2/10 after on the Numerical Rating Scale (NRS) 0-10, (7 - 2) / 7 = 71% relief.",
+                "char_start": 227,
+                "char_end": 374
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb2#0",
+                "quote": "Relief of index pain, from today's pre-block score: (7 - 2) / 7 = 71%.",
+                "char_start": 612,
+                "char_end": 682
+              },
+              {
+                "chunk_id": "DocumentReference/note-mbb1#0",
+                "quote": "Relief of index pain, from today's pre-block score: (7 - 1) / 7 = 86%.",
+                "char_start": 612,
+                "char_end": 682
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "not_met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/note-mbb1#0",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2#1",
+              "Procedure/mbb2#0"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3636,
+              "output_tokens": 372,
+              "latency_ms": 1672.3344170022756,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          },
+          {
+            "criterion": "rfa-sessions-max-2",
+            "outcome": "met",
+            "applicable": true,
+            "confidence": 1.0,
+            "rationale": "The evidence shows the patient has not had any prior radiofrequency ablation sessions in the lumbar region. The first diagnostic medial branch block was on 2026-08-24 and the second on 2026-09-14, both confirming facet syndrome. The request is for the first radiofrequency ablation session in this region, which is within the allowed limit of two sessions per rolling 12 months. No prior sessions are documented, so the criterion is met.",
+            "citations": [
+              {
+                "chunk_id": "DocumentReference/note-rfa-planning#0",
+                "quote": "The patient has not had radiofrequency ablation before.",
+                "char_start": 447,
+                "char_end": 502
+              },
+              {
+                "chunk_id": "DocumentReference/note-pain-clinic-eval#0",
+                "quote": "Past history: no prior spine surgery, including no lumbar fusion. No history of fibromyalgia or any widespread or centralized pain syndrome. No prior radiofrequency ablation or spinal injections.",
+                "char_start": 794,
+                "char_end": 989
+              }
+            ],
+            "invalidated": null,
+            "model_outcome": "met",
+            "chunk_ids": [
+              "request.date",
+              "request.service_date",
+              "request.procedure",
+              "request.codes",
+              "request.region",
+              "request.levels",
+              "request.same_day_blocks",
+              "DocumentReference/note-rfa-planning#0",
+              "DocumentReference/note-pain-clinic-eval#1",
+              "DocumentReference/note-pt-discharge#0",
+              "DocumentReference/note-pain-clinic-eval#0",
+              "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198#1",
+              "Procedure/physical-therapy-course#0",
+              "DocumentReference/note-mbb2#0",
+              "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2#1"
+            ],
+            "usage": {
+              "model_id": "us.amazon.nova-2-lite-v1:0",
+              "input_tokens": 3465,
+              "output_tokens": 225,
+              "latency_ms": 1439.2505409778096,
+              "stop_reason": "tool_use",
+              "calls": 1,
+              "tool_choice_fallback": false
+            }
+          }
+        ],
+        "overall": "not_met",
+        "reviewer_checklist": [
+          {
+            "criterion": "ct-or-fluoroscopic-guidance",
+            "evidence_stage": "post_service",
+            "text": "The procedure is done under CT or fluoroscopic guidance (not unguided, ultrasound-guided or MRI-guided)."
+          },
+          {
+            "criterion": "medical-record-elements",
+            "evidence_stage": "post_service",
+            "text": "The record includes the performing provider's assessment for the visit, relevant history, pertinent test or procedure results, and a signed and dated visit record or operative report."
+          },
+          {
+            "criterion": "thermal-rf-only",
+            "evidence_stage": "post_service",
+            "text": "The denervation uses thermal radiofrequency, not a non-thermal modality (chemical, low-grade thermal energy under 80 degrees Celsius, laser neurolysis or cryoablation)."
+          }
+        ]
+      }
+    }
+  ]
+}
