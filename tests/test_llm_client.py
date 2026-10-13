@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from precertly.llm import BedrockClient, StructuredOutputError
 from precertly.settings import Settings
 
-SETTINGS = Settings(_env_file=None)
+SETTINGS = Settings(_env_file=None, llm_requests_per_minute=None)
 
 
 class Verdict(BaseModel):

@@ -17,6 +17,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from pydantic import BaseModel, ValidationError
 
+from precertly.llm.pacing import Pacer
 from precertly.settings import Settings, get_settings
 
 Message = dict[str, Any]
@@ -80,6 +81,7 @@ class BedrockClient:
         self.settings = settings or get_settings()
         self._client = client
         self._named_tool_choice = True
+        self._pacer = Pacer(self.settings.llm_requests_per_minute)
         self.calls: list[LLMUsage] = []
 
     @property
@@ -193,6 +195,7 @@ class BedrockClient:
         if tool_config:
             request["toolConfig"] = tool_config
 
+        await self._pacer.wait()
         started = time.perf_counter()
         # boto3 is synchronous; keep the event loop free.
         response = await asyncio.to_thread(self.client.converse, **request)

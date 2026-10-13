@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Named profile for local use. Set PRECERTLY_AWS_PROFILE= (empty) to use the default
     # credential chain, e.g. a task role.
     aws_profile: str | None = "precertly"
+    # Paces Converse calls to the account's requests-per-minute quota for the model
+    # (20 on this account for the Nova 2 Lite inference profile). Set empty to disable.
+    llm_requests_per_minute: int | None = 20
 
     embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     embedding_dimensions: int = 1024
@@ -23,6 +26,9 @@ class Settings(BaseSettings):
     # to 60 requests/minute (the AWS default is 6000); raise this to match yours, or set
     # it empty to disable pacing.
     embedding_requests_per_minute: int | None = 60
+
+    # Judgment: chart chunks retrieved per criterion.
+    judgment_top_k: int = 8
 
     # Matches docker-compose.yml (host port 5433).
     database_url: str = "postgresql+asyncpg://precertly:precertly@localhost:5433/precertly"
