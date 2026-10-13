@@ -29,6 +29,7 @@ Request-stage criteria are judged from the case's `request` block, and labels ci
 | `date` | Request date; all other dates are relative to it (2026-10-05 in every case) |
 | `service_date` | Planned date of the requested service. The two-week interval for a second diagnostic block is judged from it, because that block has not happened when it is requested |
 | `procedure` | The requested procedure in plain words. The codes do not say whether a diagnostic block is a medial branch block or an intraarticular one, and that decides whether `ia-diagnostic-only-if-mbb-not-possible` applies |
+| `technique` | `medial_branch_block`, `intraarticular_injection` or `radiofrequency_ablation`. Structured, so code can decide whether `ia-diagnostic-only-if-mbb-not-possible` applies |
 | `codes`, `region`, `levels` | Procedure codes, spinal region and facet levels |
 | `same_day_blocks` | Other blocks planned for the same day; empty in every case |
 

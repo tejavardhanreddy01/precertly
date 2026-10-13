@@ -8,6 +8,7 @@ request:
   date: 2026-10-05
   service_date: 2026-10-19
   procedure: thermal radiofrequency ablation
+  technique: radiofrequency_ablation
   codes: ["64635", "64636"]
   region: lumbar
   levels: [L4-5, L5-S1]

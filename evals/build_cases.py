@@ -300,8 +300,26 @@ def _encounter(encounter_id: str, when: date, kind: str, end: date | None = None
     }
 
 
+def _at(when: date, clock: str | None) -> str:
+    """A FHIR date, or a dateTime when the time of day matters."""
+    return f"{when.isoformat()}T{clock}:00-04:00" if clock else when.isoformat()
+
+
+# Times of day around a procedure, so structured data shows which score came before it.
+BEFORE, DURING, AFTER = "09:00", "09:30", "10:00"
+CPT = "http://www.ama-assn.org/go/cpt"
+# Code numbers only, for routing; no descriptors. Lumbar, first level.
+CPT_FACET_INJECTION = "64493"
+CPT_FACET_RFA = "64635"
+
+
 def _score(
-    observation_id: str, when: date, value: int, encounter: str, scale: str = NRS
+    observation_id: str,
+    when: date,
+    value: int,
+    encounter: str,
+    scale: str = NRS,
+    clock: str | None = None,
 ) -> Resource:
     code: dict[str, Any] = {"text": f"Pain severity, {scale}"}
     if scale == NRS:
@@ -313,7 +331,7 @@ def _score(
         "category": [{"coding": [{"code": "survey"}]}],
         "code": code,
         "valueQuantity": {"value": value, "unit": "{score}" if scale == NRS else "mm"},
-        "effectiveDateTime": when.isoformat(),
+        "effectiveDateTime": _at(when, clock),
         "encounter": {"reference": f"Encounter/{encounter}"},
     }
 
@@ -331,13 +349,13 @@ def _odi(observation_id: str, when: date, value: int, encounter: str) -> Resourc
     }
 
 
-def _procedure(procedure_id: str, when: date, text: str, encounter: str) -> Resource:
+def _procedure(procedure_id: str, when: date, text: str, encounter: str, cpt: str) -> Resource:
     return {
         "resourceType": "Procedure",
         "id": procedure_id,
         "status": "completed",
-        "code": {"text": text},
-        "performedDateTime": when.isoformat(),
+        "code": {"coding": [{"system": CPT, "code": cpt}], "text": text},
+        "performedDateTime": _at(when, DURING),
         "encounter": {"reference": f"Encounter/{encounter}"},
         "reasonReference": [{"reference": "Condition/chronic-low-back-pain"}],
         "bodySite": [{"text": f"Lumbar facet joints {LEVELS}, bilateral"}],
@@ -349,10 +367,12 @@ def _block(number: int, when: date, pre: int, post: int, post_vas: int | None) -
     if post_vas is None:
         after = f"""- 30 minutes after the block: {post}/10 on the same scale, with the same provocative movements.
 - Relief of index pain, from today's pre-block score: {calculation(pre, post)}."""
-        post_score = _score(f"pain-post-mbb{number}", when, post, encounter)
+        post_score = _score(f"pain-post-mbb{number}", when, post, encounter, clock=AFTER)
     else:
         after = f"- 30 minutes after the block: {post_vas} mm on the {VAS}, with the same provocative movements."
-        post_score = _score(f"pain-post-mbb{number}", when, post_vas, encounter, scale=VAS)
+        post_score = _score(
+            f"pain-post-mbb{number}", when, post_vas, encounter, scale=VAS, clock=AFTER
+        )
     text = f"""Indication: chronic axial low back pain with suspected lumbar facet syndrome.
 Levels: bilateral {LEVELS} (medial branches of L3 and L4 and the L5 dorsal ramus).
 Technique: fluoroscopic guidance, 0.5 mL of 0.5% bupivacaine at each target nerve. No corticosteroid. No sedation. No other injections were performed today.
@@ -372,8 +392,9 @@ No complications. Discharged in stable condition.
             when,
             f"Diagnostic lumbar medial branch block, bilateral {LEVELS}",
             encounter,
+            CPT_FACET_INJECTION,
         ),
-        _score(f"pain-pre-mbb{number}", when, pre, encounter),
+        _score(f"pain-pre-mbb{number}", when, pre, encounter, clock=BEFORE),
         post_score,
         _note(f"note-mbb{number}", when, title, text, encounter),
     ]
@@ -633,8 +654,9 @@ No complications.
             facts.rfa1,
             f"Thermal radiofrequency ablation of lumbar medial branch nerves, bilateral {LEVELS}",
             "enc-rfa1",
+            CPT_FACET_RFA,
         ),
-        _score("pain-pre-rfa1", facts.rfa1, pre, "enc-rfa1"),
+        _score("pain-pre-rfa1", facts.rfa1, pre, "enc-rfa1", clock=BEFORE),
         _note(
             "note-rfa1", facts.rfa1, "Procedure note, radiofrequency ablation", rfa_note, "enc-rfa1"
         ),

@@ -32,6 +32,9 @@ class PriorAuthRequest(BaseModel):
     date: date
     service_date: date = Field(description="Planned date of the requested service")
     procedure: str = Field(description="The requested procedure, in plain words")
+    # Structured, because the procedure codes are the same for a medial branch block and
+    # an intraarticular injection, and one criterion depends on which it is.
+    technique: Literal["medial_branch_block", "intraarticular_injection", "radiofrequency_ablation"]
     codes: list[str] = Field(min_length=1)
     region: str
     levels: list[str] = Field(min_length=1)
@@ -43,6 +46,7 @@ class PriorAuthRequest(BaseModel):
             "date": "Request date",
             "service_date": "Planned date of service",
             "procedure": "Requested procedure",
+            "technique": "Technique",
             "codes": "Procedure codes",
             "region": "Spinal region",
             "levels": "Levels",

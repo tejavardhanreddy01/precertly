@@ -8,6 +8,7 @@ request:
   date: 2026-10-05
   service_date: 2026-10-08
   procedure: second diagnostic medial branch block
+  technique: medial_branch_block
   codes: ["64493", "64494"]
   region: lumbar
   levels: [L4-5, L5-S1]

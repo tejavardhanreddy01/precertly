@@ -23,6 +23,7 @@ REQUEST = PriorAuthRequest(
     date=date(2026, 10, 5),
     service_date=date(2026, 10, 19),
     procedure="thermal radiofrequency ablation",
+    technique="radiofrequency_ablation",
     codes=["64635", "64636"],
     region="lumbar",
     levels=["L4-5", "L5-S1"],
@@ -165,8 +166,9 @@ def test_prompt_carries_the_policy_text_the_condition_and_the_evidence():
     assert criterion.quote in prompt
     assert criterion.condition in prompt
     assert "REQUEST DATE: 2026-10-05" in prompt
-    assert "[E7] (request)\nOther blocks planned for the same day: none" in prompt
-    assert "[E8] (chart, DocumentReference, dated 2026-09-14)" in prompt
+    assert "[E4] (request)\nTechnique: radiofrequency_ablation" in prompt
+    assert "[E8] (request)\nOther blocks planned for the same day: none" in prompt
+    assert "[E9] (chart, DocumentReference, dated 2026-09-14)" in prompt
     # long chunk ids are not shown, so there is nothing for the model to abbreviate
     assert NOTE.id not in prompt and "request.levels" not in prompt
 
