@@ -312,6 +312,8 @@ def _at(when: date, clock: str | None) -> str:
 
 # Times of day around a procedure, so structured data shows which score came before it.
 BEFORE, DURING, AFTER = "09:00", "09:30", "10:00"
+# LOINC 97909-6, "Oswestry disability index score ODI" (https://loinc.org/97909-6/).
+ODI_LOINC = "97909-6"
 CPT = "http://www.ama-assn.org/go/cpt"
 # Code numbers only, for routing; no descriptors. Lumbar, first level.
 CPT_FACET_INJECTION = "64493"
@@ -347,7 +349,10 @@ def _odi(observation_id: str, when: date, value: int, encounter: str) -> Resourc
         "id": observation_id,
         "status": "final",
         "category": [{"coding": [{"code": "survey"}]}],
-        "code": {"text": f"{ODI} score"},
+        "code": {
+            "coding": [{"system": "http://loinc.org", "code": ODI_LOINC}],
+            "text": f"{ODI} score",
+        },
         "valueQuantity": {"value": value, "unit": "%"},
         "effectiveDateTime": when.isoformat(),
         "encounter": {"reference": f"Encounter/{encounter}"},
