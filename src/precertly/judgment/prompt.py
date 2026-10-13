@@ -7,7 +7,7 @@ from precertly.policies import Criterion
 
 # Bump when SYSTEM or build_prompt changes what the model reads, so results files can be
 # compared across prompt changes.
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 
 SYSTEM = """You check one Medicare coverage criterion against one patient's record for a prior-authorization request. A human reviewer makes the final decision; you report what the record shows.
 
@@ -28,9 +28,22 @@ Rules:
 7. If the criterion has a condition, first decide whether the condition holds and report it in condition_holds. If it does not hold, the criterion does not apply: set outcome to met and say so in the rationale.
 
 Citations:
-- Cite every piece of evidence your outcome rests on, by chunk id, with a quote copied character for character from that chunk. Do not paraphrase, correct or shorten words inside a quote.
+- Each evidence item has a handle in square brackets: [E1], [E2] and so on. Cite every item your outcome rests on by its handle (for example E3), with a quote copied character for character from that item. Do not paraphrase, correct or shorten words inside a quote.
 - met and not_met need at least one citation. insufficient should cite the evidence that shows the gap or the contradiction, if there is any.
-- Facts about the requested service come from the request chunks (ids starting with "request.")."""
+- Facts about the requested service come from the items marked "request"."""
+
+
+def handles(chunks: list[EvidenceChunk]) -> dict[str, EvidenceChunk]:
+    """E1, E2, ... in prompt order. The model cites these instead of long chunk ids."""
+    return {f"E{number}": chunk for number, chunk in enumerate(chunks, start=1)}
+
+
+def _describe(chunk: EvidenceChunk) -> str:
+    if chunk.id.startswith("request."):
+        return "request"
+    kind = chunk.id.split("/")[0]
+    when = f", dated {chunk.effective_date.isoformat()}" if chunk.effective_date else ""
+    return f"chart, {kind}{when}"
 
 
 def build_prompt(
@@ -52,8 +65,7 @@ def build_prompt(
     if criterion.note:
         lines.append(f"Note: {criterion.note}")
     lines += ["", f"REQUEST DATE: {request.date.isoformat()}", "", "EVIDENCE"]
-    for chunk in chunks:
-        when = f" (dated {chunk.effective_date.isoformat()})" if chunk.effective_date else ""
-        lines += [f"[{chunk.id}]{when}", chunk.text, ""]
+    for handle, chunk in handles(chunks).items():
+        lines += [f"[{handle}] ({_describe(chunk)})", chunk.text, ""]
     lines.append("Judge the criterion from this evidence.")
     return "\n".join(lines)

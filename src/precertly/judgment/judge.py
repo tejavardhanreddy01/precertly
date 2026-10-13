@@ -23,7 +23,7 @@ from precertly.judgment.models import (
     PriorAuthRequest,
     VerifiedCitation,
 )
-from precertly.judgment.prompt import SYSTEM, build_prompt
+from precertly.judgment.prompt import SYSTEM, build_prompt, handles
 from precertly.policies import Criterion, Policy
 
 
@@ -47,22 +47,24 @@ def find_quote(quote: str, text: str) -> tuple[int, int] | None:
 def verify(
     judgment: ModelJudgment, chunks: list[EvidenceChunk]
 ) -> tuple[list[VerifiedCitation], str | None]:
-    """Verified citations, and the reason the verdict is invalid if it is."""
-    by_id = {chunk.id: chunk for chunk in chunks}
+    """Verified citations, and the reason the verdict is invalid if it is.
+
+    The model cites handles (E1, E2, ...); they are mapped back to chunk ids here. A handle
+    that was not in the prompt, or a quote that is not in the item it cites, is invalid.
+    """
+    by_handle = handles(chunks)
     verified = []
     for citation in judgment.citations:
-        chunk = by_id.get(citation.chunk_id)
+        handle = citation.evidence.strip().strip("[]").upper()
+        chunk = by_handle.get(handle)
         if chunk is None:
-            return [], f"cited chunk {citation.chunk_id!r} was not in the evidence"
+            return [], f"cited evidence {citation.evidence!r} was not in the prompt"
         span = find_quote(citation.quote, chunk.text)
         if span is None:
-            return [], f"quote not found in {citation.chunk_id}: {citation.quote[:80]!r}"
+            return [], f"quote not found in {chunk.id}: {citation.quote[:80]!r}"
         verified.append(
             VerifiedCitation(
-                chunk_id=citation.chunk_id,
-                quote=citation.quote,
-                char_start=span[0],
-                char_end=span[1],
+                chunk_id=chunk.id, quote=citation.quote, char_start=span[0], char_end=span[1]
             )
         )
     return verified, None

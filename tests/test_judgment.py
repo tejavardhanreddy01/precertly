@@ -56,13 +56,19 @@ class FakeLLM:
         return Response(self.answers.get(criterion_id, self.default))
 
 
+def _handle(chunk_id):
+    """The handle the prompt gives a chunk; anything else is passed through as written."""
+    ids = [chunk.id for chunk in CHUNKS]
+    return f"E{ids.index(chunk_id) + 1}" if chunk_id in ids else chunk_id
+
+
 def _answer(outcome, citations=(), condition_holds=None):
     return ModelJudgment(
         condition_holds=condition_holds,
         outcome=outcome,
         confidence=0.9,
         rationale="because",
-        citations=[Citation(chunk_id=c, quote=q) for c, q in citations],
+        citations=[Citation(evidence=_handle(c), quote=q) for c, q in citations],
     )
 
 
@@ -98,11 +104,27 @@ def test_a_quote_that_is_not_in_the_chunk_invalidates_the_verdict():
     assert verdict.citations == []
 
 
-def test_citing_a_chunk_that_was_not_provided_invalidates_the_verdict():
-    answer = _answer("met", [("Observation/made-up#0", "Value: 1")])
+@pytest.mark.parametrize("handle", ["E99", "note-mbb2#0", "DocumentReference/note-mbb2#0"])
+def test_citing_something_that_is_not_a_handle_from_the_prompt_invalidates(handle):
+    answer = _answer("met")
+    answer.citations = [Citation(evidence=handle, quote="Before the block: 7/10.")]
     verdict, _ = _judge("two-mbbs-80pct-sustained-relief", answer)
     assert verdict.outcome == "insufficient"
-    assert "was not in the evidence" in verdict.invalidated
+    assert "was not in the prompt" in verdict.invalidated
+
+
+def test_handles_map_back_to_chunk_ids_and_tolerate_brackets():
+    answer = _answer("met", [(f"[{_handle(NOTE.id).lower()}]", "Before the block: 7/10.")])
+    verdict, _ = _judge("two-mbbs-80pct-sustained-relief", answer)
+    assert verdict.invalidated is None
+    assert verdict.citations[0].chunk_id == NOTE.id
+
+
+def test_a_verified_handle_with_the_wrong_quote_is_still_invalid():
+    # the quote is real, but it is in a different evidence item than the one cited
+    answer = _answer("met", [("request.levels", "Before the block: 7/10.")])
+    verdict, _ = _judge("two-mbbs-80pct-sustained-relief", answer)
+    assert "quote not found in request.levels" in verdict.invalidated
 
 
 @pytest.mark.parametrize("outcome", ["met", "not_met"])
@@ -143,8 +165,10 @@ def test_prompt_carries_the_policy_text_the_condition_and_the_evidence():
     assert criterion.quote in prompt
     assert criterion.condition in prompt
     assert "REQUEST DATE: 2026-10-05" in prompt
-    assert "[request.same_day_blocks]\nOther blocks planned for the same day: none" in prompt
-    assert "[DocumentReference/note-mbb2#0] (dated 2026-09-14)" in prompt
+    assert "[E7] (request)\nOther blocks planned for the same day: none" in prompt
+    assert "[E8] (chart, DocumentReference, dated 2026-09-14)" in prompt
+    # long chunk ids are not shown, so there is nothing for the model to abbreviate
+    assert NOTE.id not in prompt and "request.levels" not in prompt
 
 
 class FixedEvidence:

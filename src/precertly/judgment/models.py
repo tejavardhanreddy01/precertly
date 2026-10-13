@@ -58,8 +58,10 @@ class PriorAuthRequest(BaseModel):
 
 
 class Citation(BaseModel):
-    chunk_id: str = Field(description="Id of the evidence chunk, exactly as given")
-    quote: str = Field(description="Words copied exactly from that chunk")
+    """What the model returns: a handle from the prompt (E1, E2, ...) and a quote."""
+
+    evidence: str = Field(description="Handle of the evidence item, for example E3")
+    quote: str = Field(description="Words copied exactly from that evidence item")
 
 
 class ModelJudgment(BaseModel):
@@ -80,9 +82,11 @@ class ModelJudgment(BaseModel):
     )
 
 
-class VerifiedCitation(Citation):
+class VerifiedCitation(BaseModel):
     """A citation whose quote was found in the chunk, with its position there."""
 
+    chunk_id: str
+    quote: str
     char_start: int
     char_end: int
 
