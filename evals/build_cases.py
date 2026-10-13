@@ -1,7 +1,7 @@
 """Build the eval case bundles from a template patient. Nothing here is hand-edited JSON.
 
-    uv run python evals/build_cases.py                 # write evals/bundles/<case>.json
-    uv run python evals/build_cases.py --check         # fail if a committed bundle is stale
+    uv run python evals/build_cases.py                 # write bundles and evidence lists
+    uv run python evals/build_cases.py --check         # fail if either is stale
     uv run python evals/build_cases.py trim <fhir-dir> # rebuild evals/template/patient.json
 
 Two steps:
@@ -169,6 +169,7 @@ def trim(fhir_dir: Path) -> list[Resource]:
 
 REQUEST_DATE = date(2026, 10, 5)
 RECURRENCE_VISIT = date(2026, 6, 22)  # repeat-RFA cases: conservative care restarts here
+RECURRENCE_ODI = 46  # disability score when the repeat ablation is requested
 LEVELS = "L4-5 and L5-S1"
 NRS = "Numerical Rating Scale (NRS) 0-10"
 VAS = "Visual Analog Scale (VAS) 0-100 mm"
@@ -701,9 +702,9 @@ Plan: restart naproxen 500 mg twice daily with food. Resume the home exercise pr
 
 Conservative management since the pain returned: naproxen 500 mg twice daily and a daily home exercise program since {RECURRENCE_VISIT.isoformat()}, three months, with no meaningful improvement in pain or function.
 
-Today: pain {facts.baseline_nrs}/10 on the {NRS}, predominantly axial, across the lower lumbar spine, worse with extension and rotation, not radiating below the buttocks. The patient again cannot stand longer than 15 minutes.
+Today: pain {facts.baseline_nrs}/10 on the {NRS}, moderate to severe, predominantly axial, across the lower lumbar spine, worse with extension and rotation, not radiating below the buttocks. Disability: {RECURRENCE_ODI}% on the {ODI}. The patient again cannot stand longer than 15 minutes.
 Neurological exam: strength 5/5 in both legs, sensation intact, reflexes symmetric, straight-leg raise negative on both sides. No radicular symptoms and no neurogenic claudication.
-No new trauma, fever or weight loss, and no change on exam to suggest a cause of pain other than the facet joints; the lumbar MRI of {facts.mri.isoformat()} showed no fracture, tumor, infection or significant deformity. No spine surgery since the last visit. No fibromyalgia or widespread pain.
+No new trauma, fever or weight loss, and no change on exam to suggest a cause of pain other than the facet joints; the lumbar MRI of {facts.mri.isoformat()} showed no fracture, tumor, infection or significant deformity. No prior spine surgery, including no lumbar fusion. No fibromyalgia or any widespread or centralized pain syndrome.
 
 Plan: request prior authorization for repeat thermal radiofrequency ablation at the same levels ({LEVELS}, lumbar region, two levels). No other injections are planned for that day.
 """
@@ -712,6 +713,7 @@ Plan: request prior authorization for repeat thermal radiofrequency ablation at 
         _score(
             "pain-nrs-recurrence", facts.planning, facts.baseline_nrs, "enc-repeat-rfa-planning"
         ),
+        _odi("odi-recurrence", facts.planning, RECURRENCE_ODI, "enc-repeat-rfa-planning"),
         _note(
             "note-repeat-rfa-planning",
             facts.planning,
@@ -736,6 +738,188 @@ def facet_history(facts: Facts) -> list[Resource]:
     elif facts.variant == "repeat-rfa":
         resources += _prior_rfa(facts)
     return resources
+
+
+def label_evidence(facts: Facts) -> dict[str, list[str]]:
+    """For each criterion, every resource or request field that states the fact.
+
+    The guideline asks labels to list every resource that establishes them. Deriving the
+    lists here, from the same facts that write the chart, keeps them complete and in step
+    with the bundles: a resource is listed if its text or values state the fact, whether
+    it is a coded resource or a note. Criteria a case labels not_applicable list nothing,
+    and the case files ignore entries for criteria outside their variant.
+    """
+    note = "DocumentReference/{}".format
+    evaluation, pcp = note("note-pain-clinic-eval"), note("note-pcp")
+    repeat = facts.variant == "repeat-rfa"
+    planning = {
+        "second-diagnostic": [note("note-second-block-planning")],
+        "initial-rfa": [note("note-rfa-planning")],
+    }.get(facts.variant, [])
+    repeat_planning = [note("note-repeat-rfa-planning")] if repeat else []
+    recurrence = [note("note-recurrence")] if repeat else []
+
+    def block(number: int) -> dict[str, str]:
+        return {
+            "procedure": f"Procedure/mbb{number}",
+            "pre": f"Observation/pain-pre-mbb{number}",
+            "post": f"Observation/pain-post-mbb{number}",
+            "note": note(f"note-mbb{number}"),
+        }
+
+    blocks = [block(n) for n, done in ((1, facts.mbb1), (2, facts.mbb2)) if done]
+    block_all = [ref for b in blocks for ref in b.values()]
+    first_block = list(block(1).values()) if facts.mbb1 else []
+
+    # Follow-up after a prior ablation: coded visits, or a single progress note.
+    if not repeat:
+        rfa, rfa_result = [], []
+    else:
+        rfa = ["Procedure/rfa1", "Observation/pain-pre-rfa1", note("note-rfa1")]
+        if facts.rfa1_follow_up_coded:
+            visits = [m for m in (1, 3, 6, 8) if m <= facts.rfa1_relief_months]
+            rfa_result = [
+                ref
+                for m in visits
+                for ref in (f"Observation/pain-post-rfa1-{m}mo", note(f"note-rfa1-followup-{m}mo"))
+            ] + ["Observation/odi-post-rfa1-6mo"]
+        else:
+            rfa_result = [note("note-rfa1-progress")]
+
+    if facts.pt_attendance_contradicted:
+        conservative = [pcp, evaluation, note("note-pt-records")]
+    elif repeat:
+        # only care given after the pain returned
+        conservative = ["MedicationRequest/naproxen-recurrence", *recurrence, *repeat_planning]
+    else:
+        conservative = [
+            pcp,
+            "MedicationRequest/naproxen",
+            "Procedure/physical-therapy-course",
+            note("note-pt-discharge"),
+            "DiagnosticReport/mri-lumbar",
+            evaluation,
+        ]
+    pt_discharge = [] if facts.pt_attendance_contradicted else [note("note-pt-discharge")]
+    progress = [note("note-rfa1-progress")] if repeat and not facts.rfa1_follow_up_coded else []
+
+    if repeat:
+        # A repeat request is judged on the current episode: the visit after the pain
+        # returned and the visit that requests the repeat ablation.
+        current_pain = "Observation/pain-nrs-recurrence"
+        current_odi = "Observation/odi-recurrence"
+        general = {
+            "chronic-axial-pain-functional-deficit": [
+                *repeat_planning,
+                *recurrence,
+                current_pain,
+                current_odi,
+            ],
+            # the progress note, where there is one, is what dates the recurrence
+            "pain-minimum-3-months": [*progress, *recurrence, *repeat_planning],
+            "no-untreated-radiculopathy": repeat_planning,
+            "no-non-facet-pathology": repeat_planning,
+            "pain-scale-at-baseline": [current_pain, *repeat_planning, *recurrence],
+            "disability-scale-at-baseline": [current_odi, *repeat_planning],
+            "scales-documented": [*repeat_planning, *recurrence, current_pain, current_odi],
+            "no-generalized-pain-indication": repeat_planning,
+            "not-after-alif": repeat_planning,
+        }
+    else:
+        general = {
+            "chronic-axial-pain-functional-deficit": [
+                "Condition/chronic-low-back-pain",
+                pcp,
+                *pt_discharge,
+                evaluation,
+                "Observation/pain-nrs-baseline",
+                "Observation/odi-baseline",
+                *[b["note"] for b in blocks],
+            ],
+            "pain-minimum-3-months": [
+                "Condition/chronic-low-back-pain",
+                pcp,
+                "DiagnosticReport/mri-lumbar",
+                evaluation,
+            ],
+            "no-untreated-radiculopathy": (
+                [evaluation] if facts.leg_symptoms_unassessed else [pcp, evaluation]
+            ),
+            "no-non-facet-pathology": ["DiagnosticReport/mri-lumbar", evaluation],
+            "pain-scale-at-baseline": ["Observation/pain-nrs-baseline", evaluation],
+            "disability-scale-at-baseline": ["Observation/odi-baseline", evaluation],
+            "scales-documented": [
+                evaluation,
+                "Observation/pain-nrs-baseline",
+                "Observation/odi-baseline",
+                *[ref for b in blocks for ref in (b["pre"], b["post"], b["note"])],
+                *planning,
+            ],
+            "no-generalized-pain-indication": [evaluation],
+            "not-after-alif": [evaluation],
+        }
+
+    after_each_diagnostic = [*[ref for b in blocks for ref in (b["post"], b["note"])], *planning]
+    if facts.mbb2_post_vas is not None:
+        # a mismatch between scales needs both sides: the scale used before, and after
+        after_each_diagnostic = [
+            "Observation/pain-nrs-baseline",
+            "Observation/pain-pre-mbb2",
+            *after_each_diagnostic,
+        ]
+
+    return {
+        **general,
+        "conservative-care-failed": conservative,
+        "pain-scale-after-each-diagnostic": after_each_diagnostic,
+        "one-spinal-region-per-session": ["request.region", "request.levels"],
+        "levels-1-to-2": ["request.levels"],
+        "first-diagnostic-80pct-relief": [*first_block, *planning],
+        "second-diagnostic-same-level": [
+            "request.levels",
+            *[ref for ref in first_block if "Observation" not in ref],
+            *planning,
+        ],
+        "second-diagnostic-2-weeks-after-first": [
+            "request.service_date",
+            *[ref for ref in first_block if "Observation" not in ref],
+            *planning,
+        ],
+        "diagnostic-sessions-max-4": [
+            evaluation,
+            *[ref for ref in first_block if "Observation" not in ref],
+            *planning,
+        ],
+        "two-mbbs-80pct-sustained-relief": [*block_all, *planning],
+        "rfa-sessions-max-2": (
+            ["Procedure/rfa1", note("note-rfa1"), *recurrence, *repeat_planning]
+            if repeat
+            else [evaluation, *planning]
+        ),
+        "prior-rfa-50pct-6-months": [*rfa, *rfa_result, *recurrence, *repeat_planning],
+    }
+
+
+CASE_FILES = EVALS / "cases" / "facet"
+_CRITERION = re.compile(r"^  - criterion: (\S+)$")
+_OUTCOME = re.compile(r"^    outcome: (\S+)$")
+_EVIDENCE = re.compile(r"^    evidence: \[.*\]$")
+
+
+def with_generated_evidence(case_id: str) -> str:
+    """The case file's text with each label's evidence list set from label_evidence."""
+    generated = label_evidence(CASES[case_id])
+    lines = (CASE_FILES / f"{case_id}.yaml").read_text(encoding="utf-8").splitlines()
+    criterion = outcome = None
+    for i, line in enumerate(lines):
+        if match := _CRITERION.match(line):
+            criterion, outcome = match.group(1), None
+        elif match := _OUTCOME.match(line):
+            outcome = match.group(1)
+        elif criterion and _EVIDENCE.match(line):
+            evidence = [] if outcome == "not_applicable" else generated[criterion]
+            lines[i] = f"    evidence: [{', '.join(evidence)}]"
+    return "\n".join(lines) + "\n"
 
 
 def build(case_id: str) -> dict[str, Any]:
@@ -779,16 +963,20 @@ def main() -> int:
     stale = []
     BUNDLES.mkdir(exist_ok=True)
     for case_id in CASES:
-        path = BUNDLES / f"{case_id}.json"
-        text = dumps(build(case_id))
-        if args.check:
-            if not path.exists() or path.read_text(encoding="utf-8") != text:
-                stale.append(case_id)
-        else:
-            path.write_text(text, encoding="utf-8")
-            print(f"wrote {path.relative_to(EVALS.parent)}")
+        # the bundle, and the evidence lists in the case file, both come from the facts
+        outputs = {
+            BUNDLES / f"{case_id}.json": dumps(build(case_id)),
+            CASE_FILES / f"{case_id}.yaml": with_generated_evidence(case_id),
+        }
+        for path, text in outputs.items():
+            if args.check:
+                if not path.exists() or path.read_text(encoding="utf-8") != text:
+                    stale.append(str(path.relative_to(EVALS.parent)))
+            elif not path.exists() or path.read_text(encoding="utf-8") != text:
+                path.write_text(text, encoding="utf-8")
+                print(f"wrote {path.relative_to(EVALS.parent)}")
     if stale:
-        print(f"stale bundles, rerun build_cases.py: {', '.join(stale)}", file=sys.stderr)
+        print(f"stale, rerun build_cases.py: {', '.join(stale)}", file=sys.stderr)
         return 1
     return 0
 

@@ -22,14 +22,14 @@ expected:
   - criterion: chronic-axial-pain-functional-deficit
     outcome: met
     fact: >-
-      Predominantly axial low back pain, moderate to severe; NRS 7/10 and ODI 48% at baseline; cannot stand longer than 15 minutes.
-    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline, DocumentReference/note-repeat-rfa-planning, Observation/pain-nrs-recurrence]
+      At the 2026-09-21 visit: predominantly axial low back pain, moderate to severe, NRS 7/10 and ODI 46%; cannot stand longer than 15 minutes.
+    evidence: [DocumentReference/note-repeat-rfa-planning, DocumentReference/note-recurrence, Observation/pain-nrs-recurrence, Observation/odi-recurrence]
 
   - criterion: pain-minimum-3-months
     outcome: met
     fact: >-
-      Pain began 2024-11-04; after the 2025 ablation it returned around May 2026, more than three months before the request.
-    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+      After the 2025 ablation the pain returned around May 2026, more than three months before the request.
+    evidence: [DocumentReference/note-recurrence, DocumentReference/note-repeat-rfa-planning]
 
   - criterion: conservative-care-failed
     outcome: met
@@ -40,50 +40,50 @@ expected:
   - criterion: no-untreated-radiculopathy
     outcome: met
     fact: >-
-      Neurological exam documented: normal strength, sensation and reflexes, negative straight-leg raise, no radicular symptoms and no neurogenic claudication.
-    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+      Neurological exam at the 2026-09-21 visit: normal strength, sensation and reflexes, negative straight-leg raise, no radicular symptoms and no neurogenic claudication.
+    evidence: [DocumentReference/note-repeat-rfa-planning]
 
   - criterion: no-non-facet-pathology
     outcome: met
     fact: >-
-      Lumbar MRI shows facet arthropathy at L4-5 and L5-S1 with no fracture, tumor, infection or significant deformity.
-    evidence: [DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+      The 2026-09-21 note records no change on exam to suggest another cause and that the lumbar MRI showed no fracture, tumor, infection or significant deformity.
+    evidence: [DocumentReference/note-repeat-rfa-planning]
 
   - criterion: pain-scale-at-baseline
     outcome: met
     fact: >-
-      Baseline pain 7/10 on the Numerical Rating Scale, recorded at the pain clinic evaluation before any block.
-    evidence: [Observation/pain-nrs-baseline, DocumentReference/note-pain-clinic-eval]
+      Pain 7/10 on the Numerical Rating Scale at the 2026-06-22 and 2026-09-21 visits, before the requested repeat ablation.
+    evidence: [Observation/pain-nrs-recurrence, DocumentReference/note-repeat-rfa-planning, DocumentReference/note-recurrence]
 
   - criterion: disability-scale-at-baseline
     outcome: met
     fact: >-
-      Oswestry Disability Index 48% at the pain clinic evaluation.
-    evidence: [Observation/odi-baseline, DocumentReference/note-pain-clinic-eval]
+      Oswestry Disability Index 46% at the 2026-09-21 visit.
+    evidence: [Observation/odi-recurrence, DocumentReference/note-repeat-rfa-planning]
 
   - criterion: scales-documented
     outcome: met
     fact: >-
-      The notes name both scales, the Numerical Rating Scale (NRS) 0-10 and the Oswestry Disability Index (ODI).
-    evidence: [DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+      The current notes name both scales, the Numerical Rating Scale (NRS) 0-10 and the Oswestry Disability Index (ODI).
+    evidence: [DocumentReference/note-repeat-rfa-planning, DocumentReference/note-recurrence, Observation/pain-nrs-recurrence, Observation/odi-recurrence]
 
   - criterion: no-generalized-pain-indication
     outcome: met
     fact: >-
-      The record documents no fibromyalgia and no widespread or centralized pain syndrome.
-    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+      The 2026-09-21 note documents no fibromyalgia and no widespread or centralized pain syndrome.
+    evidence: [DocumentReference/note-repeat-rfa-planning]
 
   - criterion: not-after-alif
     outcome: met
     fact: >-
-      The record documents no prior spine surgery, including no lumbar fusion.
-    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-repeat-rfa-planning]
+      The 2026-09-21 note documents no prior spine surgery, including no lumbar fusion.
+    evidence: [DocumentReference/note-repeat-rfa-planning]
 
   - criterion: one-spinal-region-per-session
     outcome: met
     fact: >-
       The request is for the lumbar region only.
-    evidence: [request.region]
+    evidence: [request.region, request.levels]
 
   - criterion: levels-1-to-2
     outcome: met
@@ -101,13 +101,13 @@ expected:
     outcome: met
     fact: >-
       The ablation on 2025-08-04 gave (7 - 3) / 7 = 57% improvement in pain on the same NRS, sustained at the 1, 3, 6 and 8 month visits.
-    evidence: [Procedure/rfa1, Observation/pain-pre-rfa1, Observation/pain-post-rfa1-1mo, Observation/pain-post-rfa1-3mo, Observation/pain-post-rfa1-6mo, Observation/pain-post-rfa1-8mo, DocumentReference/note-rfa1-followup-6mo, DocumentReference/note-rfa1-followup-8mo]
+    evidence: [Procedure/rfa1, Observation/pain-pre-rfa1, DocumentReference/note-rfa1, Observation/pain-post-rfa1-1mo, DocumentReference/note-rfa1-followup-1mo, Observation/pain-post-rfa1-3mo, DocumentReference/note-rfa1-followup-3mo, Observation/pain-post-rfa1-6mo, DocumentReference/note-rfa1-followup-6mo, Observation/pain-post-rfa1-8mo, DocumentReference/note-rfa1-followup-8mo, Observation/odi-post-rfa1-6mo, DocumentReference/note-recurrence, DocumentReference/note-repeat-rfa-planning]
 
   - criterion: rfa-sessions-max-2
     outcome: met
     fact: >-
       One prior radiofrequency session, on 2025-08-04, 14 months before the request; none in the last 12 months.
-    evidence: [Procedure/rfa1, DocumentReference/note-repeat-rfa-planning]
+    evidence: [Procedure/rfa1, DocumentReference/note-rfa1, DocumentReference/note-recurrence, DocumentReference/note-repeat-rfa-planning]
 
   - criterion: diagnostics-repeated-after-2-years
     outcome: not_applicable
