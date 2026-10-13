@@ -1,0 +1,129 @@
+"""Score a case judgment against its labels (evals/README.md, "Metrics")."""
+
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+from precertly.evals.cases import EvalCase
+from precertly.judgment.models import CaseJudgment, Outcome
+
+NEGATIVE = (Outcome.NOT_MET, Outcome.INSUFFICIENT)
+
+
+class CriterionScore(BaseModel):
+    criterion: str
+    expected: Outcome
+    # What the verdict amounts to: a criterion the agent found not applicable counts as
+    # met, because that is its effect on the case outcome.
+    predicted: Outcome
+    agent_not_applicable: bool
+    scored: bool  # False for not_applicable labels: any agent outcome is accepted
+    correct: bool
+    false_approval: bool  # agent says met, label says not_met or insufficient
+    invalidated: bool
+    cited: list[str]
+    cited_in_label: int
+
+
+class CaseScore(BaseModel):
+    case_id: str
+    variant: str
+    expected_overall: Outcome
+    predicted_overall: Outcome
+    criteria: list[CriterionScore]
+    input_tokens: int
+    output_tokens: int
+    llm_latency_ms: float
+
+    @property
+    def overall_correct(self) -> bool:
+        return self.expected_overall == self.predicted_overall
+
+    @property
+    def overall_false_approval(self) -> bool:
+        return self.predicted_overall is Outcome.MET and self.expected_overall in NEGATIVE
+
+
+class Summary(BaseModel):
+    cases: int
+    cases_correct: int
+    case_false_approvals: int
+    scored_criteria: int
+    criteria_correct: int
+    criterion_accuracy: float | None
+    negative_labels: int  # scored labels that are not_met or insufficient
+    false_approvals: int
+    false_approval_rate: float | None  # false approvals / negative labels
+    citations: int
+    citations_in_label: int
+    citation_precision: float | None
+    invalidated_verdicts: int
+    input_tokens: int
+    output_tokens: int
+    llm_calls: int
+
+
+def score_case(case: EvalCase, judgment: CaseJudgment) -> CaseScore:
+    verdicts = {v.criterion: v for v in judgment.verdicts}
+    criteria = []
+    for label in case.expected:
+        verdict = verdicts[label.criterion]
+        predicted = Outcome(verdict.outcome)
+        scored = label.outcome is not Outcome.NOT_APPLICABLE
+        cited = sorted({c.resource for c in verdict.citations})
+        criteria.append(
+            CriterionScore(
+                criterion=label.criterion,
+                expected=label.outcome,
+                predicted=predicted,
+                agent_not_applicable=not verdict.applicable,
+                scored=scored,
+                correct=scored and predicted == label.outcome,
+                false_approval=predicted is Outcome.MET and label.outcome in NEGATIVE,
+                invalidated=verdict.invalidated is not None,
+                cited=cited,
+                cited_in_label=sum(resource in label.evidence for resource in cited),
+            )
+        )
+    return CaseScore(
+        case_id=case.id,
+        variant=case.variant,
+        expected_overall=case.expected_overall,
+        predicted_overall=judgment.overall,
+        criteria=criteria,
+        input_tokens=sum(v.usage.input_tokens for v in judgment.verdicts),
+        output_tokens=sum(v.usage.output_tokens for v in judgment.verdicts),
+        llm_latency_ms=sum(v.usage.latency_ms for v in judgment.verdicts),
+    )
+
+
+def _rate(numerator: int, denominator: int) -> float | None:
+    return round(numerator / denominator, 4) if denominator else None
+
+
+def summarize(scores: list[CaseScore]) -> Summary:
+    criteria = [c for score in scores for c in score.criteria]
+    scored = [c for c in criteria if c.scored]
+    negatives = [c for c in scored if c.expected in NEGATIVE]
+    # Citation precision is measured where the label lists evidence to compare against.
+    citing = [c for c in scored if c.cited]
+    citations = sum(len(c.cited) for c in citing)
+    in_label = sum(c.cited_in_label for c in citing)
+    return Summary(
+        cases=len(scores),
+        cases_correct=sum(s.overall_correct for s in scores),
+        case_false_approvals=sum(s.overall_false_approval for s in scores),
+        scored_criteria=len(scored),
+        criteria_correct=sum(c.correct for c in scored),
+        criterion_accuracy=_rate(sum(c.correct for c in scored), len(scored)),
+        negative_labels=len(negatives),
+        false_approvals=sum(c.false_approval for c in negatives),
+        false_approval_rate=_rate(sum(c.false_approval for c in negatives), len(negatives)),
+        citations=citations,
+        citations_in_label=in_label,
+        citation_precision=_rate(in_label, citations),
+        invalidated_verdicts=sum(c.invalidated for c in criteria),
+        input_tokens=sum(s.input_tokens for s in scores),
+        output_tokens=sum(s.output_tokens for s in scores),
+        llm_calls=len(criteria),
+    )
