@@ -40,7 +40,7 @@ Label the full set for the variant, not only the criteria a case is designed to 
 5. **A documented fact that violates a requirement is `not_met`, not `insufficient`.** If the record shows pain was measured on two different scales, the same-scale criterion is `not_met`; any criterion that needs a comparable before-and-after value becomes `insufficient`, because the comparison cannot be made.
 6. **Documented exceptions count when the policy allows them.** If the quote provides for an exception that "must be clearly documented" (for example, the two-week interval between diagnostic procedures), a clearly documented exception makes the criterion `met`.
 7. **Request-stage criteria are judged from the request.** Levels, spinal region, procedure code and setting come from the case's `request` block, not the chart.
-8. **Dates are relative to the request date** in the case file, with one exception: a window or interval that ends at the requested service is anchored on the request's `service_date` when it has one. That covers session counts per rolling 12 months and the interval between two procedures, because the requested session is the one being counted or spaced.
+8. **Dates are relative to the request date** in the case file. Limits and intervals that apply to the requested service (minimum intervals, sessions per rolling window, time since a prior procedure) are measured to `request.service_date` when the case has one, because the requested service has not happened yet.
 9. **Policy version is fixed per case.** Each case records the policy version it was labeled against. A stale-version case states both versions and is labeled against the version in force on the request date.
 
 ## Overall outcome

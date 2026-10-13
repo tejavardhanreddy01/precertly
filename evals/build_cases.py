@@ -17,6 +17,11 @@ Two steps:
    notes, observations and procedures in a bundle always agree with each other, except
    where a case is about a disagreement.
 
+The request itself is not in the bundle. Each case file states it in its `request` block
+(dates, procedure, codes, region, levels, same-day blocks, and `technique`). `technique`
+is a structured field written by hand in the case file, one of medial_branch_block,
+intraarticular_injection or radiofrequency_ablation; nothing parses it from text.
+
 Synthetic data only. Resources a label can cite get readable, stable ids.
 """
 
