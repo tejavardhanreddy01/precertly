@@ -238,3 +238,110 @@ def test_no_usable_model_answer_becomes_insufficient_instead_of_crashing():
     assert (verdict.outcome, verdict.model_outcome) == ("insufficient", "none")
     assert "no structured answer" in verdict.invalidated
     assert verdict.usage.input_tokens == 200
+
+
+# --- rules in the judge ------------------------------------------------------------------
+
+
+def _with_rule(criterion_id, rule, answer, *, shadow=False):
+    from precertly.judgment import judge_with_rule
+
+    criterion = FACET.criterion(criterion_id)
+    llm = FakeLLM(default=answer)
+    verdict = asyncio.run(judge_with_rule(llm, criterion, REQUEST, CHUNKS, rule, shadow=shadow))
+    return verdict, llm
+
+
+def _rule(kind, **fields):
+    from precertly.judgment import RuleResult
+
+    return RuleResult(kind=kind, statement="computed: 71%", inputs=["Observation/a"], **fields)
+
+
+def test_a_decided_rule_is_final_and_the_model_is_not_asked():
+    cited = _answer("met", [(NOTE.id, "Before the block: 7/10.")])
+    verdict, llm = _with_rule(
+        "two-mbbs-80pct-sustained-relief", _rule("decided", outcome="not_met"), cited
+    )
+    assert (verdict.outcome, verdict.decided_by, verdict.rule_kind) == (
+        "not_met",
+        "rule",
+        "decided",
+    )
+    assert llm.prompts == []
+    (computed,) = verdict.computed
+    assert computed.computed is True and computed.inputs == ["Observation/a"]
+    assert verdict.citations == [] and verdict.invalidated is None
+
+
+def test_the_shadow_call_is_the_plain_model_call_and_never_changes_the_outcome():
+    model_says_met = _answer("met", [(NOTE.id, "Before the block: 7/10.")])
+    rule = _rule("decided", outcome="insufficient")
+    verdict, llm = _with_rule("two-mbbs-80pct-sustained-relief", rule, model_says_met, shadow=True)
+    assert verdict.outcome == "insufficient"  # the rule stands; the model cannot upgrade it
+    assert (verdict.shadow.outcome, verdict.shadow.model_outcome) == ("met", "met")
+    ((prompt, _),) = llm.prompts
+    criterion = FACET.criterion("two-mbbs-80pct-sustained-relief")
+    assert prompt == build_prompt(criterion, REQUEST, CHUNKS)  # exactly the baseline prompt
+    assert verdict.model_only().outcome == "met"
+
+
+def test_a_rule_can_decide_that_a_criterion_does_not_apply():
+    rule = _rule("decided", outcome="met", applicable=False)
+    verdict, _ = _with_rule("same-day-blocks-justified", rule, _answer("not_met"))
+    assert (verdict.outcome, verdict.applicable, verdict.decided_by) == ("met", False, "rule")
+
+
+def test_a_partial_rule_gives_the_model_the_computed_fact():
+    uncited = _answer("not_met")  # the computed fact is the evidence
+    verdict, llm = _with_rule("second-diagnostic-2-weeks-after-first", _rule("partial"), uncited)
+    assert (verdict.outcome, verdict.decided_by, verdict.invalidated) == (
+        "not_met",
+        "rule+model",
+        None,
+    )
+    ((prompt, _),) = llm.prompts
+    assert "COMPUTED FACT\ncomputed: 71%" in prompt and "Do not recompute it" in prompt
+    assert verdict.computed[0].statement == "computed: 71%"
+
+
+def test_a_partial_rule_with_shadow_makes_both_calls():
+    cited = _answer("met", [(NOTE.id, "Before the block: 7/10.")])
+    verdict, llm = _with_rule("first-diagnostic-80pct-relief", _rule("partial"), cited, shadow=True)
+    with_fact, without = (prompt for prompt, _ in llm.prompts)
+    assert "COMPUTED FACT" in with_fact and "COMPUTED FACT" not in without
+    assert verdict.shadow is not None and verdict.usage.input_tokens == 100
+
+
+@pytest.mark.parametrize("rule", [None, "absent"])
+def test_no_rule_or_an_absent_rule_is_the_plain_model_verdict(rule):
+    rule = _rule("absent") if rule else None
+    answer = _answer("met", [(NOTE.id, "Before the block: 7/10.")])
+    verdict, llm = _with_rule("levels-1-to-2", rule, answer, shadow=True)
+    assert (verdict.outcome, verdict.decided_by, verdict.shadow) == ("met", "model", None)
+    assert len(llm.prompts) == 1 and "COMPUTED FACT" not in llm.prompts[0][0]
+    assert verdict.model_only() is verdict
+    # without a computed fact, a decision still needs a citation
+    uncited, _ = _with_rule("levels-1-to-2", rule, _answer("met"))
+    assert uncited.invalidated == "met with no citation"
+
+
+def test_model_only_view_recombines_the_case_from_shadow_verdicts():
+    from precertly.evals import load_cases
+    from precertly.fhir import load_bundle
+    from precertly.judgment import StructuredChart, model_only
+
+    case = load_cases()["facet-05"]  # mixed scales: the model approves, the rule does not
+    chart = StructuredChart.from_bundle(load_bundle(case.bundle_path()))
+    approve_everything = _answer("met", [(NOTE.id, "Before the block: 7/10.")])
+    llm, evidence = FakeLLM(default=approve_everything), FixedEvidence()
+    judgment = asyncio.run(
+        judge_case(llm, FACET, case.variant, case.request, evidence, structured=chart, shadow=True)
+    )
+    by_id = {v.criterion: v for v in judgment.verdicts}
+    assert by_id["two-mbbs-80pct-sustained-relief"].outcome == "insufficient"
+    assert by_id["pain-scale-after-each-diagnostic"].outcome == "not_met"
+    assert by_id["same-day-blocks-justified"].applicable is False
+    assert judgment.overall is Outcome.NOT_MET
+    # the same run, as the model alone judged it, would have approved the case
+    assert model_only(judgment, FACET).overall is Outcome.MET

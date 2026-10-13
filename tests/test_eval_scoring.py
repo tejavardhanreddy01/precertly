@@ -209,12 +209,13 @@ def test_runner_saves_after_every_case_and_can_be_resumed(tmp_path, monkeypatch)
 
     from precertly.evals import run
 
-    monkeypatch.setattr(run, "run_metadata", lambda: {"run_date": "2026-10-13", "git_sha": "abc"})
+    metadata = {"run_date": "2026-10-13", "git_sha": "abc"}
+    monkeypatch.setattr(run, "run_metadata", lambda rules=False: dict(metadata))
     out = tmp_path / "results.json"
     seen_on_disk = []
 
     def fake_run(crash_after=None):
-        async def _run(cases, save):
+        async def _run(cases, save, rules=False):
             results = []
             for number, case in enumerate(cases, start=1):
                 judgment = _judgment(case)
@@ -321,3 +322,43 @@ def test_resume_also_refuses_different_policy_versions_or_judgment_settings():
 
     other_settings = current | {"judgment": current["judgment"] | {"max_tokens": 400}}
     assert any("judgment" in c for c in resume_conflicts(other_settings, current))
+
+
+def test_model_only_view_lists_where_rule_and_model_part():
+    from precertly.evals import run
+    from precertly.judgment.models import ComputedCitation, ShadowVerdict
+
+    case = CASES["facet-05"]
+    label = next(x for x in case.expected if x.criterion == "two-mbbs-80pct-sustained-relief")
+    by_rule = _verdict(label, "insufficient", cite=[])
+    by_rule.decided_by, by_rule.rule_kind = "rule", "decided"
+    by_rule.computed = [ComputedCitation(statement="not comparable", inputs=["Procedure/mbb2"])]
+    by_rule.shadow = ShadowVerdict(
+        outcome="met",
+        applicable=True,
+        invalidated=None,
+        model_outcome="met",
+        citations=[],
+        usage=USAGE,
+    )
+    judgment = _judgment(case, {label.criterion: by_rule})
+    score = score_case(case, judgment)
+    scored = next(c for c in score.criteria if c.criterion == label.criterion)
+    assert scored.cited == ["Procedure/mbb2"] and scored.decided_by == "rule"
+    assert score.llm_calls == len(case.expected) + 1  # the shadow call is counted
+
+    view = run._model_only_view([(score, judgment)])
+    assert view["rule_vs_model"] == [
+        {
+            "case": "facet-05",
+            "criterion": label.criterion,
+            "label": "insufficient",
+            "decided_by": "rule",
+            "with_rules": "insufficient",
+            "model_only": "met",
+            "with_rules_correct": True,
+            "model_only_correct": False,
+        }
+    ]
+    assert view["summary_model_only"]["false_approvals"] == 1
+    assert summarize([score]).false_approvals == 0

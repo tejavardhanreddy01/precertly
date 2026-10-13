@@ -47,8 +47,14 @@ def _describe(chunk: EvidenceChunk) -> str:
 
 
 def build_prompt(
-    criterion: Criterion, request: PriorAuthRequest, chunks: list[EvidenceChunk]
+    criterion: Criterion,
+    request: PriorAuthRequest,
+    chunks: list[EvidenceChunk],
+    computed_fact: str | None = None,
 ) -> str:
+    """The prompt for one criterion. With computed_fact (a rule's partial result), the
+    model is told what code has already established and asked to judge only the rest;
+    without it the prompt is exactly the model-only one."""
     lines = [
         "CRITERION",
         f"Id: {criterion.id}",
@@ -67,5 +73,15 @@ def build_prompt(
     lines += ["", f"REQUEST DATE: {request.date.isoformat()}", "", "EVIDENCE"]
     for handle, chunk in handles(chunks).items():
         lines += [f"[{handle}] ({_describe(chunk)})", chunk.text, ""]
+    if computed_fact:
+        lines += [
+            "COMPUTED FACT",
+            computed_fact,
+            "This was computed from the coded record and is correct. Do not recompute it, "
+            "contradict it, or decide the criterion against it. Judge only what it leaves "
+            "open, from the evidence above. You may answer without a citation if the "
+            "computed fact alone settles the criterion.",
+            "",
+        ]
     lines.append("Judge the criterion from this evidence.")
     return "\n".join(lines)

@@ -100,6 +100,27 @@ class VerifiedCitation(BaseModel):
         return self.chunk_id.split("#")[0]
 
 
+class ComputedCitation(BaseModel):
+    """What a rule read and what it computed. Not a verbatim quote: it is checked by
+    recomputing it from the listed inputs, not by finding its words in a chunk."""
+
+    computed: Literal[True] = True
+    statement: str
+    inputs: list[str]
+
+
+class ShadowVerdict(BaseModel):
+    """The model-only verdict for a criterion a rule decided or informed: the same call
+    the baseline makes, kept so rule and model can be compared within one run."""
+
+    outcome: Literal["met", "not_met", "insufficient"]
+    applicable: bool
+    invalidated: str | None
+    model_outcome: str
+    citations: list[VerifiedCitation]
+    usage: LLMUsage
+
+
 class CriterionVerdict(BaseModel):
     criterion: str
     outcome: Literal["met", "not_met", "insufficient"]
@@ -115,6 +136,29 @@ class CriterionVerdict(BaseModel):
     model_outcome: str
     chunk_ids: list[str] = Field(default_factory=list, description="Evidence shown to the model")
     usage: LLMUsage
+    # "model": no rule, or the rule found no structured data. "rule": code decided.
+    # "rule+model": code fixed a fact and the model judged the rest.
+    decided_by: Literal["model", "rule", "rule+model"] = "model"
+    rule_kind: Literal["decided", "partial", "absent"] | None = None
+    computed: list[ComputedCitation] = Field(default_factory=list)
+    shadow: ShadowVerdict | None = None
+
+    def model_only(self) -> CriterionVerdict:
+        """This verdict as the model alone would have given it."""
+        if self.shadow is None:
+            return self
+        return CriterionVerdict(
+            criterion=self.criterion,
+            outcome=self.shadow.outcome,
+            applicable=self.shadow.applicable,
+            confidence=self.confidence,
+            rationale=self.rationale,
+            citations=self.shadow.citations,
+            invalidated=self.shadow.invalidated,
+            model_outcome=self.shadow.model_outcome,
+            chunk_ids=self.chunk_ids,
+            usage=self.shadow.usage,
+        )
 
 
 class ChecklistItem(BaseModel):

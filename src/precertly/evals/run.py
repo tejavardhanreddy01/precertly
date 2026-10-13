@@ -25,10 +25,19 @@ from pathlib import Path
 
 from precertly.db import get_engine, session_factory
 from precertly.evals.cases import EVALS_DIR, EvalCase, load_cases, scored_criteria
-from precertly.evals.scoring import CaseScore, Summary, score_case, summarize
+from precertly.evals.rules_check import check_cases
+from precertly.evals.scoring import CaseScore, CriterionScore, Summary, score_case, summarize
 from precertly.fhir import chunk_bundle, load_bundle
 from precertly.ingest import estimate_embedding, ingest_bundle
-from precertly.judgment import SYSTEM, CaseJudgment, ChartEvidence, judge_case
+from precertly.judgment import (
+    RULES_VERSION,
+    SYSTEM,
+    CaseJudgment,
+    ChartEvidence,
+    StructuredChart,
+    judge_case,
+    model_only,
+)
 from precertly.judgment.judge import MAX_TOKENS, TEMPERATURE
 from precertly.judgment.prompt import PROMPT_VERSION
 from precertly.llm import BedrockClient, BedrockEmbedder
@@ -37,34 +46,46 @@ from precertly.retrieval.search import DEFAULT_CANDIDATES, RRF_K
 from precertly.settings import get_settings
 
 
-def _estimate(cases: list[EvalCase]) -> None:
+def _estimate(cases: list[EvalCase], rules: bool = False) -> None:
     settings = get_settings()
     policies = load_policies()
-    calls = sum(len(scored_criteria(policies[c.policy], c.variant)) for c in cases)
+    criteria = sum(len(scored_criteria(policies[c.policy], c.variant)) for c in cases)
+    calls = criteria
+    if rules:
+        # Every criterion still gets its model-only call (as the verdict itself, or in
+        # shadow); a partial rule result adds a second call with the computed fact.
+        partial = sum(c.result.kind == "partial" for c in check_cases(cases))
+        calls += partial
+        print(f"Rules on: {partial} partial rule results add {partial} model calls")
     chunks = [chunk for c in cases for chunk in chunk_bundle(load_bundle(c.bundle_path()))]
     embedding = estimate_embedding(chunks)
-    average_chunk = sum(len(c.text) for c in chunks) / len(chunks)
-    # system prompt + criterion + request fields + k chart chunks, at ~4 characters per token
-    prompt_chars = len(SYSTEM) + 1500 + settings.judgment_top_k * average_chunk
-    llm_minutes = calls / (settings.llm_requests_per_minute or 60)
-    embed_calls = embedding.unique_texts + calls
-    embed_minutes = embed_calls / (settings.embedding_requests_per_minute or 600)
+    # Measured on baseline v2 (k = 8, prompt version 2): 3,439 input and about 270 output
+    # tokens per model call, and 184 calls in 13 minutes at the 20 requests/minute quota.
+    input_tokens, output_tokens = calls * 3440, calls * 270
+    llm_minutes = calls / (184 / 13)
+    embed_calls = embedding.unique_texts + criteria
     print(
-        f"{len(cases)} cases, {calls} criteria to judge\n"
+        f"{len(cases)} cases, {criteria} criteria to judge\n"
         f"Model calls ({settings.bedrock_model_id}): {calls}, about "
-        f"{int(calls * prompt_chars / 4):,} input tokens and {calls * 250:,} output tokens\n"
+        f"{input_tokens:,} input tokens and {output_tokens:,} output tokens\n"
         f"Embedding calls: up to {embed_calls} ({embedding.unique_texts} chunk texts before "
-        f"any cached vectors, {calls} search queries), about "
-        f"{embedding.approx_tokens + calls * 60:,} tokens\n"
-        f"Time at the configured rates: about {llm_minutes + embed_minutes:.0f} minutes"
+        f"any cached vectors, {criteria} search queries), about "
+        f"{embedding.approx_tokens + criteria * 60:,} tokens\n"
+        f"Time: about {llm_minutes:.0f} minutes (embedding calls run inside that time)"
     )
 
 
 Result = tuple[CaseScore, CaseJudgment]
 
 
-async def _run(cases: list[EvalCase], save: Callable[[list[Result]], None]) -> list[Result]:
-    """Judge and score the cases, calling save after each one so a crash loses one case."""
+async def _run(
+    cases: list[EvalCase], save: Callable[[list[Result]], None], rules: bool = False
+) -> list[Result]:
+    """Judge and score the cases, calling save after each one so a crash loses one case.
+
+    With rules, criteria that have a deterministic rule are decided or informed by code,
+    and the model-only call is still made for them in shadow.
+    """
     settings = get_settings()
     policies = load_policies()
     llm, embedder = BedrockClient(settings), BedrockEmbedder(settings)
@@ -75,9 +96,10 @@ async def _run(cases: list[EvalCase], save: Callable[[list[Result]], None]) -> l
             async with sessions() as session:
                 # All cases share one synthetic patient, so each ingest replaces the
                 # previous case's chunks; vectors for unchanged text come from the cache.
+                bundle = load_bundle(case.bundle_path())
                 ingested = await ingest_bundle(
                     session,
-                    load_bundle(case.bundle_path()),
+                    bundle,
                     embedder=embedder,
                     commit_batches=True,
                 )
@@ -88,7 +110,13 @@ async def _run(cases: list[EvalCase], save: Callable[[list[Result]], None]) -> l
                     session, ingested.case_id, embedder, k=settings.judgment_top_k
                 )
                 judgment = await judge_case(
-                    llm, policies[case.policy], case.variant, case.request, evidence
+                    llm,
+                    policies[case.policy],
+                    case.variant,
+                    case.request,
+                    evidence,
+                    structured=StructuredChart.from_bundle(bundle) if rules else None,
+                    shadow=rules,
                 )
             score = score_case(case, judgment)
             wrong = [c.criterion for c in score.criteria if not c.correct]
@@ -115,7 +143,7 @@ def _git(*args: str) -> str:
         return "unknown"
 
 
-def run_metadata() -> dict[str, object]:
+def run_metadata(rules: bool = False) -> dict[str, object]:
     """What a results file needs for the run to be compared or repeated."""
     settings = get_settings()
     return {
@@ -143,12 +171,52 @@ def run_metadata() -> dict[str, object]:
             "temperature": TEMPERATURE,
             "top_k": settings.judgment_top_k,
         },
+        "rules": {"enabled": rules, "version": RULES_VERSION if rules else None, "shadow": rules},
         "policies": {
             policy.id: {source.document: source.version for source in policy.sources}
             for policy in load_policies().values()
         },
         "annotation": "single annotator; not clinically validated",
     }
+
+
+def _model_only_view(results: list[Result]) -> dict[str, object]:
+    """The same run scored as if the model had judged every criterion alone, from the
+    shadow calls, and every criterion where rule and model ended up apart."""
+    cases, policies = load_cases(), load_policies()
+    scores, apart = [], []
+    for score, judgment in results:
+        case = cases[score.case_id]
+        alone = model_only(judgment, policies[case.policy])
+        alone_score = score_case(case, alone)
+        scores.append(alone_score)
+        for with_rule, without in zip(score.criteria, alone_score.criteria, strict=True):
+            final = (with_rule.predicted, with_rule.agent_not_applicable)
+            if with_rule.decided_by != "model" and final != (
+                without.predicted,
+                without.agent_not_applicable,
+            ):
+                apart.append(
+                    {
+                        "case": score.case_id,
+                        "criterion": with_rule.criterion,
+                        "label": with_rule.expected.value,
+                        "decided_by": with_rule.decided_by,
+                        "with_rules": _shown(with_rule),
+                        "model_only": _shown(without),
+                        "with_rules_correct": with_rule.correct,
+                        "model_only_correct": without.correct,
+                    }
+                )
+    return {
+        "summary_model_only": summarize(scores).model_dump(),
+        "model_only_overall": {s.case_id: s.predicted_overall.value for s in scores},
+        "rule_vs_model": apart,
+    }
+
+
+def _shown(criterion: CriterionScore) -> str:
+    return "not_applicable" if criterion.agent_not_applicable else criterion.predicted.value
 
 
 # A results file is one run: every case in it must come from the same code and settings.
@@ -159,6 +227,7 @@ IDENTITY = (
     "system_prompt_sha256",
     "retrieval",
     "judgment",
+    "rules",
     "policies",
 )
 
@@ -202,10 +271,12 @@ def _report(summary: Summary, scores: list[CaseScore]) -> str:
         f"Citation precision: {percent(summary.citation_precision)} overall"
         f" ({summary.citations_in_label} of {summary.citations} cited resources are in the label),"
         f" {percent(summary.citation_precision_macro)} macro-averaged over criteria",
-        f"Invalidated verdicts: {summary.invalidated_verdicts} of {summary.llm_calls}"
+        f"Invalidated verdicts: {summary.invalidated_verdicts} of {summary.scored_criteria}"
         f" ({summary.quote_invalidations} citation or quote, "
         f"{summary.unusable_answers} unusable model answers)",
-        f"Tokens: {summary.input_tokens:,} in, {summary.output_tokens:,} out",
+        f"Tokens: {summary.input_tokens:,} in, {summary.output_tokens:,} out"
+        f" over {summary.llm_calls} model calls",
+        f"Decided by: {summary.decided_by}",
     ]
     if summary.unusable_answers:
         lines += [
@@ -227,6 +298,11 @@ def main() -> int:
     parser.add_argument("--estimate", action="store_true", help="print the size of the run")
     parser.add_argument("--out", type=Path, help="results file (default: evals/results/...)")
     parser.add_argument(
+        "--rules",
+        action="store_true",
+        help="decide or inform criteria with the deterministic rules, with shadow model calls",
+    )
+    parser.add_argument(
         "--resume",
         type=Path,
         help="add the cases not yet in this results file; refused unless the git sha, "
@@ -242,10 +318,10 @@ def main() -> int:
     cases = [available[case_id] for case_id in wanted]
 
     if args.estimate:
-        _estimate(cases)
+        _estimate(cases, args.rules)
         return 0
 
-    metadata = run_metadata()
+    metadata = run_metadata(args.rules)
     previous: list[tuple[CaseScore, CaseJudgment]] = []
     seconds_so_far = 0.0
     if args.resume:
@@ -291,10 +367,12 @@ def main() -> int:
                 for score, judgment in results
             ],
         }
+        if args.rules:
+            payload |= _model_only_view(results)
         out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         return summary
 
-    new_results = asyncio.run(_run(cases, save))
+    new_results = asyncio.run(_run(cases, save, args.rules))
     summary = save(new_results)
     scores = sorted(
         (score for score, _ in previous + new_results), key=lambda s: order.index(s.case_id)

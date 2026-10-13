@@ -27,6 +27,7 @@ class CriterionScore(BaseModel):
     # The model gave no usable answer at all and the verdict was set to insufficient. A
     # subset of invalidated; the rest are citations or quotes that did not verify.
     unusable_answer: bool = False
+    decided_by: str = "model"
     cited: list[str]
     cited_in_label: int
 
@@ -40,6 +41,7 @@ class CaseScore(BaseModel):
     input_tokens: int
     output_tokens: int
     llm_latency_ms: float
+    llm_calls: int = 0
 
     @property
     def overall_correct(self) -> bool:
@@ -81,6 +83,7 @@ class Summary(BaseModel):
     input_tokens: int
     output_tokens: int
     llm_calls: int
+    decided_by: dict[str, int]
 
 
 def score_case(case: EvalCase, judgment: CaseJudgment) -> CaseScore:
@@ -93,7 +96,11 @@ def score_case(case: EvalCase, judgment: CaseJudgment) -> CaseScore:
             correct = not verdict.applicable
         else:
             correct = predicted == label.outcome
-        cited = sorted({c.resource for c in verdict.citations})
+        # What the verdict rests on: quoted chunks, and the inputs of a computed citation.
+        cited = sorted(
+            {c.resource for c in verdict.citations}
+            | {ref.split("#")[0] for computed in verdict.computed for ref in computed.inputs}
+        )
         criteria.append(
             CriterionScore(
                 criterion=label.criterion,
@@ -104,19 +111,25 @@ def score_case(case: EvalCase, judgment: CaseJudgment) -> CaseScore:
                 false_approval=predicted is Outcome.MET and label.outcome in NEGATIVE,
                 invalidated=verdict.invalidated is not None,
                 unusable_answer=verdict.model_outcome == "none",
+                decided_by=verdict.decided_by,
                 cited=cited,
                 cited_in_label=sum(resource in label.evidence for resource in cited),
             )
         )
+    # Shadow calls are real model calls, so they count toward the run's cost.
+    usages = [v.usage for v in judgment.verdicts] + [
+        v.shadow.usage for v in judgment.verdicts if v.shadow is not None
+    ]
     return CaseScore(
         case_id=case.id,
         variant=case.variant,
         expected_overall=case.expected_overall,
         predicted_overall=judgment.overall,
         criteria=criteria,
-        input_tokens=sum(v.usage.input_tokens for v in judgment.verdicts),
-        output_tokens=sum(v.usage.output_tokens for v in judgment.verdicts),
-        llm_latency_ms=sum(v.usage.latency_ms for v in judgment.verdicts),
+        input_tokens=sum(u.input_tokens for u in usages),
+        output_tokens=sum(u.output_tokens for u in usages),
+        llm_latency_ms=sum(u.latency_ms for u in usages),
+        llm_calls=sum(u.calls for u in usages),
     )
 
 
@@ -172,5 +185,6 @@ def summarize(scores: list[CaseScore]) -> Summary:
         ),
         input_tokens=sum(s.input_tokens for s in scores),
         output_tokens=sum(s.output_tokens for s in scores),
-        llm_calls=len(criteria),
+        llm_calls=sum(s.llm_calls for s in scores) or len(criteria),
+        decided_by=dict(Counter(c.decided_by for c in criteria)),
     )
