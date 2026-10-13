@@ -14,6 +14,7 @@ uv run ruff check . && uv run ruff format .     # lint + format
 uv run pre-commit install                       # once per clone: ruff + pytest before every commit
 data/synthea/generate.sh 10                     # synthetic FHIR patients (Java 11+)
 uv run python evals/build_cases.py [--check]    # rebuild or verify the eval case bundles
+uv run python -m precertly.evals.run --estimate  # size of an eval run; without --estimate it calls Bedrock (ask first)
 uv run python -m precertly.fhir <bundle-or-dir>  # chunk summary for FHIR bundles
 docker compose up -d db                         # Postgres 16 + pgvector on localhost:5433
 uv run alembic upgrade head                     # apply migrations (URL from PRECERTLY_DATABASE_URL)
@@ -30,6 +31,8 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - `src/precertly/db/` – SQLAlchemy models (spec data model) and async session; migrations in `migrations/`
 - `src/precertly/ingest/` – bundle → `chart_chunks`; embeds only notes, conditions, procedures, medication requests; vectors cached by sha256
 - `src/precertly/retrieval/` – `hybrid_search` (full-text + pgvector, RRF) and `observations` (by code and date)
+- `src/precertly/judgment/` – per-criterion verdicts with verified quotes, combined by the variant logic; only `chart` and `request` stage criteria are judged
+- `src/precertly/evals/` – eval case schema, scorer, and the runner (`python -m precertly.evals.run`)
 - `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile)
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
 - `data/synthea/` – patient generator (output is git-ignored)
@@ -42,6 +45,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - After editing a policy, run `uv run python scripts/verify_policy_quotes.py` (needs network) and keep fetched documents out of the repo. Never copy CPT descriptors.
 - Every verdict the agent produces must cite FHIR resource ids and verbatim quotes that are verified against the source text.
 - The agent never outputs a denial on its own: outcomes are met, not_met or insufficient, and a human decides.
+- A verdict whose quote is not found in the cited chunk, or a met / not_met verdict with no citation, becomes `insufficient`. Never weaken this to make a result look better.
 - Schema changes go through an Alembic migration; `uv run alembic check` must report no drift.
 - DB tests need `docker compose up -d db` locally (they skip otherwise) and always run in CI.
 - Python 3.12, typed, Pydantic v2, async where I/O happens. Keep CI green: ruff + pytest.
