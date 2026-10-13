@@ -45,6 +45,12 @@ class CaseScore(BaseModel):
         return self.predicted_overall is Outcome.MET and self.expected_overall in NEGATIVE
 
 
+class CitationPrecision(BaseModel):
+    cited: int
+    in_label: int
+    precision: float
+
+
 class Summary(BaseModel):
     cases: int
     cases_correct: int
@@ -57,7 +63,11 @@ class Summary(BaseModel):
     false_approval_rate: float | None  # false approvals / negative labels
     citations: int
     citations_in_label: int
-    citation_precision: float | None
+    citation_precision: float | None  # micro: all cited resources pooled
+    # macro: the mean of the per-criterion precisions, so a criterion with many
+    # citations does not dominate
+    citation_precision_macro: float | None
+    citation_precision_by_criterion: dict[str, CitationPrecision]
     invalidated_verdicts: int
     input_tokens: int
     output_tokens: int
@@ -112,6 +122,18 @@ def summarize(scores: list[CaseScore]) -> Summary:
     citing = [c for c in criteria if c.cited and c.expected is not Outcome.NOT_APPLICABLE]
     citations = sum(len(c.cited) for c in citing)
     in_label = sum(c.cited_in_label for c in citing)
+    by_criterion: dict[str, CitationPrecision] = {}
+    for criterion in dict.fromkeys(c.criterion for c in citing):
+        cited = sum(len(c.cited) for c in citing if c.criterion == criterion)
+        found = sum(c.cited_in_label for c in citing if c.criterion == criterion)
+        by_criterion[criterion] = CitationPrecision(
+            cited=cited, in_label=found, precision=round(found / cited, 4)
+        )
+    macro = (
+        round(sum(p.precision for p in by_criterion.values()) / len(by_criterion), 4)
+        if by_criterion
+        else None
+    )
     return Summary(
         cases=len(scores),
         cases_correct=sum(s.overall_correct for s in scores),
@@ -125,6 +147,8 @@ def summarize(scores: list[CaseScore]) -> Summary:
         citations=citations,
         citations_in_label=in_label,
         citation_precision=_rate(in_label, citations),
+        citation_precision_macro=macro,
+        citation_precision_by_criterion=by_criterion,
         invalidated_verdicts=sum(c.invalidated for c in criteria),
         input_tokens=sum(s.input_tokens for s in scores),
         output_tokens=sum(s.output_tokens for s in scores),

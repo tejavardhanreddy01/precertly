@@ -97,6 +97,33 @@ def test_citation_precision_counts_resources_outside_the_label():
     assert (scored.cited_in_label, len(scored.cited)) == (1, 2)
 
 
+def test_citation_precision_is_reported_per_criterion_and_macro_averaged():
+    case = CASES["facet-01"]
+    odi = next(x for x in case.expected if x.criterion == "disability-scale-at-baseline")
+    levels = next(x for x in case.expected if x.criterion == "levels-1-to-2")
+    overrides = {
+        # 1 of 4 cited resources is in the label
+        odi.criterion: _verdict(
+            odi, cite=["Observation/odi-baseline", "Condition/a", "Condition/b", "Condition/c"]
+        ),
+        # 1 of 1
+        levels.criterion: _verdict(levels, cite=["request.levels"]),
+    }
+    judgment = _judgment(case, overrides)
+    for verdict in judgment.verdicts:  # leave only the two criteria citing anything
+        if verdict.criterion not in overrides:
+            verdict.citations = []
+    summary = summarize([score_case(case, judgment)])
+
+    by_criterion = summary.citation_precision_by_criterion
+    assert set(by_criterion) == {odi.criterion, levels.criterion}
+    assert (by_criterion[odi.criterion].in_label, by_criterion[odi.criterion].cited) == (1, 4)
+    assert by_criterion[odi.criterion].precision == 0.25
+    assert by_criterion[levels.criterion].precision == 1.0
+    assert summary.citation_precision == 0.4  # micro: 2 of 5
+    assert summary.citation_precision_macro == 0.625  # macro: mean of 0.25 and 1.0
+
+
 def test_not_applicable_label_is_correct_only_if_the_agent_says_the_condition_does_not_hold():
     case = CASES["facet-01"]
     label = next(x for x in case.expected if x.outcome is Outcome.NOT_APPLICABLE)

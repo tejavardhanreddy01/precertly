@@ -144,11 +144,18 @@ def _report(summary: Summary, scores: list[CaseScore]) -> str:
         f" ({summary.criteria_correct} of {summary.scored_criteria})",
         f"False-approval rate: {percent(summary.false_approval_rate)}"
         f" ({summary.false_approvals} of {summary.negative_labels} not_met/insufficient labels)",
-        f"Citation precision: {percent(summary.citation_precision)}"
-        f" ({summary.citations_in_label} of {summary.citations} cited resources are in the label)",
+        f"Citation precision: {percent(summary.citation_precision)} overall"
+        f" ({summary.citations_in_label} of {summary.citations} cited resources are in the label),"
+        f" {percent(summary.citation_precision_macro)} macro-averaged over criteria",
         f"Invalidated verdicts: {summary.invalidated_verdicts} of {summary.llm_calls}",
         f"Tokens: {summary.input_tokens:,} in, {summary.output_tokens:,} out",
+        "Citation precision by criterion:",
     ]
+    for criterion, precision in sorted(
+        summary.citation_precision_by_criterion.items(), key=lambda item: item[1].precision
+    ):
+        counts = f"{precision.in_label}/{precision.cited}"
+        lines.append(f"  {percent(precision.precision):>6}  {counts}  {criterion}")
     return "\n".join(lines)
 
 
