@@ -87,3 +87,32 @@ The verdicts in (b) are targets, not effect claims. An effect is claimed only un
 - With real data, the stored prompts and raw responses contain patient information. A deployment needs them behind access controls and retention limits.
 - Absence-based met on the partial path (rows 2a and 3a: no session beyond the coded count) depends on retrieval recall. The model sees the retrieved chunks, not the whole chart, so a session documented only in a chunk that was not retrieved goes unseen. Experiment 3 targets this.
 - Row 7 (`same-day-blocks/listed`): "documentation of each listed block" for met is stated in the prompt only. The verifier requires at least one verified chart citation, not one per listed block, so a met citing documentation for only one of several same-day blocks would pass verification. No fixture exercises this row.
+
+**How it was run.** Both runs are from commit `af3d7f3` with `--rules`, each in one piece. The compare command marks them as a clean pair: 0 unusable answers, evidence identical in 184 of 184 verdicts, and 3 of 184 verdicts differ.
+
+**Result against the success criteria:**
+
+- (a) Held: all 38 decided rule results match their labels.
+- (b) Held: the four target verdicts are right in both runs, none invalidated.
+- (c) Held: no new false approvals. The only one, facet-11 `conservative-care-failed` (verdict and case), is present in all eight runs.
+- (d) Held: `partial_review.c1_alone_where_chart_required` is empty in both files.
+- (e) Held: the five must-not-regress verdicts are right in both runs.
+- (f) Held: `prompt_check` matched 194 of 194 model calls in each run; `rules_check --recompute` reproduced 48 of 48 computed citations in each.
+
+**Partial-path invalidations: 0 of 20, down from 7 of 20 in experiment 1.** The model cited `[C1]` in 18 of the 20 partial verdicts. The four met verdicts that needed a chart citation (facet-01 two-blocks relief, facet-03 and facet-04 first-block relief, facet-04 interval exception) were read by hand; each citation supports its verdict.
+
+| Pair | Criteria right | Cases right | False approvals (verdict / case) | Invalidated |
+| --- | --- | --- | --- | --- |
+| baseline v2a / v2b | 171, 168 of 184 | 7, 6 of 11 | 2 / 1, 3 / 2 | 7, 9 |
+| experiment 1a / 1b | 172, 171 | 5, 6 | 2 / 2, 1 / 1 | 10, 12 |
+| experiment 1.1a / 1.1b | 177, 176 | 7, 7 | 1 / 1, 1 / 1 | 5, 6 |
+
+**Effects.** The effects claimed in experiment 1 stand: the four errors that were stable across every baseline run are fixed (facet-05 `two-mbbs-80pct-sustained-relief`, facet-09 `diagnostics-repeated-after-2-years`, facet-03 and facet-04 `pain-scale-after-each-diagnostic`), and the facet-05 false approval is removed. Experiment 1.1 claims no new effect. It repairs a defect that experiment 1 introduced: the four verdicts in (b) were right in the baselines. Every verdict wrong in a 1.1 run was judged by the model alone, with an unchanged prompt, and is within the noise band.
+
+**The noise floor stays at 14 of 184**, the largest measured. This pair differed on 3.
+
+**Open issues:**
+
+1. **Whole-note quotes always verify.** In the four hand-read verdicts the model quoted entire notes. A quote containing the whole chunk passes verification however little of it bears on the outcome, so verification says less than it seems to. This is the target of experiment 2 (line-level evidence handles), measured as the share of verified quotes longer than one line: 14% and 19% in baseline v2a / v2b, 13% and 16% in experiment 1a / 1b, and 19% and 17% in 1.1a / 1.1b.
+2. **facet-04 `no-diagnostic-at-level-of-successful-rfa`** is labeled not applicable (no previously successful RFA). The model said not_met in 1.1a, 1.1b and v2b, which flips the case outcome to not_met. The rule is absent here (no coded ablation), so this is the model's reasoning on a conditional criterion. Not fixed now.
+3. **facet-11 false approval** (`conservative-care-failed`): the note that contradicts the others is not retrieved. This is the target of experiment 3 (retrieval by evidence type).
