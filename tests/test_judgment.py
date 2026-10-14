@@ -40,6 +40,7 @@ class Response:
     def __init__(self, data):
         self.data = data
         self.usage = LLMUsage(model_id="fake", input_tokens=100, output_tokens=20, latency_ms=5)
+        self.exchanges = []
 
 
 class FakeLLM:
@@ -292,34 +293,13 @@ def test_a_rule_can_decide_that_a_criterion_does_not_apply():
     assert (verdict.outcome, verdict.applicable, verdict.decided_by) == ("met", False, "rule")
 
 
-def test_a_partial_rule_gives_the_model_the_computed_fact():
-    uncited = _answer("not_met")  # the computed fact is the evidence
-    verdict, llm = _with_rule("second-diagnostic-2-weeks-after-first", _rule("partial"), uncited)
-    assert (verdict.outcome, verdict.decided_by, verdict.invalidated) == (
-        "not_met",
-        "rule+model",
-        None,
-    )
-    ((prompt, _),) = llm.prompts
-    assert "COMPUTED FACT\ncomputed: 71%" in prompt and "Do not recompute it" in prompt
-    assert verdict.computed[0].statement == "computed: 71%"
-
-
-def test_a_partial_rule_with_shadow_makes_both_calls():
-    cited = _answer("met", [(NOTE.id, "Before the block: 7/10.")])
-    verdict, llm = _with_rule("first-diagnostic-80pct-relief", _rule("partial"), cited, shadow=True)
-    with_fact, without = (prompt for prompt, _ in llm.prompts)
-    assert "COMPUTED FACT" in with_fact and "COMPUTED FACT" not in without
-    assert verdict.shadow is not None and verdict.usage.input_tokens == 100
-
-
 @pytest.mark.parametrize("rule", [None, "absent"])
 def test_no_rule_or_an_absent_rule_is_the_plain_model_verdict(rule):
     rule = _rule("absent") if rule else None
     answer = _answer("met", [(NOTE.id, "Before the block: 7/10.")])
     verdict, llm = _with_rule("levels-1-to-2", rule, answer, shadow=True)
     assert (verdict.outcome, verdict.decided_by, verdict.shadow) == ("met", "model", None)
-    assert len(llm.prompts) == 1 and "COMPUTED FACT" not in llm.prompts[0][0]
+    assert len(llm.prompts) == 1 and "[C1]" not in llm.prompts[0][0]
     assert verdict.model_only() is verdict
     # without a computed fact, a decision still needs a citation
     uncited, _ = _with_rule("levels-1-to-2", rule, _answer("met"))

@@ -6,6 +6,8 @@ A rule returns one of three things:
   toward "met" or "not applicable" only when the structured data fully determines it.
 - partial: code fixes a computed fact, and the model judges only what the policy text
   leaves open (an exception clause, an alternative, a qualifier such as "sustained").
+  Every partial return names a branch in PARTIAL_BRANCHES, which fixes the outcomes the
+  computed fact alone may support; the rest need a verified chart citation.
 - absent: the structured data the rule needs is not in the chart; the model judges alone.
 
 Missing data is never a reason for not_met. A chart can lack coded care given elsewhere,
@@ -35,13 +37,133 @@ from precertly.judgment.structured import (
 )
 from precertly.policies import Criterion
 
-RULES_VERSION = "1"
+RULES_VERSION = "2"
+
+# A final outcome as the citation requirements see it: not_applicable is "met" because the
+# criterion's condition does not hold.
+FinalOutcome = Literal["met", "not_met", "not_applicable"]
+
+
+class PartialBranch(BaseModel):
+    """One partial return site: what the model is left to judge, and which outcomes may
+    rest on the computed fact [C1] alone.
+
+    The principle: an outcome that rests on something being documented needs at least one
+    verified chart citation; an outcome that rests on nothing further being found may cite
+    [C1] alone. insufficient never needs a citation. The prompt and the verifier both read
+    this table, so what the model is told and what is enforced cannot drift apart.
+    """
+
+    row: str  # the row in the reviewed design table
+    criterion: str
+    open_question: str
+    alone: frozenset[FinalOutcome] = frozenset()
+    # [C1] itself establishes that the criterion's condition holds, so condition_holds =
+    # false contradicts it and invalidates the verdict.
+    condition_fixed: bool = False
+    note: str | None = None  # an extra instruction for the model, shown in the prompt
+
+    def needs_chart(self, outcome: FinalOutcome) -> bool:
+        return outcome not in self.alone
+
+
+PARTIAL_BRANCHES: dict[str, PartialBranch] = {
+    "second-diagnostic/one-session-short": PartialBranch(
+        row="1a",
+        criterion="second-diagnostic-2-weeks-after-first",
+        open_question="Is a clinical exception to the two-week interval clearly documented?",
+        alone=frozenset({"not_met"}),
+    ),
+    "second-diagnostic/several-sessions": PartialBranch(
+        row="1b",
+        criterion="second-diagnostic-2-weeks-after-first",
+        open_question="Which coded session was the initial diagnostic procedure, and the "
+        "interval from it.",
+    ),
+    "diagnostic-sessions/within-limit": PartialBranch(
+        row="2a",
+        criterion="diagnostic-sessions-max-4",
+        open_question="Are there diagnostic sessions in the window that are not coded here?",
+        alone=frozenset({"met"}),
+    ),
+    "diagnostic-sessions/at-or-over-limit": PartialBranch(
+        row="2b",
+        criterion="diagnostic-sessions-max-4",
+        open_question="Were some coded sessions therapeutic, and is a session on the "
+        "window's first day inside it?",
+    ),
+    "rfa-sessions/within-limit": PartialBranch(
+        row="3a",
+        criterion="rfa-sessions-max-2",
+        open_question="Are there ablation sessions in the window that are not coded here?",
+        alone=frozenset({"met"}),
+    ),
+    "rfa-sessions/boundary-tips": PartialBranch(
+        row="3b",
+        criterion="rfa-sessions-max-2",
+        open_question="Is the session on the window's first day inside the window?",
+    ),
+    "first-diagnostic-relief/at-or-above": PartialBranch(
+        row="4",
+        criterion="first-diagnostic-80pct-relief",
+        open_question="Was the response consistent, and did it last as long as the agent "
+        "used would predict?",
+    ),
+    "two-blocks-relief/two-passing": PartialBranch(
+        row="5a",
+        criterion="two-mbbs-80pct-sustained-relief",
+        open_question="Was the relief consistent and sustained, for as long as the agent "
+        "used would predict?",
+    ),
+    "two-blocks-relief/more-than-two": PartialBranch(
+        row="5b",
+        criterion="two-mbbs-80pct-sustained-relief",
+        open_question="Which two coded blocks are the diagnostic blocks that count?",
+    ),
+    "prior-rfa/pain-half-open": PartialBranch(
+        row="6",
+        criterion="prior-rfa-50pct-6-months",
+        open_question="Is the pain improvement documented outside the coded scores, or is "
+        "improvement in previously painful movements and ADLs documented? Silence on ADLs "
+        "is insufficient, not failure.",
+    ),
+    "same-day-blocks/listed": PartialBranch(
+        row="7",
+        criterion="same-day-blocks-justified",
+        open_question="Is the medical necessity of each same-day block clearly documented?",
+        alone=frozenset({"not_met"}),
+        condition_fixed=True,
+        note="For met, the chart must document the medical necessity of each block listed "
+        "in the request.",
+    ),
+    "ia-diagnostic/intraarticular": PartialBranch(
+        row="8",
+        criterion="ia-diagnostic-only-if-mbb-not-possible",
+        open_question="Is an anatomic restriction to medial branch blocks, or an indication "
+        "for therapeutic intraarticular injection, documented?",
+        alone=frozenset({"not_met"}),
+        condition_fixed=True,
+    ),
+    "diagnostics-repeated/two-years-or-more": PartialBranch(
+        row="9",
+        criterion="diagnostics-repeated-after-2-years",
+        open_question="Is there a question about the source of the recurrent pain, and "
+        "were diagnostic procedures repeated?",
+    ),
+    "no-diagnostic-at-rfa-level/coded-rfa": PartialBranch(
+        row="10",
+        criterion="no-diagnostic-at-level-of-successful-rfa",
+        open_question="Was the prior ablation successful, and is it at the level of the "
+        "requested block?",
+    ),
+}
 
 
 class RuleResult(BaseModel):
     kind: Literal["decided", "partial", "absent"]
     outcome: Literal["met", "not_met", "insufficient"] | None = None  # decided only
     applicable: bool = True  # False: decided that the criterion's condition does not hold
+    branch: str | None = None  # partial only: the key in PARTIAL_BRANCHES
     statement: str = Field(description="The computed fact, or why the rule could not run")
     inputs: list[str] = Field(
         default_factory=list, description="Resources and request fields the rule read"
@@ -58,8 +180,10 @@ def _not_applicable(statement: str, inputs: list[str]) -> RuleResult:
     )
 
 
-def _partial(statement: str, inputs: list[str]) -> RuleResult:
-    return RuleResult(kind="partial", statement=statement, inputs=inputs)
+def _partial(branch: str, statement: str, inputs: list[str]) -> RuleResult:
+    if branch not in PARTIAL_BRANCHES:
+        raise KeyError(f"partial branch {branch!r} is not in PARTIAL_BRANCHES")
+    return RuleResult(kind="partial", branch=branch, statement=statement, inputs=inputs)
 
 
 def _absent(statement: str) -> RuleResult:
@@ -114,7 +238,9 @@ def same_day_blocks(
         )
     listed = ", ".join(request.same_day_blocks)
     return _partial(
-        f"The request lists other blocks for the same day: {listed}.", ["request.same_day_blocks"]
+        "same-day-blocks/listed",
+        f"The request lists other blocks for the same day: {listed}.",
+        ["request.same_day_blocks"],
     )
 
 
@@ -127,7 +253,9 @@ def intraarticular_only_if_needed(
             ["request.technique"],
         )
     return _partial(
-        "The requested technique is an intraarticular injection.", ["request.technique"]
+        "ia-diagnostic/intraarticular",
+        "The requested technique is an intraarticular injection.",
+        ["request.technique"],
     )
 
 
@@ -149,6 +277,7 @@ def diagnostics_repeated_after_two_years(
             inputs,
         )
     return _partial(
+        "diagnostics-repeated/two-years-or-more",
         f"The last coded ablation in the region was on {last}, {years} years or more before "
         f"the planned service date {request.service_date}. Whether the source of the "
         "recurrent pain is in question, and whether diagnostics were repeated, is not computed.",
@@ -166,6 +295,7 @@ def no_diagnostic_at_level_of_successful_rfa(
         return _absent("No coded radiofrequency ablation in the requested region.")
     dates = ", ".join(str(day) for day in ablations)
     return _partial(
+        "no-diagnostic-at-rfa-level/coded-rfa",
         f"Coded ablation in the requested region on: {dates}. Whether it was successful and "
         "at the same level as the requested block is not computed.",
         _refs(ablations),
@@ -212,7 +342,14 @@ def rfa_sessions_max(
     # is what tips it, the policy text does not settle it.
     if inside + 1 > limit:
         return _decided("not_met", statement, inputs)
-    return _partial(statement + " Sessions not coded in this chart are not counted.", inputs)
+    # Within the limit, met may rest on nothing further being found, unless the session
+    # on the window's first day would tip it: the policy text does not settle that day.
+    tips = on_boundary and inside + 2 > limit
+    return _partial(
+        "rfa-sessions/boundary-tips" if tips else "rfa-sessions/within-limit",
+        statement + " Sessions not coded in this chart are not counted.",
+        inputs,
+    )
 
 
 def diagnostic_sessions_max(
@@ -231,7 +368,12 @@ def diagnostic_sessions_max(
         if on_boundary
         else ""
     )
+    # met may rest on the count alone only if it stays within the limit even with the
+    # session on the window's first day; otherwise met needs the chart (for example, a
+    # session documented as therapeutic).
+    within = inside + 1 + on_boundary <= limit
     return _partial(
+        "diagnostic-sessions/within-limit" if within else "diagnostic-sessions/at-or-over-limit",
         f"Coded facet injection sessions in the requested region in the {months} months "
         f"before the planned service date {request.service_date}: {inside}.{boundary} "
         f"The limit is {limit} diagnostic sessions including the requested one. The codes do "
@@ -251,6 +393,7 @@ def second_diagnostic_interval(
     if len(injections) > 1:
         dates = ", ".join(str(day) for day in injections)
         return _partial(
+            "second-diagnostic/several-sessions",
             f"More than one coded facet injection session before the service date ({dates}); "
             "which one is the initial diagnostic procedure is not computed.",
             inputs,
@@ -264,6 +407,7 @@ def second_diagnostic_interval(
     if days >= weeks * 7:
         return _decided("met", statement, inputs)
     return _partial(
+        "second-diagnostic/one-session-short",
         statement + " Only a clearly documented clinical exception can satisfy the criterion.",
         inputs,
     )
@@ -365,6 +509,7 @@ def first_diagnostic_relief(
     if block.status == "not_comparable":
         return _decided("insufficient", block.statement, block.inputs)
     return _partial(
+        "first-diagnostic-relief/at-or-above",
         block.statement + " Whether the response was consistent and lasted as long as the "
         "agent used would predict is not computed.",
         block.inputs,
@@ -385,7 +530,9 @@ def two_blocks_relief(
         return _absent(f"Only {len(blocks)} coded facet injection session in the region.")
     if len(blocks) > 2:
         return _partial(
-            statement + " More than two coded sessions; which two count is not computed.", inputs
+            "two-blocks-relief/more-than-two",
+            statement + " More than two coded sessions; which two count is not computed.",
+            inputs,
         )
     statuses = {b.status for b in blocks}
     # With exactly two blocks, each must qualify, so one failure is enough, whatever the
@@ -397,6 +544,7 @@ def two_blocks_relief(
     if "absent" in statuses:
         return _absent(statement)
     return _partial(
+        "two-blocks-relief/two-passing",
         statement + " Whether the relief was consistent, sustained and lasted as long as the "
         "agent used would predict is not computed.",
         inputs,
@@ -551,7 +699,9 @@ def prior_rfa_improvement(
     baseline = (same_day_before or sorted(earlier, key=lambda s: (s.when.day, s.ref)) or [None])[-1]
     if baseline is None or not baseline.is_pain or baseline.value <= 0:
         return _partial(
-            f"No coded pain score before the ablation on {day} to compare with.", inputs
+            "prior-rfa/pain-half-open",
+            f"No coded pain score before the ablation on {day} to compare with.",
+            inputs,
         )
 
     # The window runs to the first score at least `months` calendar months after the
@@ -584,6 +734,7 @@ def prior_rfa_improvement(
         statement += f' Ablation site as recorded: "{ablation.body_site_text}".'
     if problems:
         return _partial(
+            "prior-rfa/pain-half-open",
             statement + " The pain half is not established (" + "; ".join(problems) + "). "
             "The alternative of improved movement and daily activities is not computed.",
             inputs,
@@ -646,4 +797,9 @@ def evaluate(
 ) -> RuleResult | None:
     """The rule's result for a criterion, or None if no rule covers it."""
     rule = RULES.get(criterion.id)
-    return rule(chart, request, criterion) if rule else None
+    if rule is None:
+        return None
+    result = rule(chart, request, criterion)
+    if result.branch is not None and PARTIAL_BRANCHES[result.branch].criterion != criterion.id:
+        raise ValueError(f"{criterion.id}: partial branch {result.branch!r} belongs elsewhere")
+    return result

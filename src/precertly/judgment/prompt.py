@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from precertly.judgment.models import EvidenceChunk, PriorAuthRequest
+from precertly.judgment.rules import PARTIAL_BRANCHES, FinalOutcome, PartialBranch, RuleResult
 from precertly.policies import Criterion
 
 # Bump when SYSTEM or build_prompt changes what the model reads, so results files can be
 # compared across prompt changes.
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 
 SYSTEM = """You check one Medicare coverage criterion against one patient's record for a prior-authorization request. A human reviewer makes the final decision; you report what the record shows.
 
@@ -33,9 +34,31 @@ Citations:
 - Facts about the requested service come from the items marked "request"."""
 
 
+# The handle of a partial rule's computed fact. Only a partial prompt has it.
+COMPUTED_HANDLE = "C1"
+
+
 def handles(chunks: list[EvidenceChunk]) -> dict[str, EvidenceChunk]:
     """E1, E2, ... in prompt order. The model cites these instead of long chunk ids."""
     return {f"E{number}": chunk for number, chunk in enumerate(chunks, start=1)}
+
+
+def citation_requirements(criterion: Criterion, branch: PartialBranch) -> list[str]:
+    """What each outcome must cite, for a partial prompt. Generated from the same
+    PARTIAL_BRANCHES entry the verifier enforces."""
+    chart = (
+        "needs at least one citation of a chart item (an E item marked chart); "
+        f"[{COMPUTED_HANDLE}] and request items alone are not enough."
+    )
+    alone = f"may rest on [{COMPUTED_HANDLE}] alone."
+    outcomes: list[tuple[str, FinalOutcome]] = [("met", "met"), ("not_met", "not_met")]
+    if criterion.condition and not branch.condition_fixed:
+        outcomes.append(("condition does not hold", "not_applicable"))
+    lines = [
+        f"- {label}: {chart if branch.needs_chart(outcome) else alone}"
+        for label, outcome in outcomes
+    ]
+    return [*lines, "- insufficient: needs no citation."]
 
 
 def _describe(chunk: EvidenceChunk) -> str:
@@ -50,11 +73,11 @@ def build_prompt(
     criterion: Criterion,
     request: PriorAuthRequest,
     chunks: list[EvidenceChunk],
-    computed_fact: str | None = None,
+    partial: RuleResult | None = None,
 ) -> str:
-    """The prompt for one criterion. With computed_fact (a rule's partial result), the
-    model is told what code has already established and asked to judge only the rest;
-    without it the prompt is exactly the model-only one."""
+    """The prompt for one criterion. With a partial rule result, the computed fact is an
+    evidence item [C1] the model may cite, and the prompt states which outcomes need a
+    chart citation; without it the prompt is exactly the model-only one."""
     lines = [
         "CRITERION",
         f"Id: {criterion.id}",
@@ -73,15 +96,25 @@ def build_prompt(
     lines += ["", f"REQUEST DATE: {request.date.isoformat()}", "", "EVIDENCE"]
     for handle, chunk in handles(chunks).items():
         lines += [f"[{handle}] ({_describe(chunk)})", chunk.text, ""]
-    if computed_fact:
+    if partial is not None:
+        assert partial.kind == "partial" and partial.branch is not None
+        branch = PARTIAL_BRANCHES[partial.branch]
+        c1 = f"[{COMPUTED_HANDLE}]"
         lines += [
-            "COMPUTED FACT",
-            computed_fact,
-            "This was computed from the coded record and is correct. Do not recompute it, "
-            "contradict it, or decide the criterion against it. Judge only what it leaves "
-            "open, from the evidence above. You may answer without a citation if the "
-            "computed fact alone settles the criterion.",
+            f"{c1} (computed from the coded record)",
+            partial.statement,
             "",
+            f"ABOUT {c1}",
+            f"{c1} was computed from the coded record and is correct. Do not recompute it, "
+            "contradict it, or decide the criterion against it. Judge only what it leaves "
+            f"open, from the evidence above. Cite {c1} like any other item, with a quote "
+            "copied from it.",
         ]
+        if branch.condition_fixed:
+            lines.append(f"{c1} establishes that the condition holds; set condition_holds to true.")
+        lines += ["Citations for this criterion:", *citation_requirements(criterion, branch)]
+        if branch.note:
+            lines.append(branch.note)
+        lines.append("")
     lines.append("Judge the criterion from this evidence.")
     return "\n".join(lines)

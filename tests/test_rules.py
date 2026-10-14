@@ -563,3 +563,109 @@ def test_rules_never_decide_the_criteria_the_audit_ruled_out():
         for c in checks
         if c.criterion == "prior-rfa-50pct-6-months" and c.decided and c.decided.value != "met"
     ]
+
+
+# --- partial branches ------------------------------------------------------------------
+
+
+def _branch(criterion_id, resources, **request_overrides):
+    result = run(criterion_id, resources, **request_overrides)
+    assert result.kind == "partial", result
+    return result.branch
+
+
+def test_each_partial_return_site_names_its_branch():
+    ia = "ia-diagnostic-only-if-mbb-not-possible"
+    rfa_14_months = procedure("rfa-old", date(2025, 8, 4), "64635")
+    four_inside = [r for n in range(4) for r in block(f"b{n}", days_before(30 + 30 * n))]
+    boundary = date(2025, 10, 19)  # exactly 12 months before the service date
+    seen = {
+        _branch("second-diagnostic-2-weeks-after-first", block("b", days_before(10))),
+        _branch(
+            "second-diagnostic-2-weeks-after-first",
+            [*block("b1", days_before(40)), *block("b2", days_before(20))],
+        ),
+        _branch("diagnostic-sessions-max-4", block("b", days_before(10))),
+        _branch("diagnostic-sessions-max-4", four_inside),
+        _branch("rfa-sessions-max-2", [rfa_14_months]),
+        _branch(
+            "rfa-sessions-max-2",
+            [procedure("rfa1", boundary, "64635"), procedure("rfa2", days_before(30), "64635")],
+        ),
+        _branch("first-diagnostic-80pct-relief", block("b", days_before(10))),
+        _branch(
+            "two-mbbs-80pct-sustained-relief",
+            [*block("b1", days_before(40)), *block("b2", days_before(20))],
+        ),
+        _branch(
+            "two-mbbs-80pct-sustained-relief",
+            [r for n in range(3) for r in block(f"b{n}", days_before(20 + 20 * n))],
+        ),
+        _branch("prior-rfa-50pct-6-months", [rfa_14_months, score("later", days_before(30), 7)]),
+        _branch("same-day-blocks-justified", [], same_day_blocks=["epidural injection"]),
+        _branch(ia, [], technique="intraarticular_injection"),
+        _branch(
+            "diagnostics-repeated-after-2-years", [procedure("rfa", date(2024, 1, 5), "64635")]
+        ),
+        _branch("no-diagnostic-at-level-of-successful-rfa", [rfa_14_months]),
+    }
+    assert seen == set(rules.PARTIAL_BRANCHES)
+
+
+def test_session_limits_route_met_to_the_chart_when_the_count_could_reach_the_limit():
+    four_inside = [r for n in range(4) for r in block(f"b{n}", days_before(30 + 30 * n))]
+    assert _branch("diagnostic-sessions-max-4", four_inside) == (
+        "diagnostic-sessions/at-or-over-limit"
+    )
+    # three inside plus one exactly on the window's first day: that day would tip it
+    three_and_boundary = [
+        *(r for n in range(3) for r in block(f"b{n}", days_before(30 + 30 * n))),
+        *block("edge", date(2025, 10, 19)),
+    ]
+    assert _branch("diagnostic-sessions-max-4", three_and_boundary) == (
+        "diagnostic-sessions/at-or-over-limit"
+    )
+    two_and_boundary = [*three_and_boundary[3:]]  # two inside plus the boundary session
+    assert _branch("diagnostic-sessions-max-4", two_and_boundary) == (
+        "diagnostic-sessions/within-limit"
+    )
+    # a boundary ablation alone does not tip the RFA limit: 0 + 1 + 1 = 2
+    boundary_only = [procedure("rfa1", date(2025, 10, 19), "64635")]
+    assert _branch("rfa-sessions-max-2", boundary_only) == "rfa-sessions/within-limit"
+
+
+def test_every_partial_call_in_rules_names_a_branch_in_the_table():
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(rules))
+    named = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_partial":
+            first = node.args[0]
+            options = [first.body, first.orelse] if isinstance(first, ast.IfExp) else [first]
+            assert all(isinstance(o, ast.Constant) for o in options), ast.unparse(first)
+            named |= {o.value for o in options}
+    assert named == set(rules.PARTIAL_BRANCHES)
+    for key, branch in rules.PARTIAL_BRANCHES.items():
+        assert branch.criterion in rules.RULES, key
+
+
+def test_the_fixture_partials_take_the_reviewed_branches():
+    partials = {
+        (c.case_id, c.criterion): rules.PARTIAL_BRANCHES[c.result.branch].row
+        for c in check_cases(list(load_cases().values()))
+        if c.result.kind == "partial"
+    }
+    assert partials == {
+        ("facet-01", "two-mbbs-80pct-sustained-relief"): "5a",
+        ("facet-03", "first-diagnostic-80pct-relief"): "4",
+        ("facet-03", "second-diagnostic-2-weeks-after-first"): "1a",
+        ("facet-03", "diagnostic-sessions-max-4"): "2a",
+        ("facet-04", "first-diagnostic-80pct-relief"): "4",
+        ("facet-04", "second-diagnostic-2-weeks-after-first"): "1a",
+        ("facet-04", "diagnostic-sessions-max-4"): "2a",
+        ("facet-09", "rfa-sessions-max-2"): "3a",
+        ("facet-10", "prior-rfa-50pct-6-months"): "6",
+        ("facet-10", "rfa-sessions-max-2"): "3a",
+    }

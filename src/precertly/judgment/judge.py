@@ -4,6 +4,10 @@ The model's answer is never taken on trust: a quote that is not found in the chu
 cites invalidates the verdict, and so does a met or not_met answer with no citation. An
 invalidated verdict becomes "insufficient", so an unverifiable answer can never read as
 approval.
+
+With a partial rule result the computed fact is evidence item [C1]. It is verified like
+any other item (the quote must be in its statement), and PARTIAL_BRANCHES fixes which
+outcomes may rest on it alone; any other outcome still needs a verified chart citation.
 """
 
 from __future__ import annotations
@@ -25,8 +29,8 @@ from precertly.judgment.models import (
     ShadowVerdict,
     VerifiedCitation,
 )
-from precertly.judgment.prompt import SYSTEM, build_prompt, handles
-from precertly.judgment.rules import RuleResult, evaluate
+from precertly.judgment.prompt import COMPUTED_HANDLE, SYSTEM, build_prompt, handles
+from precertly.judgment.rules import PARTIAL_BRANCHES, RULES_VERSION, RuleResult, evaluate
 from precertly.judgment.structured import StructuredChart
 from precertly.llm import LLMUsage, StructuredOutputError
 from precertly.policies import Criterion, Policy
@@ -55,29 +59,86 @@ def find_quote(quote: str, text: str) -> tuple[int, int] | None:
 
 
 def verify(
-    judgment: ModelJudgment, chunks: list[EvidenceChunk]
-) -> tuple[list[VerifiedCitation], str | None]:
-    """Verified citations, and the reason the verdict is invalid if it is.
+    judgment: ModelJudgment, chunks: list[EvidenceChunk], computed: str | None = None
+) -> tuple[list[VerifiedCitation], str | None, str | None]:
+    """Verified chunk citations, the verified quote from [C1] if it was cited, and the
+    reason the verdict is invalid if it is.
 
-    The model cites handles (E1, E2, ...); they are mapped back to chunk ids here. A handle
+    The model cites handles (E1, E2, ...); they are mapped back to chunk ids here. [C1] is
+    a handle only when computed (a partial rule's statement) was in the prompt. A handle
     that was not in the prompt, or a quote that is not in the item it cites, is invalid.
     """
     by_handle = handles(chunks)
-    verified = []
+    verified, computed_quote = [], None
     for citation in judgment.citations:
         handle = citation.evidence.strip().strip("[]").upper()
+        if handle == COMPUTED_HANDLE and computed is not None:
+            if find_quote(citation.quote, computed) is None:
+                return [], None, f"quote not found in [C1]: {citation.quote[:80]!r}"
+            computed_quote = citation.quote
+            continue
         chunk = by_handle.get(handle)
         if chunk is None:
-            return [], f"cited evidence {citation.evidence!r} was not in the prompt"
+            return [], None, f"cited evidence {citation.evidence!r} was not in the prompt"
         span = find_quote(citation.quote, chunk.text)
         if span is None:
-            return [], f"quote not found in {chunk.id}: {citation.quote[:80]!r}"
+            return [], None, f"quote not found in {chunk.id}: {citation.quote[:80]!r}"
         verified.append(
             VerifiedCitation(
                 chunk_id=chunk.id, quote=citation.quote, char_start=span[0], char_end=span[1]
             )
         )
-    return verified, None
+    return verified, computed_quote, None
+
+
+def citation_problem(
+    criterion_id: str,
+    outcome: str,
+    applicable: bool,
+    citations: list[VerifiedCitation],
+    computed_quote: str | None,
+    partial: RuleResult | None,
+    condition_holds: bool | None = None,
+) -> str | None:
+    """Why the citations cannot support this outcome, or None if they can.
+
+    Without a partial rule result, met and not_met need at least one citation. With one,
+    the PARTIAL_BRANCHES entry decides: an outcome it lists may rest on [C1] alone, and any
+    other needs a verified chart citation (a request field does not count).
+    """
+    if applicable and outcome == "insufficient":
+        return None
+    if partial is None:
+        return None if not applicable or citations else f"{outcome} with no citation"
+    assert partial.branch is not None
+    branch = PARTIAL_BRANCHES[partial.branch]
+    if branch.criterion != criterion_id:
+        raise ValueError(f"{criterion_id}: partial branch {partial.branch!r} belongs elsewhere")
+    final = outcome if applicable else "not_applicable"
+    if branch.condition_fixed and condition_holds is False:
+        return "condition_holds is false, but [C1] establishes that the condition holds"
+    if not branch.needs_chart(final):
+        if citations or computed_quote is not None:
+            return None
+        return f"{final} with no citation"
+    if not any(citation.is_chart for citation in citations):
+        cited = "only [C1] or request items" if citations or computed_quote else "nothing"
+        return f"{final} needs a chart citation; cited {cited}"
+    return None
+
+
+def computed_citation(
+    criterion_id: str, rule: RuleResult, quote: str | None = None
+) -> ComputedCitation:
+    return ComputedCitation(
+        statement=rule.statement,
+        inputs=rule.inputs,
+        rule=criterion_id,
+        rules_version=RULES_VERSION,
+        branch=rule.branch,
+        cited_by_model=quote is not None,
+        quote=quote,
+    )
 
 
 async def judge_criterion(
@@ -87,15 +148,16 @@ async def judge_criterion(
     chunks: list[EvidenceChunk],
     *,
     max_tokens: int = MAX_TOKENS,
-    computed_fact: str | None = None,
+    partial: RuleResult | None = None,
 ) -> CriterionVerdict:
     """One verdict for one criterion from the evidence given (request chunks included).
 
-    computed_fact is a rule's partial result: the model is told it and judges the rest.
+    partial is a rule's partial result: the model is given it as [C1] and judges the rest.
     """
+    computed = [computed_citation(criterion.id, partial)] if partial else []
     try:
         response = await llm.structured(
-            build_prompt(criterion, request, chunks, computed_fact),
+            build_prompt(criterion, request, chunks, partial),
             ModelJudgment,
             system=SYSTEM,
             max_tokens=max_tokens,
@@ -113,21 +175,33 @@ async def judge_criterion(
             model_outcome="none",
             chunk_ids=[chunk.id for chunk in chunks],
             usage=error.usage or LLMUsage(model_id="unknown", calls=0),
+            exchanges=error.exchanges,
+            computed=computed,
         )
     judgment: ModelJudgment = response.data
-    citations, invalid = verify(judgment, chunks)
+    citations, computed_quote, invalid = verify(
+        judgment, chunks, partial.statement if partial else None
+    )
     applicable = not (criterion.condition and judgment.condition_holds is False)
 
     outcome = judgment.outcome
     if not applicable:
         outcome = "met"  # satisfied because the condition does not hold
-    # A decision needs evidence. With a computed fact, that fact is the evidence, so the
-    # model may decide without quoting anything further.
-    uncited = applicable and outcome != "insufficient" and not citations
-    if invalid is None and uncited and computed_fact is None:
-        invalid = f"{outcome} with no citation"
+    # A decision needs evidence; with a partial rule result, PARTIAL_BRANCHES says which.
+    if invalid is None:
+        invalid = citation_problem(
+            criterion.id,
+            outcome,
+            applicable,
+            citations,
+            computed_quote,
+            partial,
+            judgment.condition_holds,
+        )
     if invalid is not None:
-        outcome, applicable = "insufficient", True
+        outcome, applicable, computed_quote = "insufficient", True, None
+    if partial is not None:
+        computed = [computed_citation(criterion.id, partial, computed_quote)]
 
     return CriterionVerdict(
         criterion=criterion.id,
@@ -140,6 +214,8 @@ async def judge_criterion(
         model_outcome=judgment.outcome,
         chunk_ids=[chunk.id for chunk in chunks],
         usage=response.usage,
+        exchanges=response.exchanges,
+        computed=computed,
     )
 
 
@@ -165,7 +241,6 @@ async def judge_with_rule(
         verdict.rule_kind = rule.kind if rule else None
         return verdict
 
-    computed = [ComputedCitation(statement=rule.statement, inputs=rule.inputs)]
     if rule.kind == "decided":
         assert rule.outcome is not None
         verdict = CriterionVerdict(
@@ -178,14 +253,12 @@ async def judge_with_rule(
             chunk_ids=[chunk.id for chunk in chunks],
             usage=LLMUsage(model_id="rule", calls=0),
             decided_by="rule",
+            computed=[computed_citation(criterion.id, rule)],
         )
     else:
-        verdict = await judge_criterion(
-            llm, criterion, request, chunks, computed_fact=rule.statement
-        )
+        verdict = await judge_criterion(llm, criterion, request, chunks, partial=rule)
         verdict.decided_by = "rule+model"
     verdict.rule_kind = rule.kind
-    verdict.computed = computed
 
     if shadow:
         alone = await judge_criterion(llm, criterion, request, chunks)
@@ -196,6 +269,7 @@ async def judge_with_rule(
             model_outcome=alone.model_outcome,
             citations=alone.citations,
             usage=alone.usage,
+            exchanges=alone.exchanges,
         )
     return verdict
 

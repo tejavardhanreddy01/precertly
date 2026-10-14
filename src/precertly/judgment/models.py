@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from precertly.llm import LLMUsage
+from precertly.llm import Exchange, LLMUsage
 
 
 class Outcome(StrEnum):
@@ -99,6 +99,10 @@ class VerifiedCitation(BaseModel):
         """'Type/id' for a chart chunk, 'request.<field>' for a request field."""
         return self.chunk_id.split("#")[0]
 
+    @property
+    def is_chart(self) -> bool:
+        return not self.chunk_id.startswith("request.")
+
 
 class ComputedCitation(BaseModel):
     """What a rule read and what it computed. Not a verbatim quote: it is checked by
@@ -107,6 +111,13 @@ class ComputedCitation(BaseModel):
     computed: Literal[True] = True
     statement: str
     inputs: list[str]
+    rule: str | None = None  # the criterion id whose rule computed it
+    rules_version: str | None = None
+    branch: str | None = None  # partial only: the PARTIAL_BRANCHES entry
+    # Partial only: the model cited it as [C1], with this quote, verified against the
+    # statement.
+    cited_by_model: bool = False
+    quote: str | None = None
 
 
 class ShadowVerdict(BaseModel):
@@ -119,6 +130,7 @@ class ShadowVerdict(BaseModel):
     model_outcome: str
     citations: list[VerifiedCitation]
     usage: LLMUsage
+    exchanges: list[Exchange] = Field(default_factory=list)
 
 
 class CriterionVerdict(BaseModel):
@@ -136,6 +148,7 @@ class CriterionVerdict(BaseModel):
     model_outcome: str
     chunk_ids: list[str] = Field(default_factory=list, description="Evidence shown to the model")
     usage: LLMUsage
+    exchanges: list[Exchange] = Field(default_factory=list, description="One per model call")
     # "model": no rule, or the rule found no structured data. "rule": code decided.
     # "rule+model": code fixed a fact and the model judged the rest.
     decided_by: Literal["model", "rule", "rule+model"] = "model"
@@ -158,6 +171,7 @@ class CriterionVerdict(BaseModel):
             model_outcome=self.shadow.model_outcome,
             chunk_ids=self.chunk_ids,
             usage=self.shadow.usage,
+            exchanges=self.shadow.exchanges,
         )
 
 
