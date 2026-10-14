@@ -80,8 +80,8 @@ Out of scope, stated openly: a chart that is falsified at the source (for exampl
 | API contract, planned | Breaking changes for clients | Response schemas match OpenAPI; error shapes stable. Current API tests check status codes and responses, not OpenAPI schemas |
 | Offline rule check | A deterministic rule that contradicts a label | Every rule's result for every case compared with the labels, no model and no database (`python -m precertly.evals.rules_check`). A decided result that contradicts a label makes the command exit non-zero and fails a test in CI; the eval runner does not re-check it |
 | Evals | Wrong verdicts from the model or retrieval | Labeled cases; false-approval rate, accuracy, citation precision |
-| Variance | Nondeterminism | Every eval is a pair of runs on one commit at temperature 0 (the client default). Temperature 0 is not deterministic on Bedrock: two runs on identical evidence differed on 14 of 184 verdicts. An effect is claimed only for verdicts wrong in every baseline run and right in every experiment run; everything else is reported as within the noise band. Experiments with deterministic rules also make the baseline model call in shadow, so each run carries its own model-only comparison |
-| Human review | Wrong labels or wrong design | Label review against the guideline; second annotator |
+| Variance | Nondeterminism | Every eval since baseline v2 is a pair of runs on one commit at temperature 0 (the client default); baseline v1 and the canaries were single runs. Temperature 0 was not deterministic with Nova 2 Lite on Bedrock: two runs on identical evidence differed on 14 of 184 verdicts. An effect is claimed only for verdicts wrong in every baseline run and right in every experiment run; everything else is reported as within the noise band. Experiments with deterministic rules also make the baseline model call in shadow, so each run carries its own model-only comparison |
+| Human review | Wrong labels or wrong design | Label review against the guideline by a single annotator (current); second annotator (planned) |
 
 ### Edge cases the ingest and judgment paths must handle
 
@@ -132,7 +132,7 @@ Kept current and published with results.
 - A model verdict that a criterion's condition does not hold needs no citation, and not applicable counts as satisfied in the variant logic, so an unsupported "does not apply" can satisfy a criterion (invariant 1).
 - The facet set has only 9 negative criterion labels, so one false approval moves the rate by 11 points.
 - The model's `confidence` field is uncalibrated and is not used for any decision.
-- Deterministic rules read only coded data: pain scores by LOINC 72514-3 (0–10 numeric rating) and 38214-3 (visual analog), the Oswestry Disability Index by LOINC 97909-6. Scores recorded only in free text or without a code go to the model.
+- Deterministic rules read coded chart data and structured request fields: pain scores by LOINC 72514-3 and 38214-3, the Oswestry Disability Index by LOINC 97909-6. Scores recorded only in free text or without a code go to the model. The one exception is the prior ablation's levels, read from bodySite text (next line).
 - One rule reads free text to decide `met`: the levels of a prior ablation, taken from the Procedure's `bodySite` text. It accepts only a whole-string match of a strict grammar, and anything else is treated as unclear and sent to the model.
 - `prior-rfa-50pct-6-months` is decided by code only with at least two coded scores in the six-month window. That minimum is a conservative routing choice, not a policy threshold.
 - Absence-based `met` on the partial path (a session count within the limit, resting on no further session being found) depends on retrieval recall: the model sees the retrieved chunks, not the whole chart, so a session documented only in a chunk that was not retrieved goes unseen.
