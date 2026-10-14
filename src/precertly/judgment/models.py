@@ -15,7 +15,11 @@ class Outcome(StrEnum):
     MET = "met"
     NOT_MET = "not_met"
     INSUFFICIENT = "insufficient"
-    NOT_APPLICABLE = "not_applicable"  # eval label only; the agent never outputs it
+    # Not a verdict outcome: a verdict whose condition does not hold has outcome "met" and
+    # applicable=False. The judge maps such verdicts to NOT_APPLICABLE before combining
+    # (as does CaseJudgment.outcomes()), the variant logic counts it as satisfied, and eval
+    # labels use it too.
+    NOT_APPLICABLE = "not_applicable"
 
 
 class EvidenceChunk(BaseModel):
