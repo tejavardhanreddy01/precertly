@@ -2,12 +2,15 @@
 
 Two calls: converse() for text and structured() for JSON validated against a Pydantic
 model. Every Bedrock call records its tokens and latency in BedrockClient.calls so evals
-can report cost and latency per case.
+can report cost and latency per case, and structured() returns one Exchange per call: the
+sha256 of the prompt and system text sent, and the raw response, so a run can be audited.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import re
 import time
 from typing import Any
@@ -15,7 +18,7 @@ from typing import Any
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from precertly.llm.pacing import Pacer
 from precertly.settings import Settings, get_settings
@@ -45,6 +48,47 @@ class LLMUsage(BaseModel):
         )
 
 
+# Raw responses are kept up to this many characters. Judgment answers are capped at 800
+# output tokens, about 3,200 characters, so this is normally the whole response.
+RESPONSE_LIMIT = 8000
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class Exchange(BaseModel):
+    """One model call: what was sent, by hash, and what came back, verbatim.
+
+    A prompt rebuilt from the inputs for review must hash to prompt_sha256. On a retry the
+    conversation also carries the earlier answer and the feedback; the hash is still that
+    of the original prompt, which those are derived from.
+    """
+
+    attempt: int
+    prompt_sha256: str
+    system_sha256: str | None
+    response: str = Field(description="The assistant message content as JSON, truncated")
+    response_chars: int = Field(description="Length of the response before truncation")
+    truncated: bool
+    stop_reason: str | None
+
+
+def _exchange(
+    attempt: int, prompt: str, system: str | None, message: Message, usage: LLMUsage
+) -> Exchange:
+    raw = json.dumps(message.get("content") or [], ensure_ascii=False)
+    return Exchange(
+        attempt=attempt,
+        prompt_sha256=sha256_text(prompt),
+        system_sha256=sha256_text(system) if system else None,
+        response=raw[:RESPONSE_LIMIT],
+        response_chars=len(raw),
+        truncated=len(raw) > RESPONSE_LIMIT,
+        stop_reason=usage.stop_reason,
+    )
+
+
 class LLMResponse(BaseModel):
     text: str
     usage: LLMUsage
@@ -53,14 +97,21 @@ class LLMResponse(BaseModel):
 class StructuredResponse[T: BaseModel](BaseModel):
     data: T
     usage: LLMUsage  # summed over retries
+    exchanges: list[Exchange] = []
 
 
 class StructuredOutputError(Exception):
     """The model did not return output matching the schema, even after a retry."""
 
-    def __init__(self, message: str, usage: LLMUsage | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        usage: LLMUsage | None = None,
+        exchanges: list[Exchange] | None = None,
+    ) -> None:
         super().__init__(message)
         self.usage = usage  # tokens spent on the failed attempts
+        self.exchanges = exchanges or []
 
 
 def _rejects_tool_choice(error: ClientError) -> bool:
@@ -134,13 +185,15 @@ class BedrockClient:
         }
         messages: list[Message] = [{"role": "user", "content": [{"text": prompt}]}]
         total: LLMUsage | None = None
+        exchanges: list[Exchange] = []
         problem = "no attempt made"
 
-        for _ in range(retries + 1):
+        for attempt in range(1, retries + 2):
             message, usage = await self._call_tool(
                 messages, spec, system=system, max_tokens=max_tokens, temperature=temperature
             )
             total = usage if total is None else total + usage
+            exchanges.append(_exchange(attempt, prompt, system, message, usage))
             content = message.get("content") or []
             tool_use = next((b["toolUse"] for b in content if "toolUse" in b), None)
             if not content:
@@ -154,7 +207,9 @@ class BedrockClient:
             else:
                 try:
                     return StructuredResponse[schema](
-                        data=schema.model_validate(tool_use["input"]), usage=total
+                        data=schema.model_validate(tool_use["input"]),
+                        usage=total,
+                        exchanges=exchanges,
                     )
                 except ValidationError as error:
                     problem = str(error)
@@ -167,7 +222,9 @@ class BedrockClient:
                     }
             messages += [message, {"role": "user", "content": [feedback]}]
 
-        raise StructuredOutputError(f"{schema.__name__}: {problem}", usage=total)
+        raise StructuredOutputError(
+            f"{schema.__name__}: {problem}", usage=total, exchanges=exchanges
+        )
 
     async def _call_tool(
         self, messages: list[Message], spec: dict[str, Any], **options: Any
