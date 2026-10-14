@@ -58,3 +58,31 @@ Two runs from the same commit and settings do not give the same verdicts, even t
 - The injection codes do not separate diagnostic from therapeutic injections, or medial branch blocks from intraarticular ones, so rules count "facet injection sessions".
 - Body-site levels are read from free text by a strict whole-string grammar and nothing else. This is the only place code reads free text to decide `met`.
 - The two-score minimum for the prior-ablation rule is a conservative routing choice, not a policy threshold.
+
+## Experiment 1.1: the computed fact as a citable item
+
+**Change.** On a partial rule result, the computed fact is evidence item `[C1]` instead of a separate "COMPUTED FACT" section. The model may cite it like any other item, and its quote must be found in the computed statement. `PARTIAL_BRANCHES` in `src/precertly/judgment/rules.py` has one entry per partial return site. Each entry fixes which outcomes may rest on `[C1]` alone. Any other outcome needs at least one verified chart citation (an E item from a chart chunk; a `request.*` item does not count), or the verdict becomes `insufficient`. The partial prompt states these requirements for its instance, generated from the same entry. The sentence "You may answer without a citation if the computed fact alone settles the criterion" is gone.
+
+The principle: an outcome that rests on something being documented needs a chart citation; an outcome that rests on nothing further being found may cite `[C1]` alone. The full table is printed by `python -m precertly.evals.rules_check --table`.
+
+**What does not change.** The model, the system prompt, the model-only prompt (so the shadow calls are the same as in the baselines and experiment 1), retrieval, k, the fixtures, and every computed statement: rules version 2 reproduces all 48 computed citations in each experiment 1 run exactly. Prompt version 3 differs from version 2 only in the partial prompt. Rules version 2 differs from version 1 only by naming each partial branch.
+
+**Also new in these runs.** Every model call records the sha256 of the exact prompt and system text, and the raw response, truncated at 8,000 characters with its original length. `python -m precertly.evals.prompt_check` rebuilds every prompt offline and requires the hashes to match. A dry run over all 11 cases with a fake Bedrock behind the real client passes it, and a DB test confirms that chunks rebuilt from a bundle match ingested chunks byte for byte.
+
+**Success criteria, written before the run.** Two runs from one commit with `--rules`, compared verdict by verdict with experiment-1a/1b and baseline v2a/v2b.
+
+- (a) `rules_check`: 38 decided results, none contradicting a label.
+- (b) Right in both runs: facet-03 `second-diagnostic-2-weeks-after-first` (not_met), facet-03 and facet-04 `diagnostic-sessions-max-4` (met), facet-09 `rfa-sessions-max-2` (met).
+- (c) Zero new false approvals at verdict or case level, against every baseline and experiment 1 run.
+- (d) No verdict rests on `[C1]` alone where the table requires a chart citation. The verifier enforces this and a unit test covers every cell of the table. Each results file checks it again in `partial_review.c1_alone_where_chart_required`, which must be empty.
+- (e) Must not regress; right in both runs: facet-04 `second-diagnostic-2-weeks-after-first` (met), facet-03 and facet-04 `first-diagnostic-80pct-relief` (met), facet-01 `two-mbbs-80pct-sustained-relief` (met), facet-10 `prior-rfa-50pct-6-months` (not_met).
+- (f) `prompt_check` and `rules_check --recompute` pass on both results files.
+
+The verdicts in (b) are targets, not effect claims. An effect is claimed only under the rule above: wrong in every baseline run and right in every experiment run. Everything else is reported against the noise floor of 14 of 184. A run with an unusable model answer makes the pair not clean, as before.
+
+**Reviewed by hand after the run.** `partial_review.chart_required_met` lists every met verdict that needed a chart citation, with the E items and quotes it cited. The verifier checks that a quote is in the item it cites, not that it supports the outcome, so relevance is reviewed by hand.
+
+**For QUALITY.md, when it is added:**
+
+- With real data, the stored prompts and raw responses contain patient information. A deployment needs them behind access controls and retention limits.
+- Absence-based met on the partial path (rows 2a and 3a: no session beyond the coded count) depends on retrieval recall. The model sees the retrieved chunks, not the whole chart, so a session documented only in a chunk that was not retrieved goes unseen. Experiment 3 targets this.
