@@ -86,3 +86,4 @@ The verdicts in (b) are targets, not effect claims. An effect is claimed only un
 
 - With real data, the stored prompts and raw responses contain patient information. A deployment needs them behind access controls and retention limits.
 - Absence-based met on the partial path (rows 2a and 3a: no session beyond the coded count) depends on retrieval recall. The model sees the retrieved chunks, not the whole chart, so a session documented only in a chunk that was not retrieved goes unseen. Experiment 3 targets this.
+- Row 7 (`same-day-blocks/listed`): "documentation of each listed block" for met is stated in the prompt only. The verifier requires at least one verified chart citation, not one per listed block, so a met citing documentation for only one of several same-day blocks would pass verification. No fixture exercises this row.
