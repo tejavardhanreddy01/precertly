@@ -34,7 +34,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - `src/precertly/ingest/` – bundle → `chart_chunks`; embeds only notes, conditions, procedures, medication requests; vectors cached by sha256
 - `src/precertly/retrieval/` – `hybrid_search` (full-text + pgvector, RRF) and `observations` (by code and date)
 - `src/precertly/judgment/` – per-criterion verdicts with verified quotes, combined by the variant logic; only `chart` and `request` stage criteria are judged
-- `src/precertly/evals/` – eval case schema, scorer, and the runner (`python -m precertly.evals.run`)
+- `src/precertly/evals/` – eval case schema, scorer, the runner (`python -m precertly.evals.run`), `compare`, `rules_check` and `prompt_check`
 - `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile)
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
 - `data/synthea/` – patient generator (output is git-ignored)
@@ -75,7 +75,9 @@ Done:
 - Required `evidence_stage` on every criterion (`chart`, `request`, `provider_attestation`, `post_service`, `payer`), defined relative to the request being decided.
 - Annotation guideline (`evals/GUIDELINES.md`) and the facet case plan (`evals/cases/facet/PLAN.md`).
 - Eleven facet eval cases (`evals/cases/facet/`), with bundles built by `evals/build_cases.py` and tests tying each case to the policy, its bundle and the case plan.
+- The judgment step: per-criterion verdicts on Bedrock with verified quotes, combined by the variant logic; a deterministic rules layer (`judgment/rules.py`) that decides or fixes facts from coded data; the partial path, where a computed fact is cited as `[C1]` under per-branch citation rules (`PARTIAL_BRANCHES`).
+- Eval runner with resume, shadow model-only calls and a partial-path review list; `compare` for marking run pairs; `rules_check` (offline, `--table`, `--recompute`); `prompt_check`, which rebuilds every recorded prompt against its hash. Results and pre-registered experiments are in `evals/results/NOTES.md` (noise floor 14 of 184).
 
-Next: the judgment step (core pipeline part 3): per-criterion judgment on Bedrock with structured output and quote verification, combined through the variant logic. Build it and measure it against the 11 facet cases before writing cases for the other three procedures.
+Next: experiment 2, line-level evidence handles (whole-note quotes always verify). Pre-register it in `evals/results/NOTES.md` before running.
 
-After that: the PAS-shaped Claim bundle, then eval cases for PAP, spinal cord stimulator and bariatric surgery.
+After that: experiment 3, retrieval by evidence type (the facet-11 retrieval miss); then the PAS-shaped Claim bundle; then eval cases for PAP, spinal cord stimulator and bariatric surgery.
