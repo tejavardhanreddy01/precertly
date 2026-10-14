@@ -302,3 +302,36 @@ def test_a_branch_from_another_criterion_is_refused():
                 partial=_partial("diagnostic-sessions/within-limit"),
             )
         )
+
+
+def test_partial_review_lists_chart_required_met_verdicts_with_their_quotes():
+    from types import SimpleNamespace
+
+    from precertly.evals.run import partial_review
+    from precertly.judgment import CaseJudgment, Outcome
+
+    chart_met, _ = _judge("second-diagnostic/one-session-short", _answer("met", C1, CHART))
+    alone_met, _ = _judge("rfa-sessions/within-limit", _answer("met", C1))
+    alone_not_met, _ = _judge("second-diagnostic/one-session-short", _answer("not_met", C1))
+    # a verdict that bypassed the verifier, to show the check would catch it
+    forged = alone_met.model_copy(deep=True)
+    forged.criterion = "diagnostic-sessions-max-4"
+    forged.computed[0].branch = "diagnostic-sessions/at-or-over-limit"
+    judgment = CaseJudgment(
+        policy=FACET.id,
+        variant="x",
+        verdicts=[chart_met, alone_met, alone_not_met, forged],
+        overall=Outcome.MET,
+        reviewer_checklist=[],
+    )
+    review = partial_review([(SimpleNamespace(case_id="facet-04"), judgment)])
+    (entry,) = review["chart_required_met"]
+    assert (entry["case"], entry["row"], entry["outcome"], entry["c1_cited"]) == (
+        "facet-04",
+        "1a",
+        "met",
+        True,
+    )
+    assert entry["citations"] == [{"handle": E_NOTE, "chunk_id": NOTE.id, "quote": CHART[1]}]
+    (violation,) = review["c1_alone_where_chart_required"]
+    assert violation["row"] == "2b"

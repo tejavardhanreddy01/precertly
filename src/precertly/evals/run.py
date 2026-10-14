@@ -40,6 +40,7 @@ from precertly.judgment import (
 )
 from precertly.judgment.judge import MAX_TOKENS, TEMPERATURE
 from precertly.judgment.prompt import PROMPT_VERSION
+from precertly.judgment.rules import PARTIAL_BRANCHES
 from precertly.llm import BedrockClient, BedrockEmbedder
 from precertly.policies import load_policies
 from precertly.retrieval.search import DEFAULT_CANDIDATES, RRF_K
@@ -215,6 +216,49 @@ def _model_only_view(results: list[Result]) -> dict[str, object]:
     }
 
 
+def partial_review(results: list[Result]) -> dict[str, list[dict[str, object]]]:
+    """Partial verdicts whose outcome needed a chart citation under PARTIAL_BRANCHES.
+
+    chart_required_met lists each such met verdict with the items it cited, by handle and
+    quote, so their relevance can be reviewed by hand: the verifier checks that a quote is
+    in the item, not that it supports the outcome. c1_alone_where_chart_required lists
+    any such verdict without a verified chart citation; the verifier makes it impossible,
+    and this list checks that in the results.
+    """
+    met, violations = [], []
+    for score, judgment in results:
+        for verdict in judgment.verdicts:
+            if verdict.rule_kind != "partial" or not verdict.computed:
+                continue
+            computed = verdict.computed[0]
+            assert computed.branch is not None
+            branch = PARTIAL_BRANCHES[computed.branch]
+            final = verdict.outcome if verdict.applicable else "not_applicable"
+            if final == "insufficient" or not branch.needs_chart(final):
+                continue
+            entry = {
+                "case": score.case_id,
+                "criterion": verdict.criterion,
+                "row": branch.row,
+                "branch": computed.branch,
+                "outcome": final,
+                "c1_cited": computed.cited_by_model,
+                "citations": [
+                    {
+                        "handle": f"E{verdict.chunk_ids.index(c.chunk_id) + 1}",
+                        "chunk_id": c.chunk_id,
+                        "quote": c.quote,
+                    }
+                    for c in verdict.citations
+                ],
+            }
+            if not any(c.is_chart for c in verdict.citations):
+                violations.append(entry)
+            elif final == "met":
+                met.append(entry)
+    return {"chart_required_met": met, "c1_alone_where_chart_required": violations}
+
+
 def _shown(criterion: CriterionScore) -> str:
     return "not_applicable" if criterion.agent_not_applicable else criterion.predicted.value
 
@@ -369,6 +413,7 @@ def main() -> int:
         }
         if args.rules:
             payload |= _model_only_view(results)
+            payload["partial_review"] = partial_review(results)
         out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         return summary
 
@@ -378,6 +423,19 @@ def main() -> int:
         (score for score, _ in previous + new_results), key=lambda s: order.index(s.case_id)
     )
     print("\n" + _report(summary, scores))
+    if args.rules:
+        review = partial_review(
+            sorted(previous + new_results, key=lambda r: order.index(r[0].case_id))
+        )
+        print(
+            f"\nPartial verdicts resting on [C1] alone where the chart is required: "
+            f"{len(review['c1_alone_where_chart_required'])}"
+        )
+        print("Met verdicts that needed a chart citation, for review by hand:")
+        for entry in review["chart_required_met"]:
+            print(f"  {entry['case']} {entry['criterion']} (row {entry['row']}):")
+            for citation in entry["citations"]:
+                print(f"    [{citation['handle']}] {citation['chunk_id']}: {citation['quote']!r}")
     print(f"\nwrote {out}")
     return 0
 
