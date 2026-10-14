@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from precertly.llm import BedrockClient, StructuredOutputError
 from precertly.settings import Settings
 
-SETTINGS = Settings(_env_file=None)
+SETTINGS = Settings(_env_file=None, llm_requests_per_minute=None)
 
 
 class Verdict(BaseModel):
@@ -149,3 +149,58 @@ def test_other_client_errors_are_not_swallowed():
     with pytest.raises(ClientError):
         asyncio.run(client.structured("judge", Verdict))
     assert len(fake.requests) == 1
+
+
+def test_an_empty_model_message_is_retried_without_sending_it_back():
+    empty = _response()  # no content blocks at all
+    client, fake = _client(empty, _tool_use(outcome="met", reason="ok"))
+    result = asyncio.run(client.structured("judge", Verdict))
+
+    assert result.data.outcome == "met"
+    assert result.usage.calls == 2
+    # the retry is the original conversation; an empty assistant turn would be rejected
+    assert fake.requests[1]["messages"] == fake.requests[0]["messages"]
+
+
+def test_structured_error_carries_the_tokens_spent():
+    client, _ = _client(_response(), _response())
+    with pytest.raises(StructuredOutputError, match="empty message") as raised:
+        asyncio.run(client.structured("judge", Verdict))
+    assert raised.value.usage.input_tokens == 80
+
+
+def test_each_call_is_recorded_with_prompt_hashes_and_the_raw_response():
+    from precertly.llm import sha256_text
+
+    client, _ = _client(
+        _tool_use(outcome="denied", reason="x"), _tool_use(outcome="met", reason="ok")
+    )
+    result = asyncio.run(client.structured("judge", Verdict, system="be strict"))
+
+    first, second = result.exchanges
+    assert (first.attempt, second.attempt) == (1, 2)
+    # the retry carries feedback, but both calls stem from the same original prompt
+    assert first.prompt_sha256 == second.prompt_sha256 == sha256_text("judge")
+    assert first.system_sha256 == sha256_text("be strict")
+    assert '"outcome": "denied"' in first.response and '"outcome": "met"' in second.response
+    assert first.response_chars == len(first.response) and not first.truncated
+    assert first.stop_reason == "tool_use"
+    # one character of difference in the prompt changes the hash
+    assert sha256_text("judge ") != first.prompt_sha256
+
+
+def test_a_long_response_is_truncated_with_its_original_length_kept():
+    from precertly.llm import RESPONSE_LIMIT
+
+    long = "x" * (RESPONSE_LIMIT + 500)
+    client, _ = _client(_tool_use(outcome="met", reason=long))
+    (exchange,) = asyncio.run(client.structured("judge", Verdict)).exchanges
+    assert exchange.truncated and len(exchange.response) == RESPONSE_LIMIT
+    assert exchange.response_chars > RESPONSE_LIMIT + 500
+
+
+def test_a_failed_structured_call_still_carries_its_exchanges():
+    client, _ = _client(_response(), _response({"text": "sorry"}))
+    with pytest.raises(StructuredOutputError) as raised:
+        asyncio.run(client.structured("judge", Verdict))
+    assert [e.response for e in raised.value.exchanges] == ["[]", '[{"text": "sorry"}]']

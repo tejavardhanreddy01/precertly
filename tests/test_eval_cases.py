@@ -135,6 +135,17 @@ def test_committed_bundles_match_the_build_script():
         assert case.bundle_path().read_text(encoding="utf-8") == built, case.id
 
 
+def test_label_evidence_lists_are_generated_by_the_build_script():
+    build_cases = _build_module()
+    for case in CASES.values():
+        path = EVALS_DIR / "cases" / "facet" / f"{case.id}.yaml"
+        assert path.read_text(encoding="utf-8") == build_cases.with_generated_evidence(case.id)
+        generated = build_cases.label_evidence(build_cases.CASES[case.id])
+        for label in case.expected:
+            expected = [] if label.outcome is Outcome.NOT_APPLICABLE else generated[label.criterion]
+            assert label.evidence == expected, f"{case.id}: {label.criterion}"
+
+
 def test_overall_outcome_logic():
     from precertly.policies import LogicNode
 

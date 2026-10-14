@@ -132,3 +132,28 @@ def test_observations_accept_several_codes_and_ignore_unknown_ones(db, sleep_bun
     assert [h.ref for h in hits] == ["Observation/bmi-2026#0", "Observation/weight-2026#0"]
     assert _observations(db, sleep_bundle, ["http://snomed.info/sct|39156-5"]) == []
     assert _observations(db, sleep_bundle, []) == []
+
+
+def test_retrieval_is_the_same_after_a_re_ingest(db, sleep_bundle):
+    """Row ids change on every ingest; the evidence returned for a chart must not."""
+    queries = ["body mass index", "sleep apnea polysomnography", "naproxen tablet", "zzz"]
+
+    async def work(session):
+        runs = []
+        for _ in range(3):
+            ingested = await ingest_bundle(session, sleep_bundle, embedder=FakeEmbedder())
+            hits = {}
+            for query in queries:
+                for embedder in (None, FakeEmbedder()):
+                    found = await hybrid_search(
+                        session, ingested.case_id, query, embedder=embedder, k=6
+                    )
+                    hits[(query, embedder is not None)] = [(h.ref, h.score) for h in found]
+            runs.append(hits)
+        return runs
+
+    first, second, third = db(work)
+    assert first == second == third
+    # the three BMI observations tie on full-text rank; their order is by resource id
+    bmi = [ref for ref, _ in first[("body mass index", False)] if "bmi" in ref]
+    assert bmi == sorted(bmi)

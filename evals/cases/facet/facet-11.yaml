@@ -8,6 +8,7 @@ request:
   date: 2026-10-05
   service_date: 2026-10-19
   procedure: diagnostic medial branch block
+  technique: medial_branch_block
   codes: ["64493", "64494"]
   region: lumbar
   levels: [L4-5, L5-S1]
@@ -28,25 +29,25 @@ expected:
     outcome: met
     fact: >-
       Predominantly axial low back pain, moderate to severe; NRS 7/10 and ODI 48% at baseline; cannot stand longer than 15 minutes.
-    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
 
   - criterion: pain-minimum-3-months
     outcome: met
     fact: >-
       Pain began 2026-04-03, six months before the request date.
-    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval]
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval]
 
   - criterion: conservative-care-failed
     outcome: insufficient
     fact: >-
       The evaluation says 12 weeks of physical therapy were completed with no improvement; the therapy records show 2 of 12 sessions attended and no outcome recorded. Nothing reconciles the two, and no medication trial is documented.
-    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-pt-records]
+    evidence: [DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval, DocumentReference/note-pt-records]
 
   - criterion: no-untreated-radiculopathy
     outcome: met
     fact: >-
       Neurological exam documented: normal strength, sensation and reflexes, negative straight-leg raise, no radicular symptoms and no neurogenic claudication.
-    evidence: [DocumentReference/note-pain-clinic-eval]
+    evidence: [DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval]
 
   - criterion: no-non-facet-pathology
     outcome: met
@@ -88,7 +89,7 @@ expected:
     outcome: met
     fact: >-
       The request is for the lumbar region only.
-    evidence: [request.region]
+    evidence: [request.region, request.levels]
 
   - criterion: levels-1-to-2
     outcome: met

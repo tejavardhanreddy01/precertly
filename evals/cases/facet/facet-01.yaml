@@ -8,6 +8,7 @@ request:
   date: 2026-10-05
   service_date: 2026-10-19
   procedure: thermal radiofrequency ablation
+  technique: radiofrequency_ablation
   codes: ["64635", "64636"]
   region: lumbar
   levels: [L4-5, L5-S1]
@@ -23,25 +24,25 @@ expected:
     outcome: met
     fact: >-
       Predominantly axial low back pain, moderate to severe; NRS 7/10 and ODI 48% at baseline; cannot stand longer than 15 minutes.
-    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DocumentReference/note-pt-discharge, DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline, DocumentReference/note-mbb1, DocumentReference/note-mbb2]
 
   - criterion: pain-minimum-3-months
     outcome: met
     fact: >-
       Pain began 2026-04-03, six months before the request date.
-    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval]
+    evidence: [Condition/chronic-low-back-pain, DocumentReference/note-pcp, DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval]
 
   - criterion: conservative-care-failed
     outcome: met
     fact: >-
       Naproxen with minimal benefit and a 12-week course of physical therapy with no meaningful improvement in pain or function.
-    evidence: [MedicationRequest/naproxen, Procedure/physical-therapy-course, DocumentReference/note-pt-discharge, DocumentReference/note-pain-clinic-eval]
+    evidence: [DocumentReference/note-pcp, MedicationRequest/naproxen, Procedure/physical-therapy-course, DocumentReference/note-pt-discharge, DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval]
 
   - criterion: no-untreated-radiculopathy
     outcome: met
     fact: >-
       Neurological exam documented: normal strength, sensation and reflexes, negative straight-leg raise, no radicular symptoms and no neurogenic claudication.
-    evidence: [DocumentReference/note-pain-clinic-eval]
+    evidence: [DocumentReference/note-pcp, DocumentReference/note-pain-clinic-eval]
 
   - criterion: no-non-facet-pathology
     outcome: met
@@ -59,7 +60,7 @@ expected:
     outcome: met
     fact: >-
       Pain recorded on the same NRS 0-10 after block 1 (1/10) and after block 2 (1/10).
-    evidence: [Observation/pain-post-mbb1, Observation/pain-post-mbb2, DocumentReference/note-mbb1, DocumentReference/note-mbb2]
+    evidence: [Observation/pain-post-mbb1, DocumentReference/note-mbb1, Observation/pain-post-mbb2, DocumentReference/note-mbb2, DocumentReference/note-rfa-planning]
 
   - criterion: disability-scale-at-baseline
     outcome: met
@@ -71,7 +72,7 @@ expected:
     outcome: met
     fact: >-
       The notes name both scales, the Numerical Rating Scale (NRS) 0-10 and the Oswestry Disability Index (ODI).
-    evidence: [DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline]
+    evidence: [DocumentReference/note-pain-clinic-eval, Observation/pain-nrs-baseline, Observation/odi-baseline, Observation/pain-pre-mbb1, Observation/pain-post-mbb1, DocumentReference/note-mbb1, Observation/pain-pre-mbb2, Observation/pain-post-mbb2, DocumentReference/note-mbb2, DocumentReference/note-rfa-planning]
 
   - criterion: no-generalized-pain-indication
     outcome: met
@@ -89,7 +90,7 @@ expected:
     outcome: met
     fact: >-
       The request is for the lumbar region only.
-    evidence: [request.region]
+    evidence: [request.region, request.levels]
 
   - criterion: levels-1-to-2
     outcome: met
@@ -107,10 +108,10 @@ expected:
     outcome: met
     fact: >-
       Two diagnostic medial branch blocks (2026-08-24 and 2026-09-14), each with (7 - 1) / 7 = 86% relief lasting about 6 hours, consistent with bupivacaine.
-    evidence: [Procedure/mbb1, Observation/pain-pre-mbb1, Observation/pain-post-mbb1, DocumentReference/note-mbb1, Procedure/mbb2, Observation/pain-pre-mbb2, Observation/pain-post-mbb2, DocumentReference/note-mbb2]
+    evidence: [Procedure/mbb1, Observation/pain-pre-mbb1, Observation/pain-post-mbb1, DocumentReference/note-mbb1, Procedure/mbb2, Observation/pain-pre-mbb2, Observation/pain-post-mbb2, DocumentReference/note-mbb2, DocumentReference/note-rfa-planning]
 
   - criterion: rfa-sessions-max-2
     outcome: met
     fact: >-
       The record states the patient has not had radiofrequency ablation before, so there are no sessions in the last 12 months.
-    evidence: [DocumentReference/note-rfa-planning, DocumentReference/note-pain-clinic-eval]
+    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-rfa-planning]

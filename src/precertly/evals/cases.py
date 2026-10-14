@@ -2,42 +2,23 @@
 
 Labeling rules are in evals/GUIDELINES.md. Two of them are code here: which criteria are
 scored (chart and request stage), and how the case-level outcome follows from the labels.
+Both live in precertly.judgment, because the pipeline applies the same rules.
 """
 
 from __future__ import annotations
 
-from datetime import date
-from enum import StrEnum
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field
 
-from precertly.policies import EvidenceStage, LogicNode, Policy
+from precertly.judgment.logic import JUDGED_STAGES as SCORED_STAGES
+from precertly.judgment.logic import judged_criteria as scored_criteria
+from precertly.judgment.logic import overall_outcome
+from precertly.judgment.models import Outcome
+from precertly.judgment.models import PriorAuthRequest as Request
 
 EVALS_DIR = Path(__file__).resolve().parents[3] / "evals"
-
-# The agent is scored only on criteria it can decide from the record or the request.
-SCORED_STAGES = frozenset({EvidenceStage.CHART, EvidenceStage.REQUEST})
-
-
-class Outcome(StrEnum):
-    MET = "met"
-    NOT_MET = "not_met"
-    INSUFFICIENT = "insufficient"
-    NOT_APPLICABLE = "not_applicable"  # scoring label only; the agent never outputs it
-
-
-class Request(BaseModel):
-    """The prior-authorization request. Request-stage criteria are judged from this."""
-
-    date: date
-    service_date: date = Field(description="Planned date of the requested service")
-    procedure: str = Field(description="The requested procedure, in plain words")
-    codes: list[str] = Field(min_length=1)
-    region: str
-    levels: list[str] = Field(min_length=1)
-    same_day_blocks: list[str] = Field(default_factory=list)
 
 
 class Label(BaseModel):
@@ -100,34 +81,16 @@ def load_cases(directory: Path = EVALS_DIR / "cases") -> dict[str, EvalCase]:
     return by_id
 
 
-def scored_criteria(policy: Policy, variant_id: str) -> list[str]:
-    """Criteria of a variant that must be labeled, in policy-file order."""
-    in_variant = policy.variant(variant_id).logic.criterion_ids()
-    return [
-        c.id for c in policy.criteria if c.id in in_variant and c.evidence_stage in SCORED_STAGES
-    ]
-
-
-def overall_outcome(logic: LogicNode, outcomes: dict[str, Outcome]) -> Outcome:
-    """Case-level outcome from the variant logic (GUIDELINES.md, "Overall outcome").
-
-    not_applicable counts as satisfied. So does a criterion with no label: those are the
-    attestation, post-service and payer criteria left to the human reviewer.
-    """
-    results = []
-    for child in logic.children():
-        if isinstance(child, LogicNode):
-            results.append(overall_outcome(child, outcomes))
-        else:
-            outcome = outcomes.get(child, Outcome.MET)
-            results.append(Outcome.MET if outcome is Outcome.NOT_APPLICABLE else outcome)
-
-    if logic.all_of is not None:
-        for failing in (Outcome.NOT_MET, Outcome.INSUFFICIENT):
-            if failing in results:
-                return failing
-        return Outcome.MET
-    for best in (Outcome.MET, Outcome.INSUFFICIENT):
-        if best in results:
-            return best
-    return Outcome.NOT_MET
+__all__ = [
+    "EVALS_DIR",
+    "SCORED_STAGES",
+    "ChangedLabel",
+    "EvalCase",
+    "Label",
+    "Outcome",
+    "Request",
+    "load_case",
+    "load_cases",
+    "overall_outcome",
+    "scored_criteria",
+]

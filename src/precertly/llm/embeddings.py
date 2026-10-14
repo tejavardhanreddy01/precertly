@@ -13,6 +13,7 @@ from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
 from precertly.llm.client import runtime_client
+from precertly.llm.pacing import Pacer
 from precertly.settings import Settings, get_settings
 
 
@@ -42,9 +43,7 @@ class BedrockEmbedder:
         self.base_delay = base_delay
         self.max_delay = max_delay
         self._sleep = sleep
-        rate = self.settings.embedding_requests_per_minute
-        self._interval = 60.0 / rate if rate else 0.0
-        self._next_slot = 0.0
+        self._pacer = Pacer(self.settings.embedding_requests_per_minute, sleep)
         self.calls: list[EmbeddingUsage] = []
 
     @property
@@ -53,16 +52,6 @@ class BedrockEmbedder:
             # botocore retries are off so the backoff below is the only retry policy.
             self._client = runtime_client(self.settings, max_attempts=1)
         return self._client
-
-    async def _wait_for_slot(self) -> None:
-        """Space request starts evenly so the per-minute quota is not exceeded."""
-        if not self._interval:
-            return
-        now = asyncio.get_running_loop().time()
-        slot = max(now, self._next_slot)
-        self._next_slot = slot + self._interval
-        if slot > now:
-            await self._sleep(slot - now)
 
     async def embed(self, text: str) -> list[float]:
         body = json.dumps(
@@ -73,7 +62,7 @@ class BedrockEmbedder:
             }
         )
         for attempt in range(1, self.max_attempts + 1):
-            await self._wait_for_slot()
+            await self._pacer.wait()
             started = time.perf_counter()
             try:
                 response = await asyncio.to_thread(
