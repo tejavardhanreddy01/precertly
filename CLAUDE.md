@@ -15,6 +15,8 @@ uv run pre-commit install                       # once per clone: ruff + pytest 
 data/synthea/generate.sh 10                     # synthetic FHIR patients (Java 11+)
 uv run python evals/build_cases.py [--check]    # rebuild or verify the eval case bundles
 uv run python -m precertly.evals.run --estimate  # size of an eval run; without --estimate it calls Bedrock (ask first)
+uv run python -m precertly.evals.rules_check [--table | --recompute <results.json>]  # rules vs labels, offline
+uv run python -m precertly.evals.prompt_check <results.json>  # rebuild every recorded prompt and check its hash
 uv run python -m precertly.fhir <bundle-or-dir>  # chunk summary for FHIR bundles
 docker compose up -d db                         # Postgres 16 + pgvector on localhost:5433
 uv run alembic upgrade head                     # apply migrations (URL from PRECERTLY_DATABASE_URL)
