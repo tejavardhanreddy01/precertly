@@ -1,6 +1,6 @@
 # Evals
 
-Forty hand-labeled cases (10 per procedure) with known answers, scored on every PR that touches prompts, retrieval or models. The headline metric is the **false-approval rate**: scored criteria the agent marks `met` when the label is `not_met` or `insufficient`. Both labels lead to a non-affirmed decision in practice, so both count. Labeling rules are in [GUIDELINES.md](GUIDELINES.md).
+Hand-labeled cases with known answers. Eleven facet cases exist today; the goal is forty (10 per procedure), scored in CI on every PR that touches prompts, retrieval or models. Runs are made by hand for now, and their results and pre-registered experiments are in [results/NOTES.md](results/NOTES.md). The headline metric is the **false-approval rate**: scored criteria the agent marks `met` when the label is `not_met` or `insufficient`. Both labels lead to a non-affirmed decision in practice, so both count. Labeling rules are in [GUIDELINES.md](GUIDELINES.md).
 
 ## Case format
 
