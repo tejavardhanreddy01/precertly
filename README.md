@@ -4,7 +4,7 @@
 
 Precertly reads a patient chart (FHIR R4) and a requested procedure, checks each payer coverage criterion against the chart, cites the exact evidence for each verdict, and drafts a prior-authorization request shaped like the HL7 Da Vinci PAS format. A human reviews and approves. It never auto-denies.
 
-> 🚧 **In active development.** Live demo, eval scorecard and architecture diagram land here as they ship.
+> 🚧 **In active development.** Chart ingest, search, cited per-criterion verdicts and the eval harness work today, for facet joint interventions. The PAS-shaped request, the reviewer UI and the deployment are not built yet.
 
 ## Why
 
@@ -55,11 +55,48 @@ The LLM runs on Amazon Bedrock. Model, region and AWS profile come from `PRECERT
 
 Try `GET /requirements/64635` to see what a lumbar facet ablation request must show.
 
+## How a criterion is judged
+
+Every criterion has an `evidence_stage`. Only `chart` and `request` criteria get a verdict; the rest (provider attestations, post-service and payer facts) go to the reviewer as a checklist.
+
+1. **Rules first.** Where coded data settles a criterion (conditions, session counts, intervals, pain-score relief), a deterministic rule in [`judgment/rules.py`](src/precertly/judgment/rules.py) decides it, or fixes a computed fact the model must work from. A rule never decides `not_met` from missing data; missing coded data goes to the model.
+2. **Then the model.** The rest are judged on Bedrock from the retrieved chunks, through one forced output schema and no other tools.
+3. **Then verification.** Every quote must be found in the chunk it cites. A verdict whose quote does not verify, or a `met` / `not_met` with no citation, becomes `insufficient`.
+4. **Then the logic.** The policy's `all_of` / `any_of` logic combines the verdicts in code, never by the model.
+
+Outcomes are `met`, `not_met` or `insufficient`. Precertly never denies; a human decides. The invariants, threat model and test strategy behind this are in [docs/QUALITY.md](docs/QUALITY.md), including the gaps that are known and not yet fixed.
+
+## Evals
+
+Eleven labeled facet cases ([`evals/cases/facet/`](evals/cases/facet)) are built on a trimmed Synthea patient by [`evals/build_cases.py`](evals/build_cases.py), so each expected answer is known by construction. Labeling rules are in [evals/GUIDELINES.md](evals/GUIDELINES.md) and the case format in [evals/README.md](evals/README.md).
+
+```bash
+uv run python evals/build_cases.py --check                  # committed bundles match the build script
+uv run python -m precertly.evals.run --estimate             # size of a run: no AWS, no database
+uv run python -m precertly.evals.run --rules                # real run: local database and Bedrock (costs money)
+uv run python -m precertly.evals.compare --mark <a> <b>     # compare two runs from the same commit
+uv run python -m precertly.evals.rules_check                # rule results against the labels, offline
+uv run python -m precertly.evals.prompt_check <results.json>  # rebuild every recorded prompt, check its hash
+```
+
+Latest pair (experiment 1.1, Amazon Nova 2 Lite, with rules), from [evals/results/NOTES.md](evals/results/NOTES.md):
+
+| Metric | Run a | Run b |
+| --- | --- | --- |
+| Criteria right | 177 of 184 | 176 of 184 |
+| Cases right | 7 of 11 | 7 of 11 |
+| False approvals (verdict / case) | 1 / 1 | 1 / 1 |
+
+Two runs on the same commit differ on up to 14 of 184 verdicts, so an effect is claimed only for a verdict that is wrong in every baseline run and right in every experiment run. The remaining false approval (facet-11) is a retrieval miss. Experiments are pre-registered in the notes before they run, and failures are reported with the rest.
+
 ## Roadmap
 
 - [x] Policy criteria for 4 procedures, validated in CI
-- [ ] Agent pipeline: evidence search and cited verdicts (Bedrock)
-- [ ] Eval harness: 40 labeled cases, CI gate
+- [x] Chart ingest and hybrid search (Postgres full-text + pgvector)
+- [x] Cited per-criterion verdicts on Bedrock, with deterministic rules and quote verification
+- [ ] Line-level evidence handles (experiment 2) and retrieval by evidence type (experiment 3)
+- [ ] PAS-shaped request bundle
+- [ ] Eval harness: 40 labeled cases (11 facet cases so far), CI gate
 - [ ] AWS deployment (AgentCore, ECS, RDS, CDK)
 - [ ] Reviewer UI, MCP server, demo mode
 
