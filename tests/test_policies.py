@@ -40,6 +40,30 @@ def test_conditional_criteria_say_when_they_apply():
     assert facet.criterion("pain-minimum-3-months").condition is None
 
 
+def test_every_conditional_criterion_names_where_its_condition_evidence_is():
+    from precertly.judgment import PriorAuthRequest
+
+    fields = set(PriorAuthRequest.model_fields)
+    for policy in load_policies().values():
+        for criterion in policy.criteria:
+            if criterion.condition is None:
+                assert criterion.condition_evidence is None, criterion.id
+                continue
+            evidence = criterion.condition_evidence
+            assert evidence == "chart" or evidence.removeprefix("request.") in fields, criterion.id
+
+
+def test_condition_and_condition_evidence_go_together():
+    criterion = load_policies()["facet-joint-interventions"].criterion("same-day-blocks-justified")
+    data = criterion.model_dump()
+    with pytest.raises(ValidationError, match="go together"):
+        type(criterion).model_validate(data | {"condition_evidence": None})
+    with pytest.raises(ValidationError, match="go together"):
+        type(criterion).model_validate(data | {"condition": None})
+    with pytest.raises(ValidationError):
+        type(criterion).model_validate(data | {"condition_evidence": "notes"})
+
+
 def test_facet_thresholds_match_the_lcd():
     facet = load_policies()["facet-joint-interventions"]
     assert facet.criterion("pain-minimum-3-months").thresholds == {"min_duration_months": 3}

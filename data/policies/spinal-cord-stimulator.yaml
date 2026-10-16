@@ -144,6 +144,7 @@ criteria:
     kind: clinical
     evidence_stage: chart
     condition: A previous spinal cord stimulator trial failed.
+    condition_evidence: chart
     evidence: [Procedure, DocumentReference]
     source_document: LCD L36204
     source_section: Coverage Indications, Limitations, and/or Medical Necessity

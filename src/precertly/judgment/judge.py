@@ -1,9 +1,10 @@
 """Judge criteria with an LLM, verify every quote, and combine the verdicts.
 
 The model's answer is never taken on trust: a quote that is not found in the chunk it
-cites invalidates the verdict, and so does a met or not_met answer with no citation. An
-invalidated verdict becomes "insufficient", so an unverifiable answer can never read as
-approval.
+cites invalidates the verdict, and so does a met or not_met answer with no citation. A
+verdict that a criterion's condition does not hold must cite the evidence its policy names
+in condition_evidence. An invalidated verdict becomes "insufficient", so an unverifiable
+answer can never read as approval.
 
 With a partial rule result the computed fact is evidence item [C1]. It is verified like
 any other item (the quote must be in its statement), and PARTIAL_BRANCHES fixes which
@@ -47,6 +48,9 @@ from precertly.policies import Criterion, Policy
 # results file, and a run may only be resumed under the same values.
 MAX_TOKENS = 800
 TEMPERATURE = 0.0
+# Version of the checks that decide whether a model answer stands. 2: a not-applicable
+# verdict must cite its criterion's condition_evidence.
+VERIFIER_VERSION = "2"
 
 
 class StructuredLLM(Protocol):
@@ -115,17 +119,21 @@ def citation_problem(
     computed_quote: str | None,
     partial: RuleResult | None,
     condition_holds: bool | None = None,
+    condition_evidence: str | None = None,
 ) -> str | None:
     """Why the citations cannot support this outcome, or None if they can.
 
     Without a partial rule result, met and not_met need at least one citation. With one,
     the PARTIAL_BRANCHES entry decides: an outcome it lists may rest on [C1] alone, and any
-    other needs a verified chart citation (a request field does not count).
+    other needs a verified chart citation (a request field does not count). On either
+    path, not applicable must also cite the criterion's condition_evidence.
     """
     if applicable and outcome == "insufficient":
         return None
     if partial is None:
-        return None if not applicable or citations else f"{outcome} with no citation"
+        if not applicable:
+            return condition_citation_problem(condition_evidence, citations)
+        return None if citations else f"{outcome} with no citation"
     assert partial.branch is not None
     branch = PARTIAL_BRANCHES[partial.branch]
     if branch.criterion != criterion_id:
@@ -144,7 +152,33 @@ def citation_problem(
     if not any(citation.is_chart for citation in citations):
         cited = "only [C1] or request items" if citations or computed_quote else "nothing"
         return f"{final} needs a chart citation; cited {cited}"
+    if not applicable:
+        return condition_citation_problem(condition_evidence, citations)
     return None
+
+
+def condition_citation_problem(
+    condition_evidence: str | None, citations: list[VerifiedCitation]
+) -> str | None:
+    """Why the citations cannot show that a criterion's condition does not hold, or None.
+
+    Strict both ways: condition_evidence "chart" needs a verified chart citation, and a
+    request field alone does not count; "request.<field>" needs a verified citation of that
+    field, and a chart citation alone does not count. The citation shows the context the
+    model relied on; it cannot prove an absence.
+    """
+    if condition_evidence is None:
+        raise ValueError("a criterion with a condition must name its condition_evidence")
+    if condition_evidence == "chart":
+        if any(citation.is_chart for citation in citations):
+            return None
+        needed = "a chart citation"
+    else:
+        if any(citation.chunk_id == condition_evidence for citation in citations):
+            return None
+        needed = f"a citation of {condition_evidence}"
+    cited = ", ".join(sorted({citation.chunk_id for citation in citations})) or "nothing"
+    return f"not_applicable needs {needed}; cited {cited}"
 
 
 def computed_citation(
@@ -217,6 +251,7 @@ async def judge_criterion(
             computed_quote,
             partial,
             judgment.condition_holds,
+            criterion.condition_evidence,
         )
     if invalid is not None:
         outcome, applicable, computed_quote = "insufficient", True, None

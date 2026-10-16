@@ -170,6 +170,7 @@ criteria:
     kind: documentation
     evidence_stage: chart
     condition: Other blocks (for example epidural, sympathetic or trigger point injections) are performed on the same day as the facet joint procedure.
+    condition_evidence: request.same_day_blocks
     evidence: [Procedure, ServiceRequest, DocumentReference]
     source_document: LCD L38773
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
@@ -194,6 +195,7 @@ criteria:
     kind: clinical
     evidence_stage: chart
     condition: The diagnostic procedure is an intraarticular facet block instead of a medial branch block.
+    condition_evidence: request.technique
     evidence: [Procedure, DocumentReference]
     source_document: LCD L38773
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > A. Diagnostic Facet Joint Procedures (IA or MBB)
@@ -248,6 +250,7 @@ criteria:
     kind: exclusion
     evidence_stage: chart
     condition: The patient has had a previously successful RFA.
+    condition_evidence: chart
     evidence: [Procedure, DocumentReference]
     source_document: LCD L38773
     source_section: Coverage Indications, Limitations, and/or Medical Necessity > Limitations
@@ -282,6 +285,7 @@ criteria:
     kind: clinical
     evidence_stage: chart
     condition: This is a subsequent therapeutic facet joint procedure at the same anatomic site.
+    condition_evidence: chart
     thresholds: { min_pain_relief_pct: 50, min_duration_months: 3, min_function_improvement_pct: 50, same_scale: true }
     evidence: [Observation, Procedure, DocumentReference]
     source_document: LCD L38773
@@ -350,6 +354,7 @@ criteria:
     kind: clinical
     evidence_stage: chart
     condition: Two years or more have passed since the last RFA and there is a question as to the source of the recurrent pain.
+    condition_evidence: chart
     thresholds: { years_since_last_rfa: 2 }
     evidence: [Procedure, Observation, DocumentReference]
     source_document: LCD L38773

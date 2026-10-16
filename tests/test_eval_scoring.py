@@ -309,7 +309,12 @@ def test_resume_also_refuses_different_policy_versions_or_judgment_settings():
 
     current = run_metadata() | {"git_dirty": False}
     assert {"judgment", "policies"} <= set(current)
-    assert current["judgment"] == {"max_tokens": 800, "temperature": 0.0, "top_k": 8}
+    assert current["judgment"] == {
+        "max_tokens": 800,
+        "temperature": 0.0,
+        "top_k": 8,
+        "verifier_version": "2",
+    }
     assert current["policies"]["facet-joint-interventions"] == {
         "LCD L38773": "32",
         "Article A58364": "42",

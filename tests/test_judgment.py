@@ -148,10 +148,75 @@ def test_request_fields_can_be_cited():
     assert verdict.citations[0].resource == "request.levels"
 
 
-def test_condition_that_does_not_hold_makes_the_criterion_not_applicable():
-    answer = _answer("met", condition_holds=False)
+NO_SAME_DAY_BLOCKS = ("request.same_day_blocks", "Other blocks planned for the same day: none")
+NO_PRIOR_RFA = (NOTE.id, "Before the block: 7/10.")  # chart context, not proof of an absence
+
+
+def test_condition_not_holding_with_a_chart_citation_is_not_applicable():
+    answer = _answer("met", [NO_PRIOR_RFA], condition_holds=False)
+    verdict, _ = _judge("no-diagnostic-at-level-of-successful-rfa", answer)
+    assert (verdict.outcome, verdict.applicable, verdict.invalidated) == ("met", False, None)
+
+
+def test_condition_not_holding_with_the_named_request_field_is_not_applicable():
+    answer = _answer("met", [NO_SAME_DAY_BLOCKS], condition_holds=False)
     verdict, _ = _judge("same-day-blocks-justified", answer)
     assert (verdict.outcome, verdict.applicable, verdict.invalidated) == ("met", False, None)
+
+
+def test_condition_not_holding_with_no_citation_is_insufficient():
+    answer = _answer("met", condition_holds=False)
+    verdict, _ = _judge("same-day-blocks-justified", answer)
+    assert (verdict.outcome, verdict.applicable) == ("insufficient", True)
+    assert verdict.invalidated == (
+        "not_applicable needs a citation of request.same_day_blocks; cited nothing"
+    )
+
+
+@pytest.mark.parametrize(
+    "citation",
+    [("E99", "Other blocks planned for the same day: none"), (NOTE.id, "No other blocks.")],
+    ids=["handle-not-in-prompt", "quote-not-in-chunk"],
+)
+def test_condition_not_holding_with_a_fabricated_citation_is_insufficient(citation):
+    answer = _answer("met", [citation], condition_holds=False)
+    verdict, _ = _judge("same-day-blocks-justified", answer)
+    assert (verdict.outcome, verdict.applicable) == ("insufficient", True)
+    assert "not in the prompt" in verdict.invalidated or "not found" in verdict.invalidated
+
+
+def test_a_request_field_alone_cannot_show_a_chart_condition_does_not_hold():
+    levels = ("request.levels", "Levels: L4-5, L5-S1")
+    answer = _answer("met", [levels], condition_holds=False)
+    verdict, _ = _judge("no-diagnostic-at-level-of-successful-rfa", answer)
+    assert (verdict.outcome, verdict.applicable) == ("insufficient", True)
+    assert verdict.invalidated == "not_applicable needs a chart citation; cited request.levels"
+
+
+def test_a_chart_citation_alone_cannot_show_a_request_condition_does_not_hold():
+    answer = _answer("met", [NO_PRIOR_RFA], condition_holds=False)
+    verdict, _ = _judge("same-day-blocks-justified", answer)
+    assert (verdict.outcome, verdict.applicable) == ("insufficient", True)
+    assert verdict.invalidated == (
+        f"not_applicable needs a citation of request.same_day_blocks; cited {NOTE.id}"
+    )
+
+
+def test_a_rule_decided_not_applicable_needs_no_model_citation():
+    from precertly.judgment import RuleResult, judge_with_rule
+
+    rule = RuleResult(
+        kind="decided",
+        outcome="met",
+        applicable=False,
+        statement="No other blocks are planned for the same day.",
+        inputs=["request.same_day_blocks"],
+    )
+    llm = FakeLLM()
+    criterion = FACET.criterion("same-day-blocks-justified")
+    verdict = asyncio.run(judge_with_rule(llm, criterion, REQUEST, CHUNKS, rule))
+    assert (verdict.outcome, verdict.applicable, verdict.invalidated) == ("met", False, None)
+    assert verdict.decided_by == "rule" and llm.prompts == []
 
 
 def test_condition_holds_is_ignored_for_unconditional_criteria():
@@ -220,7 +285,7 @@ def test_an_unverifiable_answer_cannot_produce_an_approval():
 
 
 def test_not_applicable_criteria_count_as_satisfied():
-    skipped = _answer("met", condition_holds=False)
+    skipped = _answer("met", [NO_SAME_DAY_BLOCKS], condition_holds=False)
     judgment, _, _ = _judge_case({"same-day-blocks-justified": skipped})
     assert judgment.overall is Outcome.MET
     assert judgment.outcomes()["same-day-blocks-justified"] is Outcome.NOT_APPLICABLE

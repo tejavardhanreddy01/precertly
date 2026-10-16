@@ -66,6 +66,7 @@ criteria:
     kind: clinical
     evidence_stage: chart
     condition: The AHI or RDI was calculated from less than 2 hours of sleep or recording time.
+    condition_evidence: chart
     thresholds: { min_events_without_symptoms: 30, min_events_with_symptoms: 10 }
     evidence: [DiagnosticReport, Observation, DocumentReference]
     source_document: LCD L33718
@@ -171,6 +172,7 @@ criteria:
     kind: documentation
     evidence_stage: chart
     condition: The beneficiary used an E0601 for more than 3 months before being switched to an E0470.
+    condition_evidence: chart
     thresholds: { months_on_e0601_over: 3 }
     evidence: [Encounter, DocumentReference, DeviceUseStatement]
     source_document: LCD L33718
