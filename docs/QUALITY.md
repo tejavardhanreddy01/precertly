@@ -8,7 +8,7 @@ These hold for every code path. A change that weakens one is a bug, whatever els
 
 | # | Invariant | Enforced by | Status |
 | --- | --- | --- | --- |
-| 1 | No criterion is `met` unless it is supported by a checkable citation: a model quote that matches the cited chunk after whitespace normalization, or a computed citation from a deterministic rule that lists its inputs and is re-checked by recomputation. On partial branches 2a and 3a, `met` may rest on the computed citation alone (no further sessions found). Because not applicable counts as satisfied, a model verdict that a criterion's condition does not hold is held to the same bar on every path: it must cite the evidence its policy names in `condition_evidence`, a verified chart citation for `chart` or a verified citation of the named field for `request.<field>`, strictly in both directions. A rule-decided not applicable carries a computed citation | Quote verification, `PARTIAL_BRANCHES` and the condition-evidence check in `judgment/`; `condition_evidence` required by the policy schema on every conditional criterion; `rules_check --recompute`; unverifiable verdicts become `insufficient` | Done |
+| 1 | No criterion is `met` unless it is supported by a checkable citation: a model citation of line handles that were in the prompt, whose text is extracted by code and whose first-words echo matches the first cited line (before verifier version 3: a model quote that matches the cited chunk after whitespace normalization), or a computed citation from a deterministic rule that lists its inputs and is re-checked by recomputation. On partial branches 2a and 3a, `met` may rest on the computed citation alone (no further sessions found). Because not applicable counts as satisfied, a model verdict that a criterion's condition does not hold is held to the same bar on every path: it must cite the evidence its policy names in `condition_evidence`, a verified chart citation for `chart` or a verified citation of the named field for `request.<field>`, strictly in both directions. A rule-decided not applicable carries a computed citation | Line-handle verification (`judgment/lines.py`), `PARTIAL_BRANCHES` and the condition-evidence check in `judgment/`; `condition_evidence` required by the policy schema on every conditional criterion; `rules_check --recompute`; unverifiable verdicts become `insufficient` | Done |
 | 2 | The system never denies. Outcomes are `met`, `not_met` or `insufficient`; a human decides | Output schema; no decision endpoint | Done |
 | 3 | Only `chart` and `request` criteria get verdicts, from a rule or the model; the rest go to the reviewer checklist | Stage gating in `judgment/` | Done |
 | 4 | Variant logic (`all_of`/`any_of`) and the overall outcome are computed in code, never by the model | Deterministic combiner | Done |
@@ -110,7 +110,7 @@ Currently, Bedrock errors other than a rejected tool choice stop the run; no ver
 
 ## Release gates
 
-Thresholds are starting goals and are published with the real numbers, including failures. Current is experiment 1.1, both runs (11 facet cases, 184 scored criteria); details in [`evals/results/NOTES.md`](../evals/results/NOTES.md).
+Thresholds are starting goals and are published with the real numbers, including failures. Current is experiment 1.1, both runs (11 facet cases, 184 scored criteria); details in [`evals/results/NOTES.md`](../evals/results/NOTES.md). Experiment 2 (prompt version 4, line handles) scored lower on every gate it changed (criterion accuracy 78.8% and 87.0%, citation precision 69.2% and 70.8%, 19 of 184 verdicts differing between its runs) and failed its pre-registration, so it does not replace 1.1 here.
 
 | Gate | Threshold | Current |
 | --- | --- | --- |
@@ -129,6 +129,7 @@ Kept current and published with results.
 - Synthetic charts are cleaner than real ones; routine pain scores and analgesics are left out of the background.
 - Spinal cord stimulator criteria follow one MAC's LCD (Noridian JF); other jurisdictions differ.
 - Policies are encoded at a fixed version; a revised LCD requires re-encoding and re-verification.
+- With line handles (experiment 2), the model's first-words echo disagrees with its cited handle in about 14% of line citations, most often by echoing the line before the handle. Such verdicts become `insufficient`, which costs correct verdicts and makes runs disagree more (19 of 184 in the experiment 2 pair), but never approves. The echo cannot tell which of the two lines the model meant.
 - A not-applicable verdict cites evidence consistent with the condition not holding, but an absence cannot be proven by a quote; the citation shows context, not proof. In experiment 1.1 every model not-applicable verdict on `no-diagnostic-at-level-of-successful-rfa` cites the plan to ablate if the blocks confirm the diagnosis, which implies no prior ablation without stating it.
 - The facet set has only 9 negative criterion labels, so one false approval moves the rate by 11 points.
 - The model's `confidence` field is uncalibrated and is not used for any decision.

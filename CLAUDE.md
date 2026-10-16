@@ -35,7 +35,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - `src/precertly/db/` – SQLAlchemy models (spec data model) and async session; migrations in `migrations/`
 - `src/precertly/ingest/` – bundle → `chart_chunks`; embeds only notes, conditions, procedures, medication requests; vectors cached by sha256
 - `src/precertly/retrieval/` – `hybrid_search` (full-text + pgvector, RRF) and `observations` (by code and date)
-- `src/precertly/judgment/` – per-criterion verdicts with verified quotes, combined by the variant logic; only `chart` and `request` stage criteria are judged
+- `src/precertly/judgment/` – per-criterion verdicts with verified citations, combined by the variant logic; only `chart` and `request` stage criteria are judged; `lines.py` splits evidence into line handles (free text by line, coded items as one line)
 - `src/precertly/evals/` – eval case schema, scorer, the runner (`python -m precertly.evals.run`), `compare`, `rules_check`, `prompt_check` and `rescore`
 - `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile)
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
@@ -81,6 +81,8 @@ Done:
 - Eval runner with resume, shadow model-only calls and a partial-path review list; `compare` for marking run pairs; `rules_check` (offline, `--table`, `--recompute`); `prompt_check`, which rebuilds every recorded prompt against its hash. Results and pre-registered experiments are in `evals/results/NOTES.md` (noise floor 14 of 184).
 - Verifier version 2: every conditional criterion names its `condition_evidence` (`chart` or `request.<field>`), and a not-applicable verdict must cite it, strictly both ways (open issue 4 closed; experiment 1.1 rescored offline with `evals.rescore`).
 
-Next: experiment 2, line-level evidence handles (whole-note quotes always verify). Pre-register it in `evals/results/NOTES.md` before running.
+- Experiment 2, line-level evidence handles (prompt version 4, verifier version 3): run as a pair and recorded in `evals/results/NOTES.md`. It failed its pre-registration on (b), (c) and (f): the first-words echo disagrees with the cited handle in about 14% of line citations, mostly by echoing the line before it.
+
+Next: decide how to follow experiment 2 (the echo, the handle layout, or a return to copied quotes checked within the cited lines), pre-registered in `evals/results/NOTES.md` before running. Do not loosen the echo check to recover verdicts.
 
 After that: experiment 3, retrieval by evidence type (the facet-11 retrieval miss); then the PAS-shaped Claim bundle; then eval cases for PAP, spinal cord stimulator and bariatric surgery.
