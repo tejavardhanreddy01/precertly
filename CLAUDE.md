@@ -18,6 +18,7 @@ uv run python evals/build_cases.py [--check]    # rebuild or verify the eval cas
 uv run python -m precertly.evals.run --estimate  # size of an eval run; without --estimate it calls Bedrock (ask first)
 uv run python -m precertly.evals.rules_check [--table | --recompute <results.json>]  # rules vs labels, offline
 uv run python -m precertly.evals.prompt_check <results.json>  # rebuild every recorded prompt and check its hash
+uv run python -m precertly.evals.rescore <results.json> --out <derived.json>  # re-check recorded answers with the current verifier, offline
 uv run python -m precertly.fhir <bundle-or-dir>  # chunk summary for FHIR bundles
 docker compose up -d db                         # Postgres 16 + pgvector on localhost:5433
 uv run alembic upgrade head                     # apply migrations (URL from PRECERTLY_DATABASE_URL)
@@ -35,7 +36,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - `src/precertly/ingest/` – bundle → `chart_chunks`; embeds only notes, conditions, procedures, medication requests; vectors cached by sha256
 - `src/precertly/retrieval/` – `hybrid_search` (full-text + pgvector, RRF) and `observations` (by code and date)
 - `src/precertly/judgment/` – per-criterion verdicts with verified quotes, combined by the variant logic; only `chart` and `request` stage criteria are judged
-- `src/precertly/evals/` – eval case schema, scorer, the runner (`python -m precertly.evals.run`), `compare`, `rules_check` and `prompt_check`
+- `src/precertly/evals/` – eval case schema, scorer, the runner (`python -m precertly.evals.run`), `compare`, `rules_check`, `prompt_check` and `rescore`
 - `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile)
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
 - `data/synthea/` – patient generator (output is git-ignored)
@@ -78,6 +79,7 @@ Done:
 - Eleven facet eval cases (`evals/cases/facet/`), with bundles built by `evals/build_cases.py` and tests tying each case to the policy, its bundle and the case plan.
 - The judgment step: per-criterion verdicts on Bedrock with verified quotes, combined by the variant logic; a deterministic rules layer (`judgment/rules.py`) that decides or fixes facts from coded data; the partial path, where a computed fact is cited as `[C1]` under per-branch citation rules (`PARTIAL_BRANCHES`).
 - Eval runner with resume, shadow model-only calls and a partial-path review list; `compare` for marking run pairs; `rules_check` (offline, `--table`, `--recompute`); `prompt_check`, which rebuilds every recorded prompt against its hash. Results and pre-registered experiments are in `evals/results/NOTES.md` (noise floor 14 of 184).
+- Verifier version 2: every conditional criterion names its `condition_evidence` (`chart` or `request.<field>`), and a not-applicable verdict must cite it, strictly both ways (open issue 4 closed; experiment 1.1 rescored offline with `evals.rescore`).
 
 Next: experiment 2, line-level evidence handles (whole-note quotes always verify). Pre-register it in `evals/results/NOTES.md` before running.
 

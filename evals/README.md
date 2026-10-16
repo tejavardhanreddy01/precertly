@@ -47,7 +47,7 @@ expected:                        # one label per chart- or request-stage criteri
 
 Outcomes: `met`, `not_met`, `insufficient`.
 
-Some criteria have a `condition` in the policy file (for example, a rule that applies only to a repeat procedure). When the condition does not hold for a case, label the criterion `not_applicable` in `expected`. The label is correct only if the agent also reports that the condition does not hold, and it counts in criterion accuracy. `not_applicable` is never an agent outcome: the agent's outcomes stay `met`, `not_met` and `insufficient`.
+Some criteria have a `condition` in the policy file (for example, a rule that applies only to a repeat procedure). When the condition does not hold for a case, label the criterion `not_applicable` in `expected`. The label is correct only if the agent also reports that the condition does not hold, and it counts in criterion accuracy. `not_applicable` is never an agent outcome: the agent's outcomes stay `met`, `not_met` and `insufficient`. The agent's "condition does not hold" stands only if it cites the evidence named by the criterion's `condition_evidence` (the chart, or a specific request field); otherwise it becomes `insufficient`.
 
 ## Running
 

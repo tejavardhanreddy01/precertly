@@ -39,7 +39,7 @@ from precertly.judgment import (
     judge_case,
     model_only,
 )
-from precertly.judgment.judge import MAX_TOKENS, TEMPERATURE
+from precertly.judgment.judge import MAX_TOKENS, TEMPERATURE, VERIFIER_VERSION
 from precertly.judgment.prompt import PROMPT_VERSION
 from precertly.judgment.rules import PARTIAL_BRANCHES
 from precertly.llm import BedrockClient, BedrockEmbedder
@@ -172,6 +172,7 @@ def run_metadata(rules: bool = False) -> dict[str, object]:
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "top_k": settings.judgment_top_k,
+            "verifier_version": VERIFIER_VERSION,
         },
         "rules": {"enabled": rules, "version": RULES_VERSION if rules else None, "shadow": rules},
         "policies": {

@@ -71,7 +71,22 @@ class Criterion(BaseModel):
             "hold for a case, the criterion is not applicable."
         ),
     )
+    condition_evidence: str | None = Field(
+        default=None,
+        pattern=r"^(chart|request\.[a-z_]+)$",
+        description=(
+            "Where the evidence that the condition does not hold must come from: 'chart' "
+            "for a verified chart citation, or 'request.<field>' for a verified citation of "
+            "that request field. Required exactly when there is a condition."
+        ),
+    )
     note: str | None = None
+
+    @model_validator(mode="after")
+    def condition_has_evidence(self) -> Criterion:
+        if (self.condition is None) != (self.condition_evidence is None):
+            raise ValueError("condition and condition_evidence go together")
+        return self
 
     def quote_parts(self) -> list[str]:
         return [part.strip() for part in self.quote.split(QUOTE_GAP)]
