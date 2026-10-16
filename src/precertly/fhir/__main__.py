@@ -13,7 +13,7 @@ from precertly.fhir.chunks import SUPPORTED_TYPES, chunk_bundle, load_bundle
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("path", type=Path, help="a bundle .json file or a directory of them")
     args = parser.parse_args()
 

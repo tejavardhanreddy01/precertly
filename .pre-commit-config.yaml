@@ -1,7 +1,8 @@
 # Runs before every commit so a failing state cannot be committed.
 #   uv run pre-commit install        # once per clone
 #   uv run pre-commit run --all-files
-# The checks are the same three CI runs. Database tests skip when Postgres is not up.
+# The same three checks run in the CI lint and test jobs; CI also runs pyright, pip-audit,
+# the migration check and the case bundle check. Database tests skip when Postgres is not up.
 repos:
   - repo: local
     hooks:

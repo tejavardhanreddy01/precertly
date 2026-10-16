@@ -170,7 +170,9 @@ class RuleResult(BaseModel):
     )
 
 
-def _decided(outcome: str, statement: str, inputs: list[str]) -> RuleResult:
+def _decided(
+    outcome: Literal["met", "not_met", "insufficient"], statement: str, inputs: list[str]
+) -> RuleResult:
     return RuleResult(kind="decided", outcome=outcome, statement=statement, inputs=inputs)
 
 
@@ -638,8 +640,9 @@ def parse_site(text: str | None) -> Site | None:
     if match is None:
         return None
     tokens = re.findall(_LEVEL, match.group("levels"), re.IGNORECASE)
-    levels = [normalize_level(token) for token in tokens]
-    if not levels or None in levels:
+    parsed = [normalize_level(token) for token in tokens]
+    levels = [level for level in parsed if level is not None]
+    if not levels or len(levels) != len(parsed):
         return None
     regions = {_LEVEL_REGION[level[0]] for level in levels}
     stated = (match.group("region") or "").lower()
@@ -654,10 +657,11 @@ def same_site(
 ) -> Literal["match", "mismatch", "unclear"]:
     site = parse_site(procedure.body_site_text)
     if procedure.body_site_codes:
-        coded = {LEVEL_CODES.get(code) for code in procedure.body_site_codes}
-        if None in coded or (site is not None and site.levels != coded):
+        mapped = [LEVEL_CODES.get(code) for code in procedure.body_site_codes]
+        coded = frozenset(level for level in mapped if level is not None)
+        if len(coded) != len(set(mapped)) or (site is not None and site.levels != coded):
             return "unclear"
-        levels, region = frozenset(coded), _LEVEL_REGION[next(iter(coded))[0]]
+        levels, region = coded, _LEVEL_REGION[next(iter(coded))[0]]
     elif site is not None:
         levels, region = site.levels, site.region
     else:

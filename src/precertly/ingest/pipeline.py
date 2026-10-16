@@ -101,7 +101,8 @@ async def _cached_embeddings(session: AsyncSession, hashes: set[str]) -> dict[st
         .where(ChartChunk.embedding.is_not(None)),
         {"hashes": sorted(hashes)},
     )
-    return {sha: list(embedding) for sha, embedding in rows}
+    # Both columns are nullable, but the query matched on a hash and excluded null vectors.
+    return {sha: list(embedding) for sha, embedding in rows if sha and embedding is not None}
 
 
 async def ingest_bundle(

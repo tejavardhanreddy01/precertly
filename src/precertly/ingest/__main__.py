@@ -67,7 +67,7 @@ async def _ingest(paths: list[Path], case_id: uuid.UUID | None, embed: bool) -> 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("path", type=Path, help="a bundle .json file or a directory of them")
     parser.add_argument("--estimate", action="store_true", help="print the embedding job size")
     parser.add_argument("--embed", action="store_true", help="embed new texts with Bedrock")

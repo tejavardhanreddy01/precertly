@@ -76,7 +76,7 @@ def compare(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("a", type=Path)
     parser.add_argument("b", type=Path)
     parser.add_argument("--mark", action="store_true", help="record the pair in both files")
