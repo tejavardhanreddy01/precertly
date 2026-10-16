@@ -39,7 +39,10 @@ def case_chunks(case: EvalCase) -> dict[str, EvidenceChunk]:
     chunks = {chunk.id: chunk for chunk in case.request.chunks()}
     for chunk in chunk_bundle(load_bundle(case.bundle_path())):
         chunks[chunk.id] = EvidenceChunk(
-            id=chunk.id, text=chunk.text, effective_date=chunk.effective_date
+            id=chunk.id,
+            text=chunk.text,
+            effective_date=chunk.effective_date,
+            free_text=chunk.char_start is not None,
         )
     return chunks
 

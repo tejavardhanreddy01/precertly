@@ -38,6 +38,11 @@ class ChartEvidence:
             self.session, self.case_id, retrieval_query(criterion), embedder=self.embedder, k=self.k
         )
         return [
-            EvidenceChunk(id=hit.ref, text=hit.text, effective_date=hit.effective_date)
+            EvidenceChunk(
+                id=hit.ref,
+                text=hit.text,
+                effective_date=hit.effective_date,
+                free_text=hit.char_start is not None,
+            )
             for hit in hits
         ]

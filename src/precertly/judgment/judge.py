@@ -272,9 +272,19 @@ def invalidation_kind(reason: str | None) -> InvalidationKind | None:
             return kind
     if any(
         text in reason
-        for text in ("was not in the prompt", "is not a handle", "not in the evidence")
+        for text in (
+            "was not in the prompt",
+            "is not a handle",
+            "not in the evidence",
+            "names an item of",
+            "has one line",
+        )
     ):
         return "unknown_handle"
+    if " do not match " in reason:
+        return "handle_mismatch"
+    if "may be cited together" in reason:
+        return "citation_too_long"
     if "needs a chart citation" in reason:
         return "chart_citation_required"
     if reason.endswith("with no citation"):

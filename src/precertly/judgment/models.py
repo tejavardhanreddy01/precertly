@@ -28,6 +28,10 @@ class EvidenceChunk(BaseModel):
     id: str
     text: str
     effective_date: date | None = None
+    # True for a verbatim slice of a free-text attachment (a note or a report's
+    # presentedForm: the chunker set char_start), False for text rendered from coded
+    # fields or a request field. Free text is split into lines; the rest is one line.
+    free_text: bool = False
 
 
 class PriorAuthRequest(BaseModel):

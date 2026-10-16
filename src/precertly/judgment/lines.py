@@ -9,11 +9,12 @@ cited line, and the echo must match.
 Segmentation is a pure function of the chunk text, so the same text always gets the same
 handles and a recorded prompt can be rebuilt exactly (prompt_check).
 
-- Notes (DocumentReference chunks, the only free text) are split on newlines. Each line is
-  trimmed of surrounding whitespace, and blank lines get no handle; numbering runs over the
-  non-empty lines. A line longer than MAX_LINE_CHARS is further split at sentence ends.
-- Every other chunk (coded resources and request fields) is one line, whatever its layout,
-  and so is a partial rule's computed fact [C1].
+- Free text (a verbatim slice of a note or a report's presentedForm; EvidenceChunk.free_text)
+  is split on newlines. Each line is trimmed of surrounding whitespace, and blank lines get
+  no handle; numbering runs over the non-empty lines. A line longer than MAX_LINE_CHARS is
+  further split at sentence ends.
+- Every other chunk (text rendered from coded resources, and request fields) is one line,
+  whatever its layout, and so is a partial rule's computed fact [C1].
 
 A sentence ends at ".", "!" or "?" followed by whitespace and then an uppercase letter, a
 digit, or an opening bracket or quote; never after one of ABBREVIATIONS. Nothing else
@@ -29,11 +30,12 @@ from dataclasses import dataclass
 
 from precertly.judgment.models import EvidenceChunk
 
-# Derived from the line lengths of the facet fixtures: 537 non-empty note lines across the
-# 11 case bundles, median 41 characters, 90th percentile 194, maximum 548. The 466 lines at
-# or under 160 stay whole; the 71 over it are prose paragraphs that each carry several
-# facts, which is what a line handle should separate. It is part of every prompt, so a
-# change to it is a prompt change.
+# Derived from the line lengths of the facet fixtures' free text: the 228 free-text chunks
+# across the 11 case bundles (54 distinct texts, 51 notes and 3 radiology reports) have 552
+# distinct non-empty lines, median 42 characters, 90th percentile 194, maximum 548. The 478
+# lines at or under 160 stay whole; the 74 over it are prose paragraphs that each carry
+# several facts, which is what a line handle should separate. It is part of every prompt,
+# so a change to it is a prompt change.
 MAX_LINE_CHARS = 160
 
 # A citation covers at most this many adjacent lines. Three covers a heading and two
@@ -41,8 +43,11 @@ MAX_LINE_CHARS = 160
 # experiment 1.1 touch at most three lines. Lines further apart are cited separately.
 MAX_CITATION_LINES = 3
 
-# How many words of the first cited line the model echoes.
-ECHO_WORDS = 3
+# The model is asked for the first three words of the first cited line; the check accepts
+# any prefix of at least ECHO_MIN_WORDS words. Measured on the experiment 1.1 prompts, a
+# near-miss handle (an adjacent line, or the same line of a neighbouring item) passes a
+# two-word echo 9.4% of the time and a three-word echo 8.3%, while models often echo two.
+ECHO_MIN_WORDS = 2
 
 ABBREVIATIONS = frozenset(
     {"dr", "mr", "mrs", "ms", "st", "vs", "e.g", "i.e", "etc", "approx", "no", "fig"}
@@ -78,10 +83,6 @@ class Handle:
 
 class HandleError(ValueError):
     pass
-
-
-def is_note(chunk_id: str) -> bool:
-    return chunk_id.startswith("DocumentReference/")
 
 
 def _trimmed(text: str, start: int, end: int) -> tuple[int, int]:
@@ -131,7 +132,7 @@ def segment(text: str, *, note: bool) -> list[Line]:
 
 def lines_of(chunk: EvidenceChunk) -> list[Line]:
     """The citable lines of an evidence chunk, as the prompt shows them."""
-    return segment(chunk.text, note=is_note(chunk.id))
+    return segment(chunk.text, note=chunk.free_text)
 
 
 def parse_handle(text: str) -> Handle:
@@ -167,7 +168,8 @@ def words(text: str) -> list[str]:
 
 
 def echo_matches(echo: str, line_text: str) -> bool:
-    """True if the echo starts with the first ECHO_WORDS words of the line (all of them if
-    the line has fewer). Extra echoed words are ignored."""
-    expected = words(line_text)[:ECHO_WORDS]
-    return bool(expected) and words(echo)[: len(expected)] == expected
+    """True if the echoed words are a prefix of the line's words and at least
+    ECHO_MIN_WORDS long, or every word of the line's first row if that row has fewer."""
+    given, line = words(echo), words(line_text)
+    needed = min(ECHO_MIN_WORDS, len(words(line_text.split("\n")[0])))
+    return needed > 0 and len(given) >= needed and line[: len(given)] == given

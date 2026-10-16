@@ -87,6 +87,25 @@ def test_unicode_spaces_are_trimmed_and_offsets_are_code_points():
     assert all(text[line.start : line.end] == line.text for line in lines)
 
 
+def test_free_text_is_split_by_the_chunk_flag_not_by_resource_type():
+    text = "2026-07-20\nMRI lumbar spine\n\nImpression: Facet arthropathy."
+    report = EvidenceChunk(id="DiagnosticReport/mri#1", text=text, free_text=True)
+    assert [line.text for line in lines_of(report)][-1] == "Impression: Facet arthropathy."
+    rendered = EvidenceChunk(id="DocumentReference/note#0", text=text)
+    assert len(lines_of(rendered)) == 1
+
+
+def test_fixture_chunks_are_free_text_exactly_when_the_chunker_sliced_them():
+    from precertly.fhir import chunk_bundle, load_bundle
+
+    for case in load_cases().values():
+        rebuilt = case_chunks(case)
+        for chunk in chunk_bundle(load_bundle(case.bundle_path())):
+            assert rebuilt[chunk.id].free_text == (chunk.char_start is not None), chunk.id
+    radiology = case_chunks(load_cases()["facet-01"])["DiagnosticReport/mri-lumbar#1"]
+    assert radiology.free_text and len(lines_of(radiology)) > 1
+
+
 def test_coded_and_request_items_are_one_line_whatever_their_layout():
     coded = "Observation: Pain (LOINC 72514-3)\nValue: 2 {score}\nDate: 2026-09-14\n"
     (line,) = segment(coded, note=False)
@@ -146,6 +165,7 @@ def test_bad_handles_are_refused(text):
 NOTE = EvidenceChunk(
     id="DocumentReference/note#0",
     text="Results:\n- Block 1: 90%.\n\n- Block 2: 85%.\n- Both at L4-5.\nPlan: ablation.",
+    free_text=True,
 )
 CODED = EvidenceChunk(id="Procedure/mbb1#0", text="Procedure: block\nStatus: completed")
 
@@ -206,8 +226,12 @@ def test_c1_is_extracted_whole_and_its_echo_checked():
     [
         ("Pain: 7/10 on", "- Pain: 7/10 on the NRS 0-10.", True),  # bullet ignored
         ("PAIN 7/10 ON", "Pain: 7/10 on the scale", True),  # case and punctuation ignored
-        ("Pain: 7/10 on the NRS", "Pain: 7/10 on the scale", True),  # extra words ignored
-        ("Pain: 7/10", "Pain: 7/10 on the scale", False),  # too few words
+        ("Pain: 7/10", "Pain: 7/10 on the scale", True),  # two words are enough
+        ("Pain: 7/10 on the scale", "Pain: 7/10 on the scale", True),  # the whole line
+        ("Pain: 7/10 on the NRS", "Pain: 7/10 on the scale", False),  # every word must match
+        ("Pain", "Pain: 7/10 on the scale", False),  # one word is too few
+        ("2026-07-20", "2026-07-20\nMRI lumbar spine", True),  # a one-word first row
+        ("Pain and", "- Pain: 7/10 on the NRS", False),  # the misnumbering seen in the canary
         ("Disability: 48%", "Pain: 7/10 on the scale", False),
         ("2026-08-10", "2026-08-10", True),  # a line of fewer than three words
         ("ﬁbromyalgia none", "Fibromyalgia: none.", True),  # NFKC folds the ligature

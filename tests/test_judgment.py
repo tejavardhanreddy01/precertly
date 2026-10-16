@@ -33,6 +33,7 @@ NOTE = EvidenceChunk(
     id="DocumentReference/note-mbb2#0",
     text="Before the block: 7/10.\nAfter the block: 2/10.\nRelief: (7 - 2) / 7 = 71%.",
     effective_date=date(2026, 9, 14),
+    free_text=True,
 )
 CHUNKS = [*REQUEST.chunks(), NOTE]
 
@@ -81,7 +82,7 @@ def _cite(chunk_id, text):
     touched = [line.number for line in lines if line.start < span[1] and line.end > span[0]]
     first, last = touched[0], touched[-1]
     handle = f"{item}.{first}" if first == last else f"{item}.{first}-{item}.{last}"
-    return Citation(evidence=handle, first_words=text)
+    return Citation(evidence=handle, first_words=lines[first - 1].text)
 
 
 def _answer(outcome, citations=(), condition_holds=None):
