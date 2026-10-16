@@ -140,3 +140,29 @@ The verdicts in (b) are targets, not effect claims. An effect is claimed only un
 **Watch.** facet-04 `no-diagnostic-at-level-of-successful-rfa` (labeled not applicable) is not touched: the model said `not_met`, applicable, in both runs. Open issue 2 stands.
 
 **What this does not establish.** The check requires a citation of the right kind, not one that proves the condition does not hold. All 10 surviving primary verdicts cite the plan to ablate "if two blocks confirm the diagnosis", which implies no prior ablation without stating it. An absence cannot be proven by a quote; this is recorded in `docs/QUALITY.md` known limitations.
+
+## Experiment 2: line-level evidence handles
+
+Pre-registered before any code for it was written. Design reviewed separately; the prototype figures below were measured offline on the committed fixtures and the recorded 1.1 answers.
+
+**Change.** Prompt version 4 and verifier version 3. Each evidence chunk is split deterministically into lines, each with a handle such as `[E3.2]`. Notes are split on newlines (blank lines get no handle), and a line longer than 160 characters is further split at sentence ends; coded resources, request fields and `[C1]` are one line each. The model cites handles only (a single line, or a range of at most 3 adjacent lines of one item) and the verifier extracts the cited text as the quote, so a quote can no longer be misquoted or invented. With each citation the model echoes the first three words of the first cited line (all of its words if it has fewer), compared after NFKC normalization, case-insensitively, ignoring punctuation and a leading bullet marker; a mismatch invalidates the verdict as `handle_mismatch`. This also applies to `[C1]`. An unknown handle still invalidates. Invalidations are counted by kind (`quote_not_found`, `unknown_handle`, `missing_citation`, `chart_citation_required`, `condition_evidence`, `citation_too_long`, `handle_mismatch`, `condition_contradicts_computed`), so the issue 4 invalidations are no longer counted as quote failures.
+
+**What does not change.** Model, retrieval, k, rules (version 2), fixtures and the condition-evidence check from verifier version 2.
+
+**Why.** Open issue 1: a quote containing a whole note verifies however little of it bears on the outcome. In 1.1, every quote that was found nowhere (10 of 742 citations) joined two bullet lines and dropped their markers, and 6 citations put a quote from one item under another item's handle; the echo keeps that second error detectable once quotes are extracted by code.
+
+**Prototype measurements.** Of the 726 verified 1.1 quotes, 619 touch at most 3 lines under this segmentation. Rebuilding all 388 recorded 1.1 calls with the v4 prototype gives about 4,110 input tokens per call (1.1: 3,449), about 797,000 per run (1.1: 669,066), and about 25% fewer output tokens because quotes are no longer copied.
+
+**Success criteria, written before the run.** Two runs from one commit with `--rules`, marked as a pair with `compare`, compared verdict by verdict with 1.1a / 1.1b as rescored with verifier version 2, and with every earlier run for reference.
+
+- (a) `rules_check`: 38 decided results, none contradicting a label.
+- (b) `quote_not_found` at most 1 per run (0 by construction; only `[C1]` can still produce one), `unknown_handle` 0, and `handle_mismatch` at most 1 per run, each listed. All invalidations reported by kind, for the primary and model-only views. 1.1 had 5 and 6 primary quote failures.
+- (c) Verdict differences between the two runs caused by a citation verifying in one run only: 0 by construction (v2: 8 of 14 differences). Total differences reported with the cause of each; no noise-reduction effect claimed from one pair.
+- (d) Zero new false approvals, at verdict and case level, against every baseline, experiment 1 and 1.1 run. The facet-11 retrieval miss is expected to remain (experiment 3).
+- (e) Every not-applicable verdict carries the citation it needs, checked by a scan of both files (deferred from verifier version 2).
+- (f) Must not regress; right in both runs: facet-03 `second-diagnostic-2-weeks-after-first` (not_met), facet-03 and facet-04 `diagnostic-sessions-max-4` (met), facet-09 `rfa-sessions-max-2` (met); facet-04 `second-diagnostic-2-weeks-after-first` (met), facet-03 and facet-04 `first-diagnostic-80pct-relief` (met), facet-01 `two-mbbs-80pct-sustained-relief` (met), facet-10 `prior-rfa-50pct-6-months` (not_met).
+- (g) Citation precision reported, no effect claimed (it is measured per resource, not per line). Also reported for open issue 1: lines per citation and the share of citations spanning more than one line.
+
+**Watch.** facet-04 `no-diagnostic-at-level-of-successful-rfa` (open issue 2). Whether not-applicable verdicts on `no-diagnostic-at-level-of-successful-rfa` now cite a line that states the absence (such as "No prior radiofrequency ablation or spinal injections.") instead of the plan line; reported by hand, no effect claimed.
+
+**Also required.** `prompt_check` and `rules_check --recompute` pass on both files. An effect is claimed only for a verdict wrong in every earlier run and right in both experiment runs.
