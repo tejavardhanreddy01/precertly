@@ -22,6 +22,7 @@ import time
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 from precertly.db import get_engine, session_factory
 from precertly.evals.cases import EVALS_DIR, EvalCase, load_cases, scored_criteria
@@ -80,7 +81,7 @@ Result = tuple[CaseScore, CaseJudgment]
 
 
 async def _run(
-    cases: list[EvalCase], save: Callable[[list[Result]], None], rules: bool = False
+    cases: list[EvalCase], save: Callable[[list[Result]], object], rules: bool = False
 ) -> list[Result]:
     """Judge and score the cases, calling save after each one so a crash loses one case.
 
@@ -216,7 +217,7 @@ def _model_only_view(results: list[Result]) -> dict[str, object]:
     }
 
 
-def partial_review(results: list[Result]) -> dict[str, list[dict[str, object]]]:
+def partial_review(results: list[Result]) -> dict[str, list[dict[str, Any]]]:
     """Partial verdicts whose outcome needed a chart citation under PARTIAL_BRANCHES.
 
     chart_required_met lists each such met verdict with the items it cited, by handle and
@@ -289,7 +290,7 @@ def resume_conflicts(existing: dict[str, object], current: dict[str, object]) ->
     return conflicts
 
 
-def load_results(path: Path) -> tuple[dict[str, object], list[tuple[CaseScore, CaseJudgment]]]:
+def load_results(path: Path) -> tuple[dict[str, Any], list[tuple[CaseScore, CaseJudgment]]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     results = [
         (
@@ -337,7 +338,7 @@ def _report(summary: Summary, scores: list[CaseScore]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("--cases", help="comma-separated case ids (default: all)")
     parser.add_argument("--estimate", action="store_true", help="print the size of the run")
     parser.add_argument("--out", type=Path, help="results file (default: evals/results/...)")

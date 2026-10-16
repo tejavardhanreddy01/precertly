@@ -105,7 +105,7 @@ def check_results(payload: dict[str, Any]) -> PromptCheck:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("results", type=Path, nargs="+")
     args = parser.parse_args(argv)
     failed = False

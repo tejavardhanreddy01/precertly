@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Any, Protocol
+from typing import Literal, Protocol
+
+from pydantic import BaseModel
 
 from precertly.judgment.logic import judged_criteria, overall_outcome
 from precertly.judgment.models import (
@@ -30,9 +32,15 @@ from precertly.judgment.models import (
     VerifiedCitation,
 )
 from precertly.judgment.prompt import COMPUTED_HANDLE, SYSTEM, build_prompt, handles
-from precertly.judgment.rules import PARTIAL_BRANCHES, RULES_VERSION, RuleResult, evaluate
+from precertly.judgment.rules import (
+    PARTIAL_BRANCHES,
+    RULES_VERSION,
+    FinalOutcome,
+    RuleResult,
+    evaluate,
+)
 from precertly.judgment.structured import StructuredChart
-from precertly.llm import LLMUsage, StructuredOutputError
+from precertly.llm import LLMUsage, StructuredOutputError, StructuredResponse
 from precertly.policies import Criterion, Policy
 
 # Settings that change what the model is asked or allowed to say. They are recorded in every
@@ -42,7 +50,15 @@ TEMPERATURE = 0.0
 
 
 class StructuredLLM(Protocol):
-    async def structured(self, prompt: str, schema: type, **options: Any) -> Any: ...
+    async def structured[T: BaseModel](
+        self,
+        prompt: str,
+        schema: type[T],
+        *,
+        system: str | None = None,
+        max_tokens: int = ...,
+        temperature: float = ...,
+    ) -> StructuredResponse[T]: ...
 
 
 class EvidenceProvider(Protocol):
@@ -93,7 +109,7 @@ def verify(
 
 def citation_problem(
     criterion_id: str,
-    outcome: str,
+    outcome: Literal["met", "not_met", "insufficient"],
     applicable: bool,
     citations: list[VerifiedCitation],
     computed_quote: str | None,
@@ -114,7 +130,11 @@ def citation_problem(
     branch = PARTIAL_BRANCHES[partial.branch]
     if branch.criterion != criterion_id:
         raise ValueError(f"{criterion_id}: partial branch {partial.branch!r} belongs elsewhere")
-    final = outcome if applicable else "not_applicable"
+    if applicable:
+        assert outcome != "insufficient"  # returned above
+        final: FinalOutcome = outcome
+    else:
+        final = "not_applicable"
     if branch.condition_fixed and condition_holds is False:
         return "condition_holds is false, but [C1] establishes that the condition holds"
     if not branch.needs_chart(final):

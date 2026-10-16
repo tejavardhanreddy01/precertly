@@ -117,7 +117,7 @@ def print_table() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("--table", action="store_true", help="print the partial branches")
     parser.add_argument("--recompute", type=Path, help="re-check a results file's computed facts")
     args = parser.parse_args(argv)
