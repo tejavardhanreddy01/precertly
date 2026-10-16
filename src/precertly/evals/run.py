@@ -36,6 +36,7 @@ from precertly.judgment import (
     CaseJudgment,
     ChartEvidence,
     StructuredChart,
+    VerifiedCitation,
     judge_case,
     model_only,
 )
@@ -218,6 +219,14 @@ def _model_only_view(results: list[Result]) -> dict[str, object]:
     }
 
 
+def _line_handle(item: int, citation: VerifiedCitation) -> str:
+    """E3, E3.2 or E3.2-E3.4, as the citation was given."""
+    first, last = citation.first_line, citation.last_line
+    if first is None:
+        return f"E{item}"
+    return f"E{item}.{first}" if first == last else f"E{item}.{first}-E{item}.{last}"
+
+
 def partial_review(results: list[Result]) -> dict[str, list[dict[str, Any]]]:
     """Partial verdicts whose outcome needed a chart citation under PARTIAL_BRANCHES.
 
@@ -247,7 +256,7 @@ def partial_review(results: list[Result]) -> dict[str, list[dict[str, Any]]]:
                 "c1_cited": computed.cited_by_model,
                 "citations": [
                     {
-                        "handle": f"E{verdict.chunk_ids.index(c.chunk_id) + 1}",
+                        "handle": _line_handle(verdict.chunk_ids.index(c.chunk_id) + 1, c),
                         "chunk_id": c.chunk_id,
                         "quote": c.quote,
                     }
@@ -318,8 +327,8 @@ def _report(summary: Summary, scores: list[CaseScore]) -> str:
         f" ({summary.citations_in_label} of {summary.citations} cited resources are in the label),"
         f" {percent(summary.citation_precision_macro)} macro-averaged over criteria",
         f"Invalidated verdicts: {summary.invalidated_verdicts} of {summary.scored_criteria}"
-        f" ({summary.quote_invalidations} citation or quote, "
-        f"{summary.unusable_answers} unusable model answers)",
+        f" by kind: {summary.invalidations_by_kind}",
+        f"Lines per verified citation: {summary.citation_lines}",
         f"Tokens: {summary.input_tokens:,} in, {summary.output_tokens:,} out"
         f" over {summary.llm_calls} model calls",
         f"Decided by: {summary.decided_by}",

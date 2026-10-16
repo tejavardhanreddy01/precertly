@@ -1,14 +1,16 @@
 """Judge criteria with an LLM, verify every quote, and combine the verdicts.
 
-The model's answer is never taken on trust: a quote that is not found in the chunk it
-cites invalidates the verdict, and so does a met or not_met answer with no citation. A
-verdict that a criterion's condition does not hold must cite the evidence its policy names
-in condition_evidence. An invalidated verdict becomes "insufficient", so an unverifiable
-answer can never read as approval.
+The model's answer is never taken on trust. It cites lines by handle and the cited text is
+extracted here (lines.py), so a quote cannot be invented; a handle that was not in the
+prompt, an over-long range, or an echo that does not match the cited line invalidates the
+verdict, and so does a met or not_met answer with no citation. A verdict that a
+criterion's condition does not hold must cite the evidence its policy names in
+condition_evidence. An invalidated verdict becomes "insufficient", so an unverifiable
+answer can never read as approval, and records the kind of invalidation.
 
-With a partial rule result the computed fact is evidence item [C1]. It is verified like
-any other item (the quote must be in its statement), and PARTIAL_BRANCHES fixes which
-outcomes may rest on it alone; any other outcome still needs a verified chart citation.
+With a partial rule result the computed fact is evidence item [C1]. It is cited like any
+other item, and PARTIAL_BRANCHES fixes which outcomes may rest on it alone; any other
+outcome still needs a verified chart citation.
 """
 
 from __future__ import annotations
@@ -19,13 +21,22 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel
 
+from precertly.judgment.lines import (
+    MAX_CITATION_LINES,
+    HandleError,
+    echo_matches,
+    lines_of,
+    parse_handle,
+)
 from precertly.judgment.logic import judged_criteria, overall_outcome
 from precertly.judgment.models import (
     CaseJudgment,
     ChecklistItem,
+    Citation,
     ComputedCitation,
     CriterionVerdict,
     EvidenceChunk,
+    InvalidationKind,
     ModelJudgment,
     Outcome,
     PriorAuthRequest,
@@ -49,8 +60,9 @@ from precertly.policies import Criterion, Policy
 MAX_TOKENS = 800
 TEMPERATURE = 0.0
 # Version of the checks that decide whether a model answer stands. 2: a not-applicable
-# verdict must cite its criterion's condition_evidence.
-VERIFIER_VERSION = "2"
+# verdict must cite its criterion's condition_evidence. 3: line handles; the quote is
+# extracted from the cited lines and the first-words echo must match.
+VERIFIER_VERSION = "3"
 
 
 class StructuredLLM(Protocol):
@@ -78,37 +90,89 @@ def find_quote(quote: str, text: str) -> tuple[int, int] | None:
     return (match.start(), match.end()) if match else None
 
 
+Invalid = tuple[InvalidationKind, str]
+
+
 def verify(
     judgment: ModelJudgment, chunks: list[EvidenceChunk], computed: str | None = None
-) -> tuple[list[VerifiedCitation], str | None, str | None]:
-    """Verified chunk citations, the verified quote from [C1] if it was cited, and the
+) -> tuple[list[VerifiedCitation], str | None, Invalid | None]:
+    """Verified chunk citations, the computed statement if [C1] was cited, and the kind and
     reason the verdict is invalid if it is.
 
-    The model cites handles (E1, E2, ...); they are mapped back to chunk ids here. [C1] is
-    a handle only when computed (a partial rule's statement) was in the prompt. A handle
-    that was not in the prompt, or a quote that is not in the item it cites, is invalid.
+    The model cites line handles (E3.2, or E3.2-E3.4); the cited lines are extracted here
+    as the quote. [C1] is a handle only when computed (a partial rule's statement) was in
+    the prompt. A handle that is not in the prompt, a range of more than MAX_CITATION_LINES
+    lines, or an echo that does not match the first cited line is invalid.
     """
     by_handle = handles(chunks)
     verified, computed_quote = [], None
     for citation in judgment.citations:
-        handle = citation.evidence.strip().strip("[]").upper()
-        if handle == COMPUTED_HANDLE and computed is not None:
-            if find_quote(citation.quote, computed) is None:
-                return [], None, f"quote not found in [C1]: {citation.quote[:80]!r}"
-            computed_quote = citation.quote
+        try:
+            handle = parse_handle(citation.evidence)
+        except HandleError as error:
+            return [], None, ("unknown_handle", f"cited evidence is not a handle: {error}")
+        if handle.item == COMPUTED_HANDLE and computed is not None:
+            if handle.last not in (None, 1):
+                return [], None, ("unknown_handle", f"[C1] has one line; cited {handle}")
+            if not echo_matches(citation.first_words, computed):
+                return [], None, ("handle_mismatch", _mismatch("[C1]", citation, computed))
+            computed_quote = computed
             continue
-        chunk = by_handle.get(handle)
+        chunk = by_handle.get(handle.item)
         if chunk is None:
-            return [], None, f"cited evidence {citation.evidence!r} was not in the prompt"
-        span = find_quote(citation.quote, chunk.text)
-        if span is None:
-            return [], None, f"quote not found in {chunk.id}: {citation.quote[:80]!r}"
+            return [], None, ("unknown_handle", _not_shown(citation.evidence))
+        lines = lines_of(chunk)
+        first, last = handle.first, handle.last
+        if first is None:
+            if len(lines) != 1:
+                return (
+                    [],
+                    None,
+                    (
+                        "unknown_handle",
+                        f"cited evidence {citation.evidence!r} names an item of {len(lines)} "
+                        "lines, not a line",
+                    ),
+                )
+            first = last = 1
+        assert last is not None
+        if last > len(lines):
+            return [], None, ("unknown_handle", _not_shown(citation.evidence))
+        if last - first + 1 > MAX_CITATION_LINES:
+            return (
+                [],
+                None,
+                (
+                    "citation_too_long",
+                    f"{citation.evidence!r} spans {last - first + 1} lines; at most "
+                    f"{MAX_CITATION_LINES} may be cited together",
+                ),
+            )
+        head = lines[first - 1]
+        if not echo_matches(citation.first_words, head.text):
+            return [], None, ("handle_mismatch", _mismatch(citation.evidence, citation, head.text))
         verified.append(
             VerifiedCitation(
-                chunk_id=chunk.id, quote=citation.quote, char_start=span[0], char_end=span[1]
+                chunk_id=chunk.id,
+                quote=chunk.text[head.start : lines[last - 1].end],
+                char_start=head.start,
+                char_end=lines[last - 1].end,
+                first_line=first,
+                last_line=last,
             )
         )
     return verified, computed_quote, None
+
+
+def _not_shown(evidence: str) -> str:
+    return f"cited evidence {evidence!r} was not in the prompt"
+
+
+def _mismatch(where: str, citation: Citation, line: str) -> str:
+    return (
+        f"first words {citation.first_words[:40]!r} do not match {where}, which starts "
+        f"{line[:40]!r}"
+    )
 
 
 def citation_problem(
@@ -120,8 +184,8 @@ def citation_problem(
     partial: RuleResult | None,
     condition_holds: bool | None = None,
     condition_evidence: str | None = None,
-) -> str | None:
-    """Why the citations cannot support this outcome, or None if they can.
+) -> Invalid | None:
+    """Why the citations cannot support this outcome, with its kind, or None if they can.
 
     Without a partial rule result, met and not_met need at least one citation. With one,
     the PARTIAL_BRANCHES entry decides: an outcome it lists may rest on [C1] alone, and any
@@ -132,8 +196,8 @@ def citation_problem(
         return None
     if partial is None:
         if not applicable:
-            return condition_citation_problem(condition_evidence, citations)
-        return None if citations else f"{outcome} with no citation"
+            return _condition(condition_evidence, citations)
+        return None if citations else ("missing_citation", f"{outcome} with no citation")
     assert partial.branch is not None
     branch = PARTIAL_BRANCHES[partial.branch]
     if branch.criterion != criterion_id:
@@ -144,17 +208,25 @@ def citation_problem(
     else:
         final = "not_applicable"
     if branch.condition_fixed and condition_holds is False:
-        return "condition_holds is false, but [C1] establishes that the condition holds"
+        return (
+            "condition_contradicts_computed",
+            "condition_holds is false, but [C1] establishes that the condition holds",
+        )
     if not branch.needs_chart(final):
         if citations or computed_quote is not None:
             return None
-        return f"{final} with no citation"
+        return ("missing_citation", f"{final} with no citation")
     if not any(citation.is_chart for citation in citations):
         cited = "only [C1] or request items" if citations or computed_quote else "nothing"
-        return f"{final} needs a chart citation; cited {cited}"
+        return ("chart_citation_required", f"{final} needs a chart citation; cited {cited}")
     if not applicable:
-        return condition_citation_problem(condition_evidence, citations)
+        return _condition(condition_evidence, citations)
     return None
+
+
+def _condition(condition_evidence: str | None, citations: list[VerifiedCitation]) -> Invalid | None:
+    problem = condition_citation_problem(condition_evidence, citations)
+    return None if problem is None else ("condition_evidence", problem)
 
 
 def condition_citation_problem(
@@ -179,6 +251,35 @@ def condition_citation_problem(
         needed = f"a citation of {condition_evidence}"
     cited = ", ".join(sorted({citation.chunk_id for citation in citations})) or "nothing"
     return f"not_applicable needs {needed}; cited {cited}"
+
+
+# Reason text as earlier verifier versions wrote it, for files that record no kind.
+_REASON_KINDS: list[tuple[str, InvalidationKind]] = [
+    ("no structured answer", "no_usable_answer"),
+    ("quote not found", "quote_not_found"),
+    ("not_applicable needs", "condition_evidence"),
+    ("condition_holds is false", "condition_contradicts_computed"),
+]
+
+
+def invalidation_kind(reason: str | None) -> InvalidationKind | None:
+    """The kind of an invalidation reason, for results files written before verifier
+    version 3 recorded it."""
+    if reason is None:
+        return None
+    for prefix, kind in _REASON_KINDS:
+        if reason.startswith(prefix):
+            return kind
+    if any(
+        text in reason
+        for text in ("was not in the prompt", "is not a handle", "not in the evidence")
+    ):
+        return "unknown_handle"
+    if "needs a chart citation" in reason:
+        return "chart_citation_required"
+    if reason.endswith("with no citation"):
+        return "missing_citation"
+    raise ValueError(f"unrecognized invalidation reason: {reason!r}")
 
 
 def computed_citation(
@@ -226,6 +327,7 @@ async def judge_criterion(
             confidence=0.0,
             rationale="The model returned no usable answer for this criterion.",
             invalidated=f"no structured answer: {error}",
+            invalidation="no_usable_answer",
             model_outcome="none",
             chunk_ids=[chunk.id for chunk in chunks],
             usage=error.usage or LLMUsage(model_id="unknown", calls=0),
@@ -255,6 +357,7 @@ async def judge_criterion(
         )
     if invalid is not None:
         outcome, applicable, computed_quote = "insufficient", True, None
+    kind, reason = invalid if invalid is not None else (None, None)
     if partial is not None:
         computed = [computed_citation(criterion.id, partial, computed_quote)]
 
@@ -265,7 +368,8 @@ async def judge_criterion(
         confidence=judgment.confidence,
         rationale=judgment.rationale,
         citations=citations,
-        invalidated=invalid,
+        invalidated=reason,
+        invalidation=kind,
         model_outcome=judgment.outcome,
         chunk_ids=[chunk.id for chunk in chunks],
         usage=response.usage,
@@ -321,6 +425,7 @@ async def judge_with_rule(
             outcome=alone.outcome,
             applicable=alone.applicable,
             invalidated=alone.invalidated,
+            invalidation=alone.invalidation,
             model_outcome=alone.model_outcome,
             citations=alone.citations,
             usage=alone.usage,

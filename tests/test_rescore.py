@@ -90,5 +90,17 @@ def test_committed_derived_files_match_a_fresh_rescore():
             committed["rescored"]["source"] == f"evals/results/2026-10-14-experiment-1.1{run}.json"
         )
         fresh = rescore(EVALS_DIR.parent / committed["rescored"]["source"])
-        for key in ("summary", "cases", "summary_model_only", "model_only_overall"):
-            assert committed[key] == fresh[key], (run, key)
+        # Summaries gained fields after these files were written, so compare what the
+        # rescore decides: every verdict and every case outcome.
+        assert committed["model_only_overall"] == fresh["model_only_overall"], run
+        assert committed["rescored"]["changes"] == fresh["rescored"]["changes"], run
+        for old, new in zip(committed["cases"], fresh["cases"], strict=True):
+            assert old["predicted_overall"] == new["predicted_overall"], run
+            for a, b in zip(old["verdicts"]["verdicts"], new["verdicts"]["verdicts"], strict=True):
+                keys = ("outcome", "applicable", "invalidated")
+                assert {k: a[k] for k in keys} == {k: b[k] for k in keys}, (run, a["criterion"])
+                if a.get("shadow"):
+                    assert {k: a["shadow"][k] for k in keys} == {k: b["shadow"][k] for k in keys}, (
+                        run,
+                        a["criterion"],
+                    )

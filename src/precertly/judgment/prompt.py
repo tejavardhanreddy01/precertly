@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from precertly.judgment.lines import lines_of
 from precertly.judgment.models import EvidenceChunk, PriorAuthRequest
 from precertly.judgment.rules import PARTIAL_BRANCHES, FinalOutcome, PartialBranch, RuleResult
 from precertly.policies import Criterion
 
 # Bump when SYSTEM or build_prompt changes what the model reads, so results files can be
 # compared across prompt changes.
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "4"
 
 SYSTEM = """You check one Medicare coverage criterion against one patient's record for a prior-authorization request. A human reviewer makes the final decision; you report what the record shows.
 
@@ -29,7 +30,8 @@ Rules:
 7. If the criterion has a condition, first decide whether the condition holds and report it in condition_holds. If it does not hold, the criterion does not apply: set outcome to met and say so in the rationale.
 
 Citations:
-- Each evidence item has a handle in square brackets: [E1], [E2] and so on. Cite every item your outcome rests on by its handle (for example E3), with a quote copied character for character from that item. Do not paraphrase, correct or shorten words inside a quote.
+- Each evidence item has a handle in square brackets, [E1], [E2] and so on, and each of its lines has a line handle: [E1.1], [E1.2] and so on. Cite every line your outcome rests on by its line handle (for example E3.2). Adjacent lines of one item may be cited as one range (for example E3.2-E3.4), at most 3 lines; cite lines further apart separately. An item shown as a single line, such as a coded record or a request field, is cited by that line's handle (for example E5.1).
+- With each citation, put the first three words of the first cited line in first_words, as they appear after its handle (all of its words if it has fewer than three). Do not copy any other text: the cited lines are quoted for you.
 - met and not_met need at least one citation. insufficient should cite the evidence that shows the gap or the contradiction, if there is any.
 - Facts about the requested service come from the items marked "request"."""
 
@@ -95,20 +97,22 @@ def build_prompt(
         lines.append(f"Note: {criterion.note}")
     lines += ["", f"REQUEST DATE: {request.date.isoformat()}", "", "EVIDENCE"]
     for handle, chunk in handles(chunks).items():
-        lines += [f"[{handle}] ({_describe(chunk)})", chunk.text, ""]
+        lines.append(f"[{handle}] ({_describe(chunk)})")
+        lines += [f"[{handle}.{line.number}] {line.text}" for line in lines_of(chunk)]
+        lines.append("")
     if partial is not None:
         assert partial.kind == "partial" and partial.branch is not None
         branch = PARTIAL_BRANCHES[partial.branch]
         c1 = f"[{COMPUTED_HANDLE}]"
         lines += [
             f"{c1} (computed from the coded record)",
-            partial.statement,
+            f"{c1} {partial.statement}",
             "",
             f"ABOUT {c1}",
             f"{c1} was computed from the coded record and is correct. Do not recompute it, "
             "contradict it, or decide the criterion against it. Judge only what it leaves "
-            f"open, from the evidence above. Cite {c1} like any other item, with a quote "
-            "copied from it.",
+            f"open, from the evidence above. Cite it as {COMPUTED_HANDLE}, with the first "
+            "words of its statement in first_words.",
         ]
         if branch.condition_fixed:
             lines.append(f"{c1} establishes that the condition holds; set condition_holds to true.")

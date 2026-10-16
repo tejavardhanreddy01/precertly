@@ -31,19 +31,23 @@ from precertly.evals.run import (
 )
 from precertly.evals.scoring import score_case, summarize
 from precertly.judgment import (
-    RULES_VERSION,
-    VERIFIER_VERSION,
     CaseJudgment,
     CriterionVerdict,
     condition_citation_problem,
     overall_outcome,
 )
 from precertly.judgment.models import ShadowVerdict
-from precertly.judgment.prompt import PROMPT_VERSION
 from precertly.policies import Criterion, load_policies
 
-# A results file without a verifier_version was produced by version 1.
+# A results file without a verifier_version was produced by version 1. Rescoring applies
+# the version 2 check only: version 3 changed the prompt, so it cannot be applied to
+# recorded answers.
 SOURCE_VERIFIER_VERSION = "1"
+TARGET_VERIFIER_VERSION = "2"
+# The prompt and rules the version 2 check was introduced under; it is exact only for
+# answers recorded with them.
+SOURCE_PROMPT_VERSION = "3"
+SOURCE_RULES_VERSION = "2"
 
 
 def _problem(
@@ -67,6 +71,7 @@ def reverify(verdict: CriterionVerdict, criterion: Criterion) -> list[tuple[str,
         reason = _problem(verdict.applicable, verdict.invalidated, verdict, criterion)
         if reason is not None:
             verdict.outcome, verdict.applicable, verdict.invalidated = "insufficient", True, reason
+            verdict.invalidation = "condition_evidence"
             for computed in verdict.computed:
                 computed.cited_by_model, computed.quote = False, None
             changed.append(("main", reason))
@@ -75,6 +80,7 @@ def reverify(verdict: CriterionVerdict, criterion: Criterion) -> list[tuple[str,
         reason = _problem(shadow.applicable, shadow.invalidated, shadow, criterion)
         if reason is not None:
             shadow.outcome, shadow.applicable, shadow.invalidated = "insufficient", True, reason
+            shadow.invalidation = "condition_evidence"
             changed.append(("shadow", reason))
     return changed
 
@@ -85,11 +91,11 @@ def source_problems(payload: dict[str, Any]) -> list[str]:
     source_version = payload["judgment"].get("verifier_version", SOURCE_VERIFIER_VERSION)
     if source_version != SOURCE_VERIFIER_VERSION:
         problems.append(f"file was verified by version {source_version}, not 1")
-    if payload["prompt_version"] != PROMPT_VERSION:
-        problems.append(f"prompt version {payload['prompt_version']}, current {PROMPT_VERSION}")
+    if payload["prompt_version"] != SOURCE_PROMPT_VERSION:
+        problems.append(f"prompt version {payload['prompt_version']}, not {SOURCE_PROMPT_VERSION}")
     rules = payload["rules"]
-    if rules["enabled"] and rules["version"] != RULES_VERSION:
-        problems.append(f"rules version {rules['version']}, current {RULES_VERSION}")
+    if rules["enabled"] and rules["version"] != SOURCE_RULES_VERSION:
+        problems.append(f"rules version {rules['version']}, not {SOURCE_RULES_VERSION}")
     if not payload.get("complete"):
         problems.append("file is not complete")
     return problems
@@ -131,7 +137,7 @@ def rescore(source: Path) -> dict[str, Any]:
         rescored.append((score_case(case, judgment), judgment))
 
     derived = {k: v for k, v in payload.items() if k != "pair"}
-    derived["judgment"] = payload["judgment"] | {"verifier_version": VERIFIER_VERSION}
+    derived["judgment"] = payload["judgment"] | {"verifier_version": TARGET_VERIFIER_VERSION}
     derived["summary"] = summarize([score for score, _ in rescored]).model_dump()
     derived["cases"] = [
         {**score.model_dump(mode="json"), "verdicts": judgment.model_dump(mode="json")}
@@ -145,7 +151,7 @@ def rescore(source: Path) -> dict[str, Any]:
         "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
         "source_pair": payload.get("pair"),
         "source_verifier_version": SOURCE_VERIFIER_VERSION,
-        "verifier_version": VERIFIER_VERSION,
+        "verifier_version": TARGET_VERIFIER_VERSION,
         "git_sha": _git("rev-parse", "--short", "HEAD"),
         "git_dirty": bool(_git("status", "--porcelain", "--untracked-files=no")),
         "method": "recorded answers re-checked offline; no model calls",

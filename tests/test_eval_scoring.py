@@ -83,7 +83,11 @@ def test_calling_a_failed_criterion_not_applicable_is_also_a_false_approval():
 def test_too_cautious_is_wrong_but_not_a_false_approval():
     case = CASES["facet-01"]
     label = case.expected[0]
-    cautious = {label.criterion: _verdict(label, "insufficient", cite=[], invalidated="x")}
+    cautious = {
+        label.criterion: _verdict(
+            label, "insufficient", cite=[], invalidated="met with no citation"
+        )
+    }
     summary = summarize([score_case(case, _judgment(case, cautious, overall=Outcome.INSUFFICIENT))])
     assert (summary.false_approvals, summary.cases_correct) == (0, 0)
     assert summary.criteria_correct == summary.scored_criteria - 1
@@ -247,7 +251,7 @@ def test_runner_saves_after_every_case_and_can_be_resumed(tmp_path, monkeypatch)
     assert finished["summary"]["cases"] == 3
 
 
-def test_unusable_answers_are_counted_apart_from_quote_invalidations():
+def test_invalidations_are_counted_by_kind_with_unusable_answers_apart():
     case = CASES["facet-01"]
     first, second = case.expected[0], case.expected[1]
     no_answer = _verdict(first, "insufficient", cite=[], invalidated="no structured answer: x")
@@ -259,7 +263,8 @@ def test_unusable_answers_are_counted_apart_from_quote_invalidations():
     )
 
     assert summary.invalidated_verdicts == 2
-    assert (summary.quote_invalidations, summary.unusable_answers) == (1, 1)
+    assert summary.invalidations_by_kind == {"no_usable_answer": 1, "quote_not_found": 1}
+    assert summary.unusable_answers == 1
     assert summary.unusable_answers_by_case == {"facet-01": 1}
     assert summary.unusable_answers_by_criterion == {first.criterion: 1}
 
@@ -292,7 +297,13 @@ def test_a_pair_is_clean_only_with_identical_settings_and_no_unusable_answers():
     noisy = compare(_payload(ids), _payload(ids, flip={("facet-01", criterion)}))
     assert noisy["clean"]  # differing verdicts are the noise being measured, not a defect
     assert noisy["verdicts_differ"] == [
-        {"case": "facet-01", "criterion": criterion, "a": "met", "b": "insufficient"}
+        {
+            "case": "facet-01",
+            "criterion": criterion,
+            "a": "met",
+            "b": "insufficient",
+            "cause": "other",
+        }
     ]
 
     broken = compare(_payload(ids), _payload(ids, unusable={("facet-02", criterion)}))
@@ -313,7 +324,7 @@ def test_resume_also_refuses_different_policy_versions_or_judgment_settings():
         "max_tokens": 800,
         "temperature": 0.0,
         "top_k": 8,
-        "verifier_version": "2",
+        "verifier_version": "3",
     }
     assert current["policies"]["facet-joint-interventions"] == {
         "LCD L38773": "32",
@@ -367,3 +378,20 @@ def test_model_only_view_lists_where_rule_and_model_part():
     ]
     assert view["summary_model_only"]["false_approvals"] == 1
     assert summarize([score]).false_approvals == 0
+
+
+def test_a_difference_is_explained_by_its_cause():
+    from precertly.evals.compare import difference_cause
+
+    def verdict(model_outcome="met", invalidated=None, applicable=True):
+        return {
+            "model_outcome": model_outcome,
+            "invalidated": invalidated,
+            "applicable": applicable,
+        }
+
+    assert difference_cause(verdict(), verdict("not_met")) == "model outcome changed"
+    assert difference_cause(verdict(), verdict(invalidated="x")) == (
+        "citation verified in one run only"
+    )
+    assert difference_cause(verdict(), verdict(applicable=False)) == "applicability changed"
