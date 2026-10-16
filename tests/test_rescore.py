@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import json
 
 from precertly.evals.cases import EVALS_DIR
 from precertly.evals.rescore import rescore, reverify, source_problems
@@ -79,3 +80,15 @@ def test_rescoring_experiment_1_1_changes_only_the_shadow_ia_diagnostic_verdicts
 def test_a_file_already_rescored_is_refused():
     derived = rescore(RESULTS / "2026-10-14-experiment-1.1a.json")
     assert any("version 2" in problem for problem in source_problems(derived))
+
+
+def test_committed_derived_files_match_a_fresh_rescore():
+    for run in ("a", "b"):
+        path = RESULTS / f"2026-10-14-experiment-1.1{run}-rescored-issue4.json"
+        committed = json.loads(path.read_text(encoding="utf-8"))
+        assert (
+            committed["rescored"]["source"] == f"evals/results/2026-10-14-experiment-1.1{run}.json"
+        )
+        fresh = rescore(EVALS_DIR.parent / committed["rescored"]["source"])
+        for key in ("summary", "cases", "summary_model_only", "model_only_overall"):
+            assert committed[key] == fresh[key], (run, key)
