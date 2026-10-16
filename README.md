@@ -62,7 +62,7 @@ Every criterion has an `evidence_stage`. Only `chart` and `request` criteria get
 
 1. **Rules first.** Where coded data settles a criterion (conditions, session counts, intervals, pain-score relief), a deterministic rule in [`judgment/rules.py`](src/precertly/judgment/rules.py) decides it, or fixes a computed fact the model must work from. A rule never decides `not_met` from missing data; missing coded data goes to the model.
 2. **Then the model.** The rest are judged on Bedrock from the retrieved chunks, through one forced output schema and no other tools.
-3. **Then verification.** Every quote must be found in the chunk it cites. A verdict whose quote does not verify, or a `met` / `not_met` with no citation, becomes `insufficient`.
+3. **Then verification.** Every quote must be found in the chunk it cites. A verdict whose quote does not verify, a `met` / `not_met` with no citation, or a "condition does not hold" that does not cite the evidence its policy names (the chart, or a specific request field), becomes `insufficient`.
 4. **Then the logic.** The policy's `all_of` / `any_of` logic combines the verdicts in code, never by the model.
 
 Outcomes are `met`, `not_met` or `insufficient`. Precertly never denies; a human decides. The invariants, threat model and test strategy behind this are in [docs/QUALITY.md](docs/QUALITY.md), including the gaps that are known and not yet fixed.
@@ -78,6 +78,7 @@ uv run python -m precertly.evals.run --rules                # real run: local da
 uv run python -m precertly.evals.compare --mark <a> <b>     # compare two runs from the same commit
 uv run python -m precertly.evals.rules_check                # rule results against the labels, offline
 uv run python -m precertly.evals.prompt_check <results.json>  # rebuild every recorded prompt, check its hash
+uv run python -m precertly.evals.rescore <results.json> --out <derived.json>  # re-check recorded answers offline
 ```
 
 Latest pair (experiment 1.1, Amazon Nova 2 Lite, with rules), from [evals/results/NOTES.md](evals/results/NOTES.md):
