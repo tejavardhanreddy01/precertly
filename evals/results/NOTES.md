@@ -166,3 +166,21 @@ Pre-registered before any code for it was written. Design reviewed separately; t
 **Watch.** facet-04 `no-diagnostic-at-level-of-successful-rfa` (open issue 2). Whether not-applicable verdicts on `no-diagnostic-at-level-of-successful-rfa` now cite a line that states the absence (such as "No prior radiofrequency ablation or spinal injections.") instead of the plan line; reported by hand, no effect claimed.
 
 **Also required.** `prompt_check` and `rules_check --recompute` pass on both files. An effect is claimed only for a verdict wrong in every earlier run and right in both experiment runs.
+
+### Amendment: after a one-case canary, before any pair run
+
+**The canary.** Before starting the pair, case facet-01 was run alone at commit `e07da1f` (17 model calls) to check real token counts against the estimate: 4,155 input tokens per call, against about 4,110 estimated. It also produced 10 `handle_mismatch` invalidations (9 primary, 1 shadow) in one case, against a target of at most 1 per run, so the run was stopped there. The file is kept as evidence in `2026-10-16-experiment-2-canary-superseded.json`. It used the superseded verifier and is not part of any result.
+
+**What it found.**
+
+1. The echo rule was stricter than intended. In 8 of the 10 invalidations the model cited the right line and echoed a correct prefix of fewer than three words (`- Pain: 7/10`, where the model counts the bullet as a word; `Conservative management:`; `Spinal region:`; `Procedure/mbb1: relief`). The other 2 were real misnumberings, both `E9.9` echoed as `Pain and` when that heading is `E9.8`, which is what the echo is for.
+2. Radiology report text was segmented as a coded resource. `DiagnosticReport/mri-lumbar#1` is a verbatim slice of the report's presentedForm, but only DocumentReference chunks were treated as free text, so the whole report was one line. The model cited `E15.15` for the Impression row, a handle that did not exist.
+
+**Changes, made after this one case and before any pair run.**
+
+1. Echo: the echo must be a prefix of the line's words, at least 2 words long, or every word of the line's first row if that row has fewer. On the 1.1a prompts, a near-miss handle (an adjacent line, or the same line of a neighbouring item) passes a two-word echo 9.4% of the time and a three-word echo 8.3%. Replayed offline on the canary's answers, the 8 correct citations pass and both misnumberings are still caught. The prompt text is unchanged ("the first three words ... all of its words if it has fewer"), and prompt version 4 is unchanged; verifier version 3 is reworded before any result was recorded with it.
+2. Free text is recognized from the chunker's character offsets (`EvidenceChunk.free_text`, set where `char_start` is set, in retrieval and in `prompt_check`), not from the resource type. Radiology report text is now split into lines like notes. This changes the rendered prompts of criteria that are shown a report, under the same prompt version 4 template.
+
+**The line-length threshold.** Recomputed over all 228 free-text chunks in the 11 bundles (54 distinct texts: 51 notes, 3 radiology reports): 552 distinct non-empty lines, median 42 characters, 90th percentile 194, maximum 548; 478 at or under 160 and 74 over it. The distribution barely moves (notes alone: 537 lines, median 41, 90th percentile 194, 466 at or under 160), so `MAX_LINE_CHARS` stays 160.
+
+**Unchanged.** Every success criterion above stands as written, including (b)'s target of at most 1 `handle_mismatch` per run, which is reported against as written. Both runs of the pair are fresh runs from the commit with these changes; neither resumes the canary.
