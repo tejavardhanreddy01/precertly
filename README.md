@@ -89,7 +89,7 @@ Latest pair (experiment 1.1, Amazon Nova 2 Lite, with rules), from [evals/result
 | Cases right | 7 of 11 | 7 of 11 |
 | False approvals (verdict / case) | 1 / 1 | 1 / 1 |
 
-Experiment 2 (line-level evidence handles, the prompt now on this branch) failed its pre-registration: 145 and 160 of 184 criteria right, because the model's first-words echo often names the line before the handle it cites. Its numbers are in the notes; it does not replace the table above.
+Experiment 2 (line-level evidence handles, prompt version 4) failed its pre-registration: 145 and 160 of 184 criteria right, because the model's first-words echo often names the line before the handle it cites. Its numbers are in the notes; it does not replace the table above.
 
 Two runs on the same commit differ on up to 14 of 184 verdicts, so an effect is claimed only for a verdict that is wrong in every baseline run and right in every experiment run. The remaining false approval (facet-11) is a retrieval miss. Experiments are pre-registered in the notes before they run, and failures are reported with the rest.
 
