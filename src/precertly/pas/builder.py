@@ -354,6 +354,13 @@ def diagnoses(
     claim_entries: list[dict[str, Any]] = []
     records: list[dict[str, Any]] = []
     tasks: list[str] = []
+    covered = f"{article['document'].removeprefix('Article ')} v{article['version']}'s covered list"
+    if not candidates:
+        tasks.append(
+            "No coded Condition in the chart is recorded as the reason for a procedure with "
+            f"one of the policy's codes. Assign an ICD-10-CM code from {covered} if the "
+            "documentation supports one."
+        )
     for condition in candidates:
         snomed = next(
             (c for c in condition["code"]["coding"] if c["system"] == "http://snomed.info/sct"),
@@ -373,10 +380,8 @@ def diagnoses(
             )
             tasks.append(
                 f"The chart's coded Condition, {label.lower()} (SNOMED "
-                f"{snomed['code'] if snomed else 'none'}), has no equivalent on "
-                f"{article['document'].removeprefix('Article ')} v{article['version']}'s "
-                "covered list. Assign an ICD-10-CM code from that list if the documentation "
-                "supports one."
+                f"{snomed['code'] if snomed else 'none'}), has no equivalent on {covered}. "
+                "Assign an ICD-10-CM code from that list if the documentation supports one."
             )
             continue
         claim_entries.append(

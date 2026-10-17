@@ -367,6 +367,7 @@
     }
   ],
   "reviewer_tasks": [
+    "No coded Condition in the chart is recorded as the reason for a procedure with one of the policy's codes. Assign an ICD-10-CM code from A58364 v42's covered list if the documentation supports one. See the attached notes and the MRI report (attached as DocumentReference/mri-lumbar-report).",
     "Replace the placeholder payer, coverage and requestor with the real participants.",
     "Confirm each X12 code against the X12 278 guide (codes taken from the IG examples).",
     "Confirm the LOINC document type given to each attached note.",
