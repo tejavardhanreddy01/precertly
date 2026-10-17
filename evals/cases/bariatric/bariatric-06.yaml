@@ -1,0 +1,45 @@
+id: bariatric-06
+policy: bariatric-surgery
+policy_version:
+  NCD 100.1: "5"
+variant: bariatric
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: laparoscopic Roux-en-Y gastric bypass
+  codes: ["43644"]
+bundle: bundles/bariatric-06.json
+expected_overall: insufficient
+tags: [adversarial, missing-evidence]
+notes: >-
+  The clean baseline with no co-morbidity in the record. There is no type 2 diabetes, no metformin, and no other condition the chart codes or writes up as related to obesity (the stripped background has none: the cardiac conditions, the lipid panel and the elevated blood pressures are removed). The surgical evaluation of 2026-09-14 lists no history at all and does not say that no co-morbidity was found, so the criterion is never assessed. Silence is not evidence of absence: the label is insufficient, not not_met, and it rests on the Outcomes table, since the criterion is a positive requirement with no documented assessment. The BMI is 39.3 and the 12-month program failed as in bariatric-01.
+changed_labels:
+  - criterion: obesity-comorbidity
+    quote: >-
+      at least one co-morbidity related to obesity
+    why: >-
+      No co-morbidity is documented, and no note assesses whether one exists. A requirement stated positively with no documented assessment is insufficient; a note recording that none was found would make it not_met.
+expected:
+  - criterion: nationally-covered-procedure
+    outcome: met
+    fact: >-
+      The request is for a laparoscopic Roux-en-Y gastric bypass (43644), which the NCD names as a nationally covered procedure.
+    evidence: [request.procedure, request.codes]
+
+  - criterion: bmi-35-plus
+    outcome: met
+    fact: >-
+      BMI 39.3 kg/m2 at the surgical evaluation of 2026-09-14 (117.5 kg, 172.9 cm), at least 35.
+    evidence: [Observation/37b75dda-e187-ae40-6e7f-02bcda7c4638, Observation/37b75dda-e187-ae40-ef05-fe4cb44a431a, Observation/37b75dda-e187-ae40-ed66-ed3e7b93f2f4, Observation/37b75dda-e187-ae40-d89f-acacabb1a078, Observation/bmi-2025-07-28, Observation/bmi-2025-08-04, Observation/bmi-2026-02-02, Observation/bmi-2026-08-03, Observation/bmi-2026-09-14, DocumentReference/note-surgical-eval]
+
+  - criterion: obesity-comorbidity
+    outcome: insufficient
+    fact: >-
+      No co-morbidity is coded or written anywhere in the record, and the surgical evaluation neither lists one nor states that none was found.
+    evidence: [DocumentReference/note-surgical-eval]
+
+  - criterion: failed-medical-treatment
+    outcome: met
+    fact: >-
+      A 12-month physician-supervised program (diet, walking, monthly counseling and orlistat) from 2025-08-04 to 2026-08-03 ended with the weight 0.6 kg above the intake weight: previously unsuccessful medical treatment for obesity.
+    evidence: [DocumentReference/note-wm-intake, MedicationRequest/orlistat, DocumentReference/note-wm-6mo, DocumentReference/note-wm-12mo, DocumentReference/note-surgical-eval]

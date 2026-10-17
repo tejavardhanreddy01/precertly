@@ -38,7 +38,11 @@ def _build_module():
 def test_every_planned_case_exists():
     assert set(_plan()) == set(CASES)
     by_policy = Counter(case.policy for case in CASES.values())
-    assert by_policy == {"facet-joint-interventions": 11, "pap-sleep-apnea": 6}
+    assert by_policy == {
+        "facet-joint-interventions": 11,
+        "pap-sleep-apnea": 6,
+        "bariatric-surgery": 6,
+    }
 
 
 @pytest.mark.parametrize("case", CASES.values(), ids=list(CASES))

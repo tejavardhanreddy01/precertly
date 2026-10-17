@@ -1,0 +1,39 @@
+id: bariatric-04
+policy: bariatric-surgery
+policy_version:
+  NCD 100.1: "5"
+variant: sleeve-gastrectomy
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: stand-alone laparoscopic sleeve gastrectomy
+  codes: ["43775"]
+bundle: bundles/bariatric-04.json
+expected_overall: insufficient
+tags: [adversarial, missing-evidence, similar-but-irrelevant]
+notes: >-
+  A sleeve gastrectomy request with a BMI of 40.7 and type 2 diabetes, and no record of any medical treatment for obesity: no referral to a weight management clinic, no program, no weight-loss medication, and the primary care referral of 2026-08-17 and the surgical evaluation of 2026-09-14 are silent on prior treatment. Nothing says treatment was not tried, so the label is insufficient, not not_met. The only similar-but-irrelevant records are the background care plan of 2023-10-12 for acute bronchitis, which advises avoiding exercise and breathing exercises, and metformin, whose documented reason is diabetes. The co-morbidity label rests on the NCD sentence that type 2 diabetes is a co-morbidity for purposes of this NCD, which the policy file quotes under obesity-comorbidity, not under the sleeve criterion (see PLAN.md).
+changed_labels:
+  - criterion: lsg-failed-medical-treatment
+    quote: >-
+      previously unsuccessful with medical treatment for obesity
+    why: >-
+      The record never addresses medical treatment for obesity. Silence is not evidence that treatment failed or that none was tried (Outcomes table; the same reasoning as the adherence criteria in pap-06).
+expected:
+  - criterion: lsg-bmi-35-plus
+    outcome: met
+    fact: >-
+      BMI 40.7 kg/m2 at the surgical evaluation of 2026-09-14 (121.6 kg, 172.9 cm), at least 35.
+    evidence: [Observation/37b75dda-e187-ae40-6e7f-02bcda7c4638, Observation/37b75dda-e187-ae40-ef05-fe4cb44a431a, Observation/37b75dda-e187-ae40-ed66-ed3e7b93f2f4, Observation/37b75dda-e187-ae40-d89f-acacabb1a078, Observation/bmi-2026-07-28, Observation/bmi-2026-08-17, Observation/bmi-2026-09-14, DocumentReference/note-bariatric-referral, DocumentReference/note-surgical-eval]
+
+  - criterion: lsg-obesity-comorbidity
+    outcome: met
+    fact: >-
+      Type 2 diabetes mellitus, diagnosed 2026-07-28 and treated with metformin, which the NCD names as a co-morbidity for purposes of this NCD.
+    evidence: [Condition/type-2-diabetes, MedicationRequest/metformin, DocumentReference/note-diabetes-dx, DocumentReference/note-bariatric-referral, DocumentReference/note-surgical-eval]
+
+  - criterion: lsg-failed-medical-treatment
+    outcome: insufficient
+    fact: >-
+      The primary care referral and the surgical evaluation say nothing about medical treatment for obesity, and no other record addresses it. The care plan of 2023-10-12 is for acute bronchitis, and metformin is for diabetes.
+    evidence: [DocumentReference/note-surgical-eval, DocumentReference/note-bariatric-referral]

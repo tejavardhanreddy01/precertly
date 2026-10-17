@@ -1,0 +1,45 @@
+id: bariatric-05
+policy: bariatric-surgery
+policy_version:
+  NCD 100.1: "5"
+variant: bariatric
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: open Roux-en-Y gastric bypass
+  codes: ["43846"]
+bundle: bundles/bariatric-05.json
+expected_overall: insufficient
+tags: [adversarial, contradiction, similar-but-irrelevant]
+notes: >-
+  Two documents of the same standing disagree on whether the patient had medical treatment for obesity. A weight management clinic note of 2025-08-04 records that the patient declined enrollment and the referral was closed. The surgical evaluation of 2026-09-14 states that the patient completed a 12-month supervised program from 2025-08-04 to 2026-08-03 with diet, exercise and orlistat. Neither mentions the other and nothing reconciles them; the program start date in the evaluation is the day of the refusal, so a later enrollment does not reconcile them. The bundle has no program notes and no orlistat request. The label is insufficient under GUIDELINES rule 4, which is our reading and not a CMS rule, and the case is flagged for the blinded second annotation pass. The BMI is 42.2, type 2 diabetes is documented, and open Roux-en-Y gastric bypass is a covered procedure, so only the treatment criterion changes.
+changed_labels:
+  - criterion: failed-medical-treatment
+    quote: >-
+      previously unsuccessful with medical treatment for obesity
+    why: >-
+      The clinic note says the patient declined enrollment and the referral was closed; the surgical evaluation says the patient completed a 12-month program. The two disagree on a fact the criterion depends on and nothing in the record resolves it, so rule 4 gives insufficient.
+expected:
+  - criterion: nationally-covered-procedure
+    outcome: met
+    fact: >-
+      The request is for an open Roux-en-Y gastric bypass (43846), which the NCD names as a nationally covered procedure ("Open and laparoscopic Roux-en-Y gastric bypass").
+    evidence: [request.procedure, request.codes]
+
+  - criterion: bmi-35-plus
+    outcome: met
+    fact: >-
+      BMI 42.2 kg/m2 at the surgical evaluation of 2026-09-14 (126.3 kg, 172.9 cm), at least 35.
+    evidence: [Observation/37b75dda-e187-ae40-6e7f-02bcda7c4638, Observation/37b75dda-e187-ae40-ef05-fe4cb44a431a, Observation/37b75dda-e187-ae40-ed66-ed3e7b93f2f4, Observation/37b75dda-e187-ae40-d89f-acacabb1a078, Observation/bmi-2025-07-28, Observation/bmi-2026-07-28, Observation/bmi-2026-09-14, DocumentReference/note-surgical-eval]
+
+  - criterion: obesity-comorbidity
+    outcome: met
+    fact: >-
+      Type 2 diabetes mellitus, diagnosed 2026-07-28 and treated with metformin, which the NCD names as a co-morbidity.
+    evidence: [Condition/type-2-diabetes, MedicationRequest/metformin, DocumentReference/note-diabetes-dx, DocumentReference/note-surgical-eval]
+
+  - criterion: failed-medical-treatment
+    outcome: insufficient
+    fact: >-
+      The weight management clinic note of 2025-08-04 says the patient declined enrollment and the referral was closed. The surgical evaluation of 2026-09-14 says the patient completed a 12-month supervised program from 2025-08-04 to 2026-08-03. Nothing reconciles them.
+    evidence: [DocumentReference/note-wm-declined, DocumentReference/note-surgical-eval]
