@@ -1,0 +1,376 @@
+{
+  "kind": "precertly PAS draft review envelope",
+  "case": "facet-08",
+  "policy": "facet-joint-interventions",
+  "variant": "first-diagnostic",
+  "draft": {
+    "file": "facet-08.draft.json",
+    "status": "draft: requires human approval; never submitted",
+    "approval": "pending",
+    "ig": {
+      "package": "hl7.fhir.us.davinci-pas",
+      "version": "2.2.1"
+    },
+    "sha256": "bd25d45df0f7b838a35fb3e71a14128edad96bc909aa0eddebc825cf226b53bf"
+  },
+  "source": {
+    "results": "evals/results/2026-10-14-experiment-1.1a-rescored-issue4.json",
+    "sha256": "5c930952b23bd0b474ee36a5f7d6489a64909ef46e760f62905f4864c07f6560"
+  },
+  "readiness": {
+    "ready": false,
+    "summary": "not ready: no covered diagnosis code (A58364 v42); criteria not met: levels-1-to-2; payer, coverage and requestor are synthetic placeholders",
+    "reasons": [
+      "no covered diagnosis code (A58364 v42)",
+      "criteria not met: levels-1-to-2",
+      "payer, coverage and requestor are synthetic placeholders"
+    ]
+  },
+  "overall": "not_met",
+  "verdicts": [
+    {
+      "criterion": "chronic-axial-pain-functional-deficit",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-pain-clinic-eval#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "pain-minimum-3-months",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "Condition/chronic-low-back-pain#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "conservative-care-failed",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-pt-discharge#0",
+        "Condition/chronic-low-back-pain#0",
+        "DocumentReference/note-pain-clinic-eval#1"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "no-untreated-radiculopathy",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-pain-clinic-eval#1"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "no-non-facet-pathology",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "pain-scale-at-baseline",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-pain-clinic-eval#1"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "disability-scale-at-baseline",
+      "verdict": "met",
+      "decided_by": "rule",
+      "invalidated": null,
+      "citations": [],
+      "computed_inputs": [
+        "Observation/odi-baseline"
+      ]
+    },
+    {
+      "criterion": "scales-documented",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-pain-clinic-eval#1"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "no-generalized-pain-indication",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-pain-clinic-eval#1"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "not-after-alif",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "one-spinal-region-per-session",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "request.region",
+        "request.levels",
+        "request.same_day_blocks",
+        "DocumentReference/note-pain-clinic-eval#1"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "levels-1-to-2",
+      "verdict": "not_met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "request.levels",
+        "DocumentReference/note-pain-clinic-eval#1"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "same-day-blocks-justified",
+      "verdict": "not_applicable",
+      "decided_by": "rule",
+      "invalidated": null,
+      "citations": [],
+      "computed_inputs": [
+        "request.same_day_blocks"
+      ]
+    },
+    {
+      "criterion": "ia-diagnostic-only-if-mbb-not-possible",
+      "verdict": "not_applicable",
+      "decided_by": "rule",
+      "invalidated": null,
+      "citations": [],
+      "computed_inputs": [
+        "request.technique"
+      ]
+    },
+    {
+      "criterion": "diagnostic-sessions-max-4",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#1"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "no-diagnostic-at-level-of-successful-rfa",
+      "verdict": "not_applicable",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#1"
+      ],
+      "computed_inputs": []
+    }
+  ],
+  "reviewer_checklist": [
+    {
+      "criterion": "ct-or-fluoroscopic-guidance",
+      "evidence_stage": "post_service",
+      "text": "The procedure is done under CT or fluoroscopic guidance (not unguided, ultrasound-guided or MRI-guided)."
+    },
+    {
+      "criterion": "medical-record-elements",
+      "evidence_stage": "post_service",
+      "text": "The record includes the performing provider's assessment for the visit, relevant history, pertinent test or procedure results, and a signed and dated visit record or operative report."
+    },
+    {
+      "criterion": "injectate-allowed-substances",
+      "evidence_stage": "post_service",
+      "text": "The injection uses anesthetic, corticosteroids, anti-inflammatories and/or contrast agents, not biologicals or other substances not FDA designated for this use."
+    }
+  ],
+  "attachments": [
+    {
+      "document": "DocumentReference/note-pain-clinic-eval",
+      "source": "DocumentReference/note-pain-clinic-eval",
+      "title": "Pain clinic initial evaluation",
+      "cited_by": [
+        {
+          "criterion": "chronic-axial-pain-functional-deficit",
+          "verdict": "met"
+        },
+        {
+          "criterion": "pain-minimum-3-months",
+          "verdict": "met"
+        },
+        {
+          "criterion": "conservative-care-failed",
+          "verdict": "met"
+        },
+        {
+          "criterion": "no-untreated-radiculopathy",
+          "verdict": "met"
+        },
+        {
+          "criterion": "no-non-facet-pathology",
+          "verdict": "met"
+        },
+        {
+          "criterion": "pain-scale-at-baseline",
+          "verdict": "met"
+        },
+        {
+          "criterion": "scales-documented",
+          "verdict": "met"
+        },
+        {
+          "criterion": "no-generalized-pain-indication",
+          "verdict": "met"
+        },
+        {
+          "criterion": "not-after-alif",
+          "verdict": "met"
+        },
+        {
+          "criterion": "one-spinal-region-per-session",
+          "verdict": "met"
+        },
+        {
+          "criterion": "levels-1-to-2",
+          "verdict": "not_met"
+        },
+        {
+          "criterion": "diagnostic-sessions-max-4",
+          "verdict": "met"
+        },
+        {
+          "criterion": "no-diagnostic-at-level-of-successful-rfa",
+          "verdict": "not_applicable"
+        }
+      ],
+      "links_dropped": [
+        "Encounter/enc-pain-clinic-eval"
+      ]
+    },
+    {
+      "document": "DocumentReference/note-pt-discharge",
+      "source": "DocumentReference/note-pt-discharge",
+      "title": "Physical therapy discharge summary",
+      "cited_by": [
+        {
+          "criterion": "conservative-care-failed",
+          "verdict": "met"
+        }
+      ],
+      "links_dropped": [
+        "Encounter/enc-pt"
+      ]
+    }
+  ],
+  "cited_not_attached": [
+    {
+      "resource": "Condition/chronic-low-back-pain",
+      "cited_by": [
+        {
+          "criterion": "pain-minimum-3-months",
+          "verdict": "met"
+        },
+        {
+          "criterion": "conservative-care-failed",
+          "verdict": "met"
+        }
+      ]
+    },
+    {
+      "resource": "Observation/odi-baseline",
+      "cited_by": [
+        {
+          "criterion": "disability-scale-at-baseline",
+          "verdict": "met"
+        }
+      ]
+    }
+  ],
+  "diagnoses": [],
+  "placeholders": [
+    "Organization/insurer-placeholder",
+    "Organization/requestor-placeholder",
+    "Coverage/coverage-placeholder",
+    "Patient identifier (project namespace) and name (data-absent-reason: unknown)"
+  ],
+  "x12_codes": [
+    {
+      "element": "service_type",
+      "system": "https://codesystem.x12.org/005010/1365",
+      "code": "1",
+      "from": "Claim-MedicalServicesAuthorizationExample, item.category"
+    },
+    {
+      "element": "request_type",
+      "system": "https://codesystem.x12.org/005010/1525",
+      "code": "IN",
+      "from": "Claim-MedicalServicesAuthorizationExample, extension-serviceItemRequestType"
+    },
+    {
+      "element": "certification_type",
+      "system": "https://codesystem.x12.org/005010/1322",
+      "code": "I",
+      "from": "Claim-MedicalServicesAuthorizationExample, extension-certificationType"
+    },
+    {
+      "element": "report_type",
+      "system": "https://codesystem.x12.org/005010/755",
+      "code": "PY",
+      "from": "Claim-ReferralAuthorizationExample, extension-documentInformation"
+    },
+    {
+      "element": "transmission_method",
+      "system": "https://codesystem.x12.org/005010/756",
+      "code": "EL",
+      "from": "Claim-ReferralAuthorizationExample, extension-documentInformation"
+    },
+    {
+      "element": "relationship",
+      "system": "https://codesystem.x12.org/005010/1069",
+      "code": "18",
+      "from": "Coverage-InsuranceExample, relationship"
+    }
+  ],
+  "reviewer_tasks": [
+    "No coded Condition in the chart is recorded as the reason for a procedure with one of the policy's codes. Assign an ICD-10-CM code from A58364 v42's covered list if the documentation supports one. See the attached notes and the MRI report (DiagnosticReport/mri-lumbar in the chart, not cited by any verdict and so not attached).",
+    "Replace the placeholder payer, coverage and requestor with the real participants.",
+    "Confirm each X12 code against the X12 278 guide (codes taken from the IG examples).",
+    "Confirm the LOINC document type given to each attached note.",
+    "Decide which attachments to send; every cited note is attached, whatever its verdict."
+  ]
+}

@@ -19,6 +19,8 @@ uv run python -m precertly.evals.run --estimate  # size of an eval run; without 
 uv run python -m precertly.evals.rules_check [--table | --recompute <results.json>]  # rules vs labels, offline
 uv run python -m precertly.evals.prompt_check <results.json>  # rebuild every recorded prompt and check its hash
 uv run python -m precertly.evals.rescore <results.json> --out <derived.json>  # re-check recorded answers with the current verifier, offline
+uv run python -m precertly.pas [--check]         # draft PAS request bundles + review envelopes in evals/pas/ (never submitted)
+uv run python scripts/validate_pas.py [--tx]     # HL7 FHIR Validator on the drafts (offline; CI job pas-validate)
 uv run python -m precertly.fhir <bundle-or-dir>  # chunk summary for FHIR bundles
 docker compose up -d db                         # Postgres 16 + pgvector on localhost:5433
 uv run alembic upgrade head                     # apply migrations (URL from PRECERTLY_DATABASE_URL)
@@ -37,6 +39,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - `src/precertly/retrieval/` – `hybrid_search` (full-text + pgvector, RRF) and `observations` (by code and date)
 - `src/precertly/judgment/` – per-criterion verdicts with verified citations, combined by the variant logic; only `chart` and `request` stage criteria are judged; `lines.py` splits evidence into line handles for the experimental prompt version 4 (`v4.py` holds its output schema); prompt version 3 is the default
 - `src/precertly/evals/` – eval case schema, scorer, the runner (`python -m precertly.evals.run`), `compare`, `rules_check`, `prompt_check` and `rescore`
+- `src/precertly/pas/` – draft Da Vinci PAS 2.2.1 request bundles and review envelopes from recorded verdicts; reviewed diagnosis map (`diagnosis_map.yaml`); never submitted, no verdicts in the bundle
 - `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile)
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
 - `data/synthea/` – patient generator (output is git-ignored)
@@ -48,6 +51,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - Policy criteria come only from governing NCD, LCD or LCD-article text, never from MAC checklists, summary pages or memory. Each criterion carries a verbatim `quote`, the `source_document` and the `source_section`. Encode only thresholds the text states, exactly as stated; if the text is silent, leave it out and add a note. Criteria that apply only in some situations get a `condition`.
 - After editing a policy, run `uv run python scripts/verify_policy_quotes.py` (needs network) and keep fetched documents out of the repo. Never copy CPT descriptors.
 - Every verdict the agent produces must cite FHIR resource ids and verbatim quotes that are verified against the source text.
+- A drafted PAS request is never submitted and never carries a verdict; every note cited by any verdict is attached, favourable or not. Placeholders stay in the project namespace: never an NPI, TIN or NAIC. X12 and CPT codes are codes only, with X12 codes only from the IG's examples.
 - The agent never outputs a denial on its own: outcomes are met, not_met or insufficient, and a human decides.
 - A verdict whose quote is not found in the cited chunk, or a met / not_met verdict with no citation, becomes `insufficient`. Never weaken this to make a result look better.
 - Schema changes go through an Alembic migration; `uv run alembic check` must report no drift.
@@ -83,6 +87,8 @@ Done:
 
 - Experiment 2, line-level evidence handles: failed its pre-registration on (b), (c) and (f) and was reverted. Prompt version 3 is the default (`PRECERTLY_PROMPT_VERSION`); version 4 is experimental and opt-in (`--prompt-version 4`), kept so experiment 2 is reproducible. Kept for both: invalidations by kind, causes per difference in `compare`, free-text detection.
 
-Next: the PAS-shaped Claim bundle; then eval cases for PAP, spinal cord stimulator and bariatric surgery.
+- Draft PAS 2.2.1 request bundles for the 11 facet cases (`evals/pas/`), validated with zero errors by the pinned HL7 FHIR Validator (CI job `pas-validate`); not ready to send (no covered diagnosis code, placeholder participants; open issue 5).
+
+Next: eval cases for PAP, spinal cord stimulator and bariatric surgery.
 
 Experiments after launch, each pre-registered in `evals/results/NOTES.md` before running: experiment 2b (the model copies the quote, which must fall within the cited lines; 3-line cap), then experiment 3, retrieval by evidence type (the facet-11 retrieval miss). Do not loosen a verification check to recover verdicts.

@@ -1,0 +1,773 @@
+{
+  "resourceType": "Bundle",
+  "id": "facet-01-pas-draft",
+  "meta": {
+    "profile": [
+      "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-pas-request-bundle|2.2.1"
+    ],
+    "tag": [
+      {
+        "system": "https://github.com/tejavardhanreddy01/precertly/CodeSystem/review-state",
+        "code": "draft-pending-human-approval",
+        "display": "Draft: requires human approval; not submitted"
+      }
+    ]
+  },
+  "identifier": {
+    "system": "https://github.com/tejavardhanreddy01/precertly/synthetic/pas-draft",
+    "value": "facet-01-5c930952"
+  },
+  "type": "collection",
+  "timestamp": "2026-10-05T00:00:00Z",
+  "entry": [
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/Claim/facet-01",
+      "resource": {
+        "resourceType": "Claim",
+        "id": "facet-01",
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-claim|2.2.1"
+          ],
+          "tag": [
+            {
+              "system": "https://github.com/tejavardhanreddy01/precertly/CodeSystem/review-state",
+              "code": "draft-pending-human-approval",
+              "display": "Draft: requires human approval; not submitted"
+            }
+          ]
+        },
+        "identifier": [
+          {
+            "system": "https://github.com/tejavardhanreddy01/precertly/synthetic/claim-id",
+            "value": "facet-01"
+          }
+        ],
+        "status": "active",
+        "type": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/claim-type",
+              "code": "professional"
+            }
+          ]
+        },
+        "use": "preauthorization",
+        "patient": {
+          "reference": "Patient/37b75dda-e187-ae40-0d27-18bbe7bf79e8"
+        },
+        "created": "2026-10-05",
+        "insurer": {
+          "reference": "Organization/insurer-placeholder"
+        },
+        "provider": {
+          "reference": "Organization/requestor-placeholder"
+        },
+        "priority": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/processpriority",
+              "code": "normal"
+            }
+          ]
+        },
+        "supportingInfo": [
+          {
+            "extension": [
+              {
+                "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-documentInformation",
+                "extension": [
+                  {
+                    "url": "reportTypeCode",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/755",
+                          "code": "PY"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "transmissionMethod",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/756",
+                          "code": "EL"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "description",
+                    "valueString": "Procedure note, diagnostic medial branch block 1"
+                  }
+                ]
+              }
+            ],
+            "sequence": 1,
+            "category": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/us/davinci-pas/CodeSystem/PASTempCodes",
+                  "code": "additionalInformation"
+                }
+              ]
+            },
+            "valueReference": {
+              "reference": "DocumentReference/note-mbb1"
+            }
+          },
+          {
+            "extension": [
+              {
+                "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-documentInformation",
+                "extension": [
+                  {
+                    "url": "reportTypeCode",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/755",
+                          "code": "PY"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "transmissionMethod",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/756",
+                          "code": "EL"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "description",
+                    "valueString": "Procedure note, diagnostic medial branch block 2"
+                  }
+                ]
+              }
+            ],
+            "sequence": 2,
+            "category": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/us/davinci-pas/CodeSystem/PASTempCodes",
+                  "code": "additionalInformation"
+                }
+              ]
+            },
+            "valueReference": {
+              "reference": "DocumentReference/note-mbb2"
+            }
+          },
+          {
+            "extension": [
+              {
+                "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-documentInformation",
+                "extension": [
+                  {
+                    "url": "reportTypeCode",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/755",
+                          "code": "PY"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "transmissionMethod",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/756",
+                          "code": "EL"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "description",
+                    "valueString": "Pain clinic initial evaluation"
+                  }
+                ]
+              }
+            ],
+            "sequence": 3,
+            "category": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/us/davinci-pas/CodeSystem/PASTempCodes",
+                  "code": "additionalInformation"
+                }
+              ]
+            },
+            "valueReference": {
+              "reference": "DocumentReference/note-pain-clinic-eval"
+            }
+          },
+          {
+            "extension": [
+              {
+                "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-documentInformation",
+                "extension": [
+                  {
+                    "url": "reportTypeCode",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/755",
+                          "code": "PY"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "transmissionMethod",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/756",
+                          "code": "EL"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "description",
+                    "valueString": "Physical therapy discharge summary"
+                  }
+                ]
+              }
+            ],
+            "sequence": 4,
+            "category": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/us/davinci-pas/CodeSystem/PASTempCodes",
+                  "code": "additionalInformation"
+                }
+              ]
+            },
+            "valueReference": {
+              "reference": "DocumentReference/note-pt-discharge"
+            }
+          },
+          {
+            "extension": [
+              {
+                "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-documentInformation",
+                "extension": [
+                  {
+                    "url": "reportTypeCode",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/755",
+                          "code": "PY"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "transmissionMethod",
+                    "valueCodeableConcept": {
+                      "coding": [
+                        {
+                          "system": "https://codesystem.x12.org/005010/756",
+                          "code": "EL"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "url": "description",
+                    "valueString": "Pain clinic follow-up"
+                  }
+                ]
+              }
+            ],
+            "sequence": 5,
+            "category": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/us/davinci-pas/CodeSystem/PASTempCodes",
+                  "code": "additionalInformation"
+                }
+              ]
+            },
+            "valueReference": {
+              "reference": "DocumentReference/note-rfa-planning"
+            }
+          }
+        ],
+        "insurance": [
+          {
+            "sequence": 1,
+            "focal": true,
+            "coverage": {
+              "reference": "Coverage/coverage-placeholder"
+            }
+          }
+        ],
+        "item": [
+          {
+            "extension": [
+              {
+                "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-serviceItemRequestType",
+                "valueCodeableConcept": {
+                  "coding": [
+                    {
+                      "system": "https://codesystem.x12.org/005010/1525",
+                      "code": "IN"
+                    }
+                  ]
+                }
+              },
+              {
+                "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-certificationType",
+                "valueCodeableConcept": {
+                  "coding": [
+                    {
+                      "system": "https://codesystem.x12.org/005010/1322",
+                      "code": "I"
+                    }
+                  ]
+                }
+              }
+            ],
+            "sequence": 1,
+            "informationSequence": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "category": {
+              "coding": [
+                {
+                  "system": "https://codesystem.x12.org/005010/1365",
+                  "code": "1"
+                }
+              ]
+            },
+            "productOrService": {
+              "coding": [
+                {
+                  "system": "http://www.ama-assn.org/go/cpt",
+                  "code": "64635"
+                }
+              ]
+            },
+            "servicedDate": "2026-10-19",
+            "locationCodeableConcept": {
+              "coding": [
+                {
+                  "system": "https://www.cms.gov/Medicare/Coding/place-of-service-codes/Place_of_Service_Code_Set",
+                  "code": "11"
+                }
+              ]
+            }
+          },
+          {
+            "extension": [
+              {
+                "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-serviceItemRequestType",
+                "valueCodeableConcept": {
+                  "coding": [
+                    {
+                      "system": "https://codesystem.x12.org/005010/1525",
+                      "code": "IN"
+                    }
+                  ]
+                }
+              },
+              {
+                "url": "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/extension-certificationType",
+                "valueCodeableConcept": {
+                  "coding": [
+                    {
+                      "system": "https://codesystem.x12.org/005010/1322",
+                      "code": "I"
+                    }
+                  ]
+                }
+              }
+            ],
+            "sequence": 2,
+            "informationSequence": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "category": {
+              "coding": [
+                {
+                  "system": "https://codesystem.x12.org/005010/1365",
+                  "code": "1"
+                }
+              ]
+            },
+            "productOrService": {
+              "coding": [
+                {
+                  "system": "http://www.ama-assn.org/go/cpt",
+                  "code": "64636"
+                }
+              ]
+            },
+            "servicedDate": "2026-10-19",
+            "locationCodeableConcept": {
+              "coding": [
+                {
+                  "system": "https://www.cms.gov/Medicare/Coding/place-of-service-codes/Place_of_Service_Code_Set",
+                  "code": "11"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/Patient/37b75dda-e187-ae40-0d27-18bbe7bf79e8",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "37b75dda-e187-ae40-0d27-18bbe7bf79e8",
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-beneficiary|2.2.1"
+          ]
+        },
+        "identifier": [
+          {
+            "system": "https://github.com/tejavardhanreddy01/precertly/synthetic/patient-id",
+            "value": "37b75dda-e187-ae40-0d27-18bbe7bf79e8"
+          }
+        ],
+        "name": [
+          {
+            "extension": [
+              {
+                "url": "http://hl7.org/fhir/StructureDefinition/data-absent-reason",
+                "valueCode": "unknown"
+              }
+            ]
+          }
+        ],
+        "gender": "female",
+        "birthDate": "1961-04-25"
+      }
+    },
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/Coverage/coverage-placeholder",
+      "resource": {
+        "resourceType": "Coverage",
+        "id": "coverage-placeholder",
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-coverage|2.2.1"
+          ]
+        },
+        "identifier": [
+          {
+            "type": {
+              "coding": [
+                {
+                  "system": "http://terminology.hl7.org/CodeSystem/v2-0203",
+                  "code": "MB"
+                }
+              ]
+            },
+            "system": "https://github.com/tejavardhanreddy01/precertly/synthetic/member-id",
+            "value": "SYNTHETIC-facet-01"
+          }
+        ],
+        "status": "active",
+        "beneficiary": {
+          "reference": "Patient/37b75dda-e187-ae40-0d27-18bbe7bf79e8"
+        },
+        "relationship": {
+          "coding": [
+            {
+              "system": "http://terminology.hl7.org/CodeSystem/subscriber-relationship",
+              "code": "self"
+            },
+            {
+              "system": "https://codesystem.x12.org/005010/1069",
+              "code": "18"
+            }
+          ]
+        },
+        "payor": [
+          {
+            "reference": "Organization/insurer-placeholder"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/Organization/insurer-placeholder",
+      "resource": {
+        "resourceType": "Organization",
+        "id": "insurer-placeholder",
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-insurer|2.2.1"
+          ]
+        },
+        "active": true,
+        "name": "Synthetic Medicare contractor (placeholder)"
+      }
+    },
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/Organization/requestor-placeholder",
+      "resource": {
+        "resourceType": "Organization",
+        "id": "requestor-placeholder",
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-requestor|2.2.1"
+          ]
+        },
+        "active": true,
+        "name": "Synthetic pain clinic (placeholder)"
+      }
+    },
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/DocumentReference/note-mbb1",
+      "resource": {
+        "resourceType": "DocumentReference",
+        "id": "note-mbb1",
+        "status": "current",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "28570-0",
+              "display": "Procedure note"
+            }
+          ],
+          "text": "Procedure note, diagnostic medial branch block 1"
+        },
+        "date": "2026-08-24T10:00:00-04:00",
+        "content": [
+          {
+            "attachment": {
+              "contentType": "text/plain; charset=utf-8",
+              "data": "MjAyNi0wOC0yNApQcm9jZWR1cmUgbm90ZSwgZGlhZ25vc3RpYyBtZWRpYWwgYnJhbmNoIGJsb2NrIDEKCkluZGljYXRpb246IGNocm9uaWMgYXhpYWwgbG93IGJhY2sgcGFpbiB3aXRoIHN1c3BlY3RlZCBsdW1iYXIgZmFjZXQgc3luZHJvbWUuCkxldmVsczogYmlsYXRlcmFsIEw0LTUgYW5kIEw1LVMxIChtZWRpYWwgYnJhbmNoZXMgb2YgTDMgYW5kIEw0IGFuZCB0aGUgTDUgZG9yc2FsIHJhbXVzKS4KVGVjaG5pcXVlOiBmbHVvcm9zY29waWMgZ3VpZGFuY2UsIDAuNSBtTCBvZiAwLjUlIGJ1cGl2YWNhaW5lIGF0IGVhY2ggdGFyZ2V0IG5lcnZlLiBObyBjb3J0aWNvc3Rlcm9pZC4gTm8gc2VkYXRpb24uIE5vIG90aGVyIGluamVjdGlvbnMgd2VyZSBwZXJmb3JtZWQgdG9kYXkuCgpQYWluIGFzc2Vzc21lbnQ6Ci0gQmVmb3JlIHRoZSBibG9jazogNy8xMCBvbiB0aGUgTnVtZXJpY2FsIFJhdGluZyBTY2FsZSAoTlJTKSAwLTEwLCBpbmRleCBsb3cgYmFjayBwYWluIHdpdGggZXh0ZW5zaW9uIGFuZCByb3RhdGlvbi4KLSAzMCBtaW51dGVzIGFmdGVyIHRoZSBibG9jazogMS8xMCBvbiB0aGUgc2FtZSBzY2FsZSwgd2l0aCB0aGUgc2FtZSBwcm92b2NhdGl2ZSBtb3ZlbWVudHMuCi0gUmVsaWVmIG9mIGluZGV4IHBhaW4sIGZyb20gdG9kYXkncyBwcmUtYmxvY2sgc2NvcmU6ICg3IC0gMSkgLyA3ID0gODYlLgpUaGUgcGF0aWVudCBrZXB0IGEgcGFpbiBkaWFyeTsgcmVsaWVmIGxhc3RlZCBhYm91dCA2IGhvdXJzLCBjb25zaXN0ZW50IHdpdGggdGhlIGR1cmF0aW9uIG9mIGJ1cGl2YWNhaW5lLCBhbmQgcGFpbiB0aGVuIHJldHVybmVkIHRvIGl0cyBlYXJsaWVyIGxldmVsLgoKTm8gY29tcGxpY2F0aW9ucy4gRGlzY2hhcmdlZCBpbiBzdGFibGUgY29uZGl0aW9uLgo="
+            }
+          }
+        ],
+        "subject": {
+          "reference": "Patient/37b75dda-e187-ae40-0d27-18bbe7bf79e8"
+        },
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-documentreference|2.2.1"
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://hl7.org/fhir/us/core/CodeSystem/us-core-documentreference-category",
+                "code": "clinical-note"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/DocumentReference/note-mbb2",
+      "resource": {
+        "resourceType": "DocumentReference",
+        "id": "note-mbb2",
+        "status": "current",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "28570-0",
+              "display": "Procedure note"
+            }
+          ],
+          "text": "Procedure note, diagnostic medial branch block 2"
+        },
+        "date": "2026-09-14T10:00:00-04:00",
+        "content": [
+          {
+            "attachment": {
+              "contentType": "text/plain; charset=utf-8",
+              "data": "MjAyNi0wOS0xNApQcm9jZWR1cmUgbm90ZSwgZGlhZ25vc3RpYyBtZWRpYWwgYnJhbmNoIGJsb2NrIDIKCkluZGljYXRpb246IGNocm9uaWMgYXhpYWwgbG93IGJhY2sgcGFpbiB3aXRoIHN1c3BlY3RlZCBsdW1iYXIgZmFjZXQgc3luZHJvbWUuCkxldmVsczogYmlsYXRlcmFsIEw0LTUgYW5kIEw1LVMxIChtZWRpYWwgYnJhbmNoZXMgb2YgTDMgYW5kIEw0IGFuZCB0aGUgTDUgZG9yc2FsIHJhbXVzKS4KVGVjaG5pcXVlOiBmbHVvcm9zY29waWMgZ3VpZGFuY2UsIDAuNSBtTCBvZiAwLjUlIGJ1cGl2YWNhaW5lIGF0IGVhY2ggdGFyZ2V0IG5lcnZlLiBObyBjb3J0aWNvc3Rlcm9pZC4gTm8gc2VkYXRpb24uIE5vIG90aGVyIGluamVjdGlvbnMgd2VyZSBwZXJmb3JtZWQgdG9kYXkuCgpQYWluIGFzc2Vzc21lbnQ6Ci0gQmVmb3JlIHRoZSBibG9jazogNy8xMCBvbiB0aGUgTnVtZXJpY2FsIFJhdGluZyBTY2FsZSAoTlJTKSAwLTEwLCBpbmRleCBsb3cgYmFjayBwYWluIHdpdGggZXh0ZW5zaW9uIGFuZCByb3RhdGlvbi4KLSAzMCBtaW51dGVzIGFmdGVyIHRoZSBibG9jazogMS8xMCBvbiB0aGUgc2FtZSBzY2FsZSwgd2l0aCB0aGUgc2FtZSBwcm92b2NhdGl2ZSBtb3ZlbWVudHMuCi0gUmVsaWVmIG9mIGluZGV4IHBhaW4sIGZyb20gdG9kYXkncyBwcmUtYmxvY2sgc2NvcmU6ICg3IC0gMSkgLyA3ID0gODYlLgpUaGUgcGF0aWVudCBrZXB0IGEgcGFpbiBkaWFyeTsgcmVsaWVmIGxhc3RlZCBhYm91dCA2IGhvdXJzLCBjb25zaXN0ZW50IHdpdGggdGhlIGR1cmF0aW9uIG9mIGJ1cGl2YWNhaW5lLCBhbmQgcGFpbiB0aGVuIHJldHVybmVkIHRvIGl0cyBlYXJsaWVyIGxldmVsLgoKTm8gY29tcGxpY2F0aW9ucy4gRGlzY2hhcmdlZCBpbiBzdGFibGUgY29uZGl0aW9uLgo="
+            }
+          }
+        ],
+        "subject": {
+          "reference": "Patient/37b75dda-e187-ae40-0d27-18bbe7bf79e8"
+        },
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-documentreference|2.2.1"
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://hl7.org/fhir/us/core/CodeSystem/us-core-documentreference-category",
+                "code": "clinical-note"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/DocumentReference/note-pain-clinic-eval",
+      "resource": {
+        "resourceType": "DocumentReference",
+        "id": "note-pain-clinic-eval",
+        "status": "current",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "11488-4",
+              "display": "Consult note"
+            }
+          ],
+          "text": "Pain clinic initial evaluation"
+        },
+        "date": "2026-08-10T10:00:00-04:00",
+        "content": [
+          {
+            "attachment": {
+              "contentType": "text/plain; charset=utf-8",
+              "data": "MjAyNi0wOC0xMApQYWluIGNsaW5pYyBpbml0aWFsIGV2YWx1YXRpb24KCkhpc3Rvcnk6IGxvdyBiYWNrIHBhaW4gc2luY2UgMjAyNi0wNC0wMywgbm93IHByZXNlbnQgZm9yIDQgbW9udGhzLiBUaGUgcGFpbiBpcyBwcmVkb21pbmFudGx5IGF4aWFsLCBhY3Jvc3MgdGhlIGxvd2VyIGx1bWJhciBzcGluZSwgbW9kZXJhdGUgdG8gc2V2ZXJlLCB3b3JzZSB3aXRoIGV4dGVuc2lvbiwgcm90YXRpb24gYW5kIHByb2xvbmdlZCBzdGFuZGluZywgYW5kIGVhc2VkIGJ5IHNpdHRpbmcuIEl0IGRvZXMgbm90IHJhZGlhdGUgYmVsb3cgdGhlIGJ1dHRvY2tzLiBUaGUgcGF0aWVudCBjYW4gbm8gbG9uZ2VyIHN0YW5kIGxvbmdlciB0aGFuIDE1IG1pbnV0ZXMsIGhhcyBzdG9wcGVkIGdhcmRlbmluZyBhbmQgbmVlZHMgaGVscCB3aXRoIGhvdXNld29yay4KCkNvbnNlcnZhdGl2ZSBtYW5hZ2VtZW50OiBuYXByb3hlbiA1MDAgbWcgdHdpY2UgZGFpbHkgc2luY2UgMjAyNi0wNC0xMCB3aXRoIG1pbmltYWwgYmVuZWZpdDsgYSAxMi13ZWVrIGNvdXJzZSBvZiBwaHlzaWNhbCB0aGVyYXB5ICgyMDI2LTA1LTA0IHRvIDIwMjYtMDgtMDMpIHdpdGggbm8gbWVhbmluZ2Z1bCBpbXByb3ZlbWVudCBpbiBwYWluIG9yIGZ1bmN0aW9uLgoKUGFpbiBhbmQgZnVuY3Rpb24gYXQgYmFzZWxpbmU6Ci0gUGFpbjogNy8xMCBvbiB0aGUgTnVtZXJpY2FsIFJhdGluZyBTY2FsZSAoTlJTKSAwLTEwLgotIERpc2FiaWxpdHk6IDQ4JSBvbiB0aGUgT3N3ZXN0cnkgRGlzYWJpbGl0eSBJbmRleCAoT0RJKSwgc2V2ZXJlIGRpc2FiaWxpdHkuCgpQYXN0IGhpc3Rvcnk6IG5vIHByaW9yIHNwaW5lIHN1cmdlcnksIGluY2x1ZGluZyBubyBsdW1iYXIgZnVzaW9uLiBObyBoaXN0b3J5IG9mIGZpYnJvbXlhbGdpYSBvciBhbnkgd2lkZXNwcmVhZCBvciBjZW50cmFsaXplZCBwYWluIHN5bmRyb21lLiBObyBwcmlvciByYWRpb2ZyZXF1ZW5jeSBhYmxhdGlvbiBvciBzcGluYWwgaW5qZWN0aW9ucy4KCk5ldXJvbG9naWNhbCBleGFtOiBzdHJlbmd0aCA1LzUgaW4gYm90aCBsZWdzLiBTZW5zYXRpb24gaW50YWN0IHRvIGxpZ2h0IHRvdWNoLiBSZWZsZXhlcyAyKyBhbmQgc3ltbWV0cmljIGF0IHRoZSBrbmVlcyBhbmQgYW5rbGVzLiBTdHJhaWdodC1sZWcgcmFpc2UgbmVnYXRpdmUgb24gYm90aCBzaWRlcy4gTm8gcmFkaWN1bGFyIHN5bXB0b21zIGFuZCBubyBuZXVyb2dlbmljIGNsYXVkaWNhdGlvbi4KU3BpbmUgZXhhbTogcGFpbiByZXByb2R1Y2VkIGJ5IGx1bWJhciBleHRlbnNpb24gYW5kIHJvdGF0aW9uOyB0ZW5kZXJuZXNzIG92ZXIgdGhlIEw0LTUgYW5kIEw1LVMxIGZhY2V0IGpvaW50cyBvbiBib3RoIHNpZGVzLgoKSW1hZ2luZzogbHVtYmFyIE1SSSBvZiAyMDI2LTA3LTIwIHNob3dzIGZhY2V0IGFydGhyb3BhdGh5IGF0IEw0LTUgYW5kIEw1LVMxIHdpdGggbm8gZnJhY3R1cmUsIHR1bW9yLCBpbmZlY3Rpb24gb3Igc2lnbmlmaWNhbnQgZGVmb3JtaXR5LgoKQXNzZXNzbWVudDogY2hyb25pYyBheGlhbCBsb3cgYmFjayBwYWluLCBtb3N0IGNvbnNpc3RlbnQgd2l0aCBsdW1iYXIgZmFjZXQgc3luZHJvbWUgYXQgTDQtNSBhbmQgTDUtUzEuClBsYW46IGRpYWdub3N0aWMgbWVkaWFsIGJyYW5jaCBibG9ja3MgYXQgTDQtNSBhbmQgTDUtUzE7IGlmIHR3byBibG9ja3MgY29uZmlybSB0aGUgZGlhZ25vc2lzLCByYWRpb2ZyZXF1ZW5jeSBhYmxhdGlvbiBhdCB0aG9zZSBsZXZlbHMuIFBhaW4gd2lsbCBiZSByZWNvcmRlZCBvbiB0aGUgc2FtZSBOdW1lcmljYWwgUmF0aW5nIFNjYWxlIChOUlMpIDAtMTAgYmVmb3JlIGFuZCBhZnRlciBlYWNoIGJsb2NrLiBObyBwcmlvciBkaWFnbm9zdGljIGZhY2V0IHByb2NlZHVyZXMuIE5vIG90aGVyIGluamVjdGlvbnMgYXJlIHBsYW5uZWQgb24gdGhlIGRheSBvZiBhIGJsb2NrLgo="
+            }
+          }
+        ],
+        "subject": {
+          "reference": "Patient/37b75dda-e187-ae40-0d27-18bbe7bf79e8"
+        },
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-documentreference|2.2.1"
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://hl7.org/fhir/us/core/CodeSystem/us-core-documentreference-category",
+                "code": "clinical-note"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/DocumentReference/note-pt-discharge",
+      "resource": {
+        "resourceType": "DocumentReference",
+        "id": "note-pt-discharge",
+        "status": "current",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "18842-5",
+              "display": "Discharge summary"
+            }
+          ],
+          "text": "Physical therapy discharge summary"
+        },
+        "date": "2026-08-03T10:00:00-04:00",
+        "content": [
+          {
+            "attachment": {
+              "contentType": "text/plain; charset=utf-8",
+              "data": "MjAyNi0wOC0wMwpQaHlzaWNhbCB0aGVyYXB5IGRpc2NoYXJnZSBzdW1tYXJ5CgpDb3Vyc2U6IDIwMjYtMDUtMDQgdG8gMjAyNi0wOC0wMyAoMTIgd2Vla3MpLCAyMiBvZiAyNCBzY2hlZHVsZWQgc2Vzc2lvbnMgYXR0ZW5kZWQuClRyZWF0bWVudDogY29yZSBzdGFiaWxpemF0aW9uLCBsdW1iYXIgZmxleGlvbi1iYXNlZCBleGVyY2lzZSwgbWFudWFsIHRoZXJhcHkgYW5kIGEgaG9tZSBleGVyY2lzZSBwcm9ncmFtLCBwZXJmb3JtZWQgYXMgaW5zdHJ1Y3RlZC4KT3V0Y29tZTogbm8gbWVhbmluZ2Z1bCBpbXByb3ZlbWVudCBpbiBwYWluIG9yIGZ1bmN0aW9uLiBQYWluIDcvMTAgYXQgZGlzY2hhcmdlLCB1bmNoYW5nZWQgZnJvbSB0aGUgc3RhcnQgb2YgdGhlcmFweS4gU3RpbGwgdW5hYmxlIHRvIHN0YW5kIGxvbmdlciB0aGFuIDE1IG1pbnV0ZXMuClJlY29tbWVuZGF0aW9uOiByZXR1cm4gdG8gdGhlIHJlZmVycmluZyBwaHlzaWNpYW47IGNvbnNpZGVyIHJlZmVycmFsIHRvIGEgcGFpbiBzcGVjaWFsaXN0Lgo="
+            }
+          }
+        ],
+        "subject": {
+          "reference": "Patient/37b75dda-e187-ae40-0d27-18bbe7bf79e8"
+        },
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-documentreference|2.2.1"
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://hl7.org/fhir/us/core/CodeSystem/us-core-documentreference-category",
+                "code": "clinical-note"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://github.com/tejavardhanreddy01/precertly/synthetic/fhir/DocumentReference/note-rfa-planning",
+      "resource": {
+        "resourceType": "DocumentReference",
+        "id": "note-rfa-planning",
+        "status": "current",
+        "type": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "11506-3",
+              "display": "Progress note"
+            }
+          ],
+          "text": "Pain clinic follow-up"
+        },
+        "date": "2026-09-21T10:00:00-04:00",
+        "content": [
+          {
+            "attachment": {
+              "contentType": "text/plain; charset=utf-8",
+              "data": "MjAyNi0wOS0yMQpQYWluIGNsaW5pYyBmb2xsb3ctdXAKClJlc3VsdHMgb2YgdGhlIGRpYWdub3N0aWMgbWVkaWFsIGJyYW5jaCBibG9ja3MgYXQgTDQtNSBhbmQgTDUtUzE6Ci0gQmxvY2sgMSBvbiAyMDI2LTA4LTI0OiBwYWluIDcvMTAgYmVmb3JlIGFuZCAxLzEwIGFmdGVyIG9uIHRoZSBOdW1lcmljYWwgUmF0aW5nIFNjYWxlIChOUlMpIDAtMTAsICg3IC0gMSkgLyA3ID0gODYlIHJlbGllZi4KLSBCbG9jayAyIG9uIDIwMjYtMDktMTQsIDMgd2Vla3MgYWZ0ZXIgdGhlIGZpcnN0OiBwYWluIDcvMTAgYmVmb3JlIGFuZCAxLzEwIGFmdGVyIG9uIHRoZSBOdW1lcmljYWwgUmF0aW5nIFNjYWxlIChOUlMpIDAtMTAsICg3IC0gMSkgLyA3ID0gODYlIHJlbGllZi4KSW4gZWFjaCBjYXNlIHJlbGllZiBsYXN0ZWQgYWJvdXQgNiBob3VycywgY29uc2lzdGVudCB3aXRoIGJ1cGl2YWNhaW5lLgoKVGhlIHBhdGllbnQgaGFzIG5vdCBoYWQgcmFkaW9mcmVxdWVuY3kgYWJsYXRpb24gYmVmb3JlLgpQbGFuOiByZXF1ZXN0IHByaW9yIGF1dGhvcml6YXRpb24gZm9yIHRoZXJtYWwgcmFkaW9mcmVxdWVuY3kgYWJsYXRpb24gb2YgdGhlIG1lZGlhbCBicmFuY2ggbmVydmVzIGF0IEw0LTUgYW5kIEw1LVMxIChsdW1iYXIgcmVnaW9uLCB0d28gbGV2ZWxzKS4gTm8gb3RoZXIgaW5qZWN0aW9ucyBhcmUgcGxhbm5lZCBmb3IgdGhhdCBkYXkuCg=="
+            }
+          }
+        ],
+        "subject": {
+          "reference": "Patient/37b75dda-e187-ae40-0d27-18bbe7bf79e8"
+        },
+        "meta": {
+          "profile": [
+            "http://hl7.org/fhir/us/davinci-pas/StructureDefinition/profile-documentreference|2.2.1"
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://hl7.org/fhir/us/core/CodeSystem/us-core-documentreference-category",
+                "code": "clinical-note"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

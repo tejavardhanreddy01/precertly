@@ -19,3 +19,6 @@ data/synthea/output/
 # CDK
 cdk.out/
 node_modules/
+
+# HL7 FHIR Validator and PAS package (pinned by sha256; fetched by scripts/validate_pas.py)
+data/fhir-validator/bin/

@@ -390,3 +390,9 @@ def test_model_only_view_recombines_the_case_from_shadow_verdicts():
     assert judgment.overall is Outcome.NOT_MET
     # the same run, as the model alone judged it, would have approved the case
     assert model_only(judgment, FACET).overall is Outcome.MET
+
+
+def test_place_of_service_is_not_shown_to_the_model():
+    with_place = REQUEST.model_copy(update={"place_of_service": "11"})
+    assert with_place.chunks() == REQUEST.chunks()
+    assert all("place" not in chunk.id for chunk in with_place.chunks())

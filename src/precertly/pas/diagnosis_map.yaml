@@ -1,0 +1,27 @@
+# Reviewed mapping from the fixtures' coded Conditions to ICD-10-CM codes for the draft
+# PAS request. Only a Condition that is the reason for a requested procedure is a
+# candidate, and only a code on the billing article's covered list may be used. A
+# candidate without a mapping is left out of the draft and becomes a reviewer task.
+#
+# Every entry was reviewed by hand against the source below. Do not add an entry without
+# that review; the builder never infers a code from text.
+source:
+  document: Article A58364
+  version: "42"
+  covered_group: 1
+  url: https://api.coverage.cms.gov/v1/data/article/icd10-covered?articleid=58364&ver=42
+  list_last_updated: "2026-09-11"
+  retrieved: "2026-10-17"
+  covered_codes: >-
+    M47.812-M47.817, M47.892-M47.897, M48.12-M48.17, M53.82-M53.87 (the M53.8x codes
+    only for facet cyst injection or aspiration, not ablation)
+mappings:
+  - snomed: "278860009"
+    snomed_display: Chronic low back pain (finding)
+    icd10cm: null
+    reason: >-
+      No code on the covered list represents chronic low back pain: the list covers
+      spondylosis, ankylosing hyperostosis and other specified dorsopathies, and the low
+      back pain codes are not on it. Mapping it to a spondylosis code would assert a
+      diagnosis the coded chart does not contain; facet arthropathy appears only in the
+      MRI report and note text.

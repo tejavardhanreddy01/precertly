@@ -18,6 +18,7 @@ These hold for every code path. A change that weakens one is a bug, whatever els
 | 6 | Retrieval for a case only ever returns that case's chart | `case_id` filter in every retrieval query (`retrieval/search.py`) | Done; isolation test to be added |
 | 7 | The model has no tools except the forced output schema; it cannot read, write or call anything | One tool in every request: the structured-output schema (`llm/client.py`) | Done |
 | 8 | Synthetic data only; no real patient data anywhere | Repo rule; Synthea fixtures | Done |
+| 9 | A drafted PAS request is never submitted and never carries a verdict: it is a draft for human review, tagged `draft-pending-human-approval`, with verdicts, readiness and reviewer tasks in a separate envelope. Every note cited by any verdict is attached, favourable or not | No submission code path or network import in `pas/` (tests); verdict words absent from every draft (test); attachments compared with every cited note (test) | Done |
 
 ## Definition of done (every PR)
 
@@ -81,6 +82,7 @@ Out of scope, stated openly: a chart that is falsified at the source (for exampl
 | Offline rule check | A deterministic rule that contradicts a label | Every rule's result for every case compared with the labels, no model and no database (`python -m precertly.evals.rules_check`). A decided result that contradicts a label makes the command exit non-zero and fails a test in CI; the eval runner does not re-check it |
 | Evals | Wrong verdicts from the model or retrieval | Labeled cases; false-approval rate, accuracy, citation precision |
 | Variance | Nondeterminism | Every eval since baseline v2 is a pair of runs on one commit at temperature 0 (the client default); baseline v1 and the canaries were single runs. Temperature 0 was not deterministic with Nova 2 Lite on Bedrock: two runs on identical evidence differed on 14 of 184 verdicts. An effect is claimed only for verdicts wrong in every baseline run and right in every experiment run; everything else is reported as within the noise band. Experiments with deterministic rules also make the baseline model call in shadow, so each run carries its own model-only comparison |
+| FHIR conformance | A draft that does not conform to PAS 2.2.1 | The official HL7 FHIR Validator 6.10.4 (sha256-checked), offline, with the PAS package pinned by sha256, over every committed draft; zero errors, every warning in an allowlist with its reason (`scripts/validate_pas.py`, CI job `pas-validate`) |
 | Human review | Wrong labels or wrong design | Label review against the guideline by a single annotator (current); second annotator (planned) |
 
 ### Edge cases the ingest and judgment paths must handle
@@ -120,11 +122,15 @@ Experiment 2 (line-level evidence handles) was tried and reverted; prompt versio
 | Criterion accuracy | Over 90% | 96.2% and 95.7%: passes |
 | Citation precision | Over 90% | 74.4% and 74.8%: fails |
 | Verdict flips across repeated runs | Reported; any flip on a `not_met` or `insufficient` label is investigated | 3 of 184 verdicts differ between the two runs; the largest measured difference between two runs is 14 of 184 |
+| PAS conformance | Zero validator errors on every draft; no warning outside the allowlist | 0 errors on 11 of 11 drafts; 383 warnings, all allowlisted (X12 terminology, base R4 identifier-type, narrative best practice) |
 | CI | Green, with database tests running, not skipped. Separate jobs: `lint` (ruff check, ruff format --check), `typecheck` (pyright, standard mode, on `src/`), `test` (`alembic upgrade head` and `alembic check` on the service database, `evals/build_cases.py --check`, pytest) and `security` (`pip-audit`) | Green; database tests run; pyright reports no errors, with no baseline |
 
 ## Known limitations
 
 Kept current and published with results.
+
+- Draft PAS requests are not ready to send. They carry no diagnosis: the one candidate Condition, chronic low back pain, has no equivalent on billing article A58364 v42's covered ICD-10-CM list. The payer, coverage and requestor are synthetic placeholders. The X12 codes, taken from the IG's examples, cannot be validated without X12 membership, and the situationally required X12 fields are not known for the same reason.
+- Offline validation checks PAS structure and profiles but not codes from external code systems (CPT, LOINC, place of service, X12). The coded evidence the verdicts cite (Conditions, Procedures, Observations) is listed in the envelope rather than attached, because the synthetic fixtures do not conform to US Core.
 
 - The eval set is single-annotator and not clinically validated until a second annotator reviews it.
 - All facet cases share one background patient.

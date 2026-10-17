@@ -13,6 +13,7 @@ request:
   region: lumbar
   levels: [L4-5, L5-S1]
   same_day_blocks: []
+  place_of_service: "11"  # office; synthetic, used only for the PAS draft
 bundle: bundles/facet-07.json
 expected_overall: not_met
 tags: [clean]

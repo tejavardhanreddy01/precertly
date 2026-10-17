@@ -1,0 +1,426 @@
+{
+  "kind": "precertly PAS draft review envelope",
+  "case": "facet-09",
+  "policy": "facet-joint-interventions",
+  "variant": "repeat-rfa",
+  "draft": {
+    "file": "facet-09.draft.json",
+    "status": "draft: requires human approval; never submitted",
+    "approval": "pending",
+    "ig": {
+      "package": "hl7.fhir.us.davinci-pas",
+      "version": "2.2.1"
+    },
+    "sha256": "4866000a4f6adb730f926cd6b0219773533adc491477e32d238d514c10fa901e"
+  },
+  "source": {
+    "results": "evals/results/2026-10-14-experiment-1.1a-rescored-issue4.json",
+    "sha256": "5c930952b23bd0b474ee36a5f7d6489a64909ef46e760f62905f4864c07f6560"
+  },
+  "readiness": {
+    "ready": false,
+    "summary": "not ready: no covered diagnosis code (A58364 v42); criteria with insufficient evidence: scales-documented; payer, coverage and requestor are synthetic placeholders",
+    "reasons": [
+      "no covered diagnosis code (A58364 v42)",
+      "criteria with insufficient evidence: scales-documented",
+      "payer, coverage and requestor are synthetic placeholders"
+    ]
+  },
+  "overall": "insufficient",
+  "verdicts": [
+    {
+      "criterion": "chronic-axial-pain-functional-deficit",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-repeat-rfa-planning#0",
+        "DocumentReference/note-pain-clinic-eval#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "pain-minimum-3-months",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-repeat-rfa-planning#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "conservative-care-failed",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-repeat-rfa-planning#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "no-untreated-radiculopathy",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-repeat-rfa-planning#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "no-non-facet-pathology",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0",
+        "DocumentReference/note-repeat-rfa-planning#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "pain-scale-at-baseline",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "disability-scale-at-baseline",
+      "verdict": "met",
+      "decided_by": "rule",
+      "invalidated": null,
+      "citations": [],
+      "computed_inputs": [
+        "Observation/odi-recurrence"
+      ]
+    },
+    {
+      "criterion": "scales-documented",
+      "verdict": "insufficient",
+      "decided_by": "model",
+      "invalidated": "quote not found in DocumentReference/note-repeat-rfa-planning#0: 'Pain today: 7/10 on the Numerical Rating Scale (NRS) 0-10, moderate to severe, p'",
+      "citations": [],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "no-generalized-pain-indication",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "not-after-alif",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "DocumentReference/note-pain-clinic-eval#0"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "one-spinal-region-per-session",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "request.region",
+        "request.levels",
+        "request.same_day_blocks"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "levels-1-to-2",
+      "verdict": "met",
+      "decided_by": "model",
+      "invalidated": null,
+      "citations": [
+        "request.levels",
+        "request.region"
+      ],
+      "computed_inputs": []
+    },
+    {
+      "criterion": "same-day-blocks-justified",
+      "verdict": "not_applicable",
+      "decided_by": "rule",
+      "invalidated": null,
+      "citations": [],
+      "computed_inputs": [
+        "request.same_day_blocks"
+      ]
+    },
+    {
+      "criterion": "prior-rfa-50pct-6-months",
+      "verdict": "met",
+      "decided_by": "rule",
+      "invalidated": null,
+      "citations": [],
+      "computed_inputs": [
+        "Procedure/rfa1",
+        "request.levels",
+        "request.region",
+        "Observation/pain-pre-rfa1",
+        "Observation/pain-post-rfa1-1mo",
+        "Observation/pain-post-rfa1-3mo",
+        "Observation/pain-post-rfa1-6mo",
+        "Observation/pain-post-rfa1-8mo"
+      ]
+    },
+    {
+      "criterion": "rfa-sessions-max-2",
+      "verdict": "met",
+      "decided_by": "rule+model",
+      "invalidated": null,
+      "citations": [],
+      "computed_inputs": [
+        "request.service_date"
+      ]
+    },
+    {
+      "criterion": "diagnostics-repeated-after-2-years",
+      "verdict": "not_applicable",
+      "decided_by": "rule",
+      "invalidated": null,
+      "citations": [],
+      "computed_inputs": [
+        "Procedure/rfa1",
+        "request.service_date"
+      ]
+    }
+  ],
+  "reviewer_checklist": [
+    {
+      "criterion": "ct-or-fluoroscopic-guidance",
+      "evidence_stage": "post_service",
+      "text": "The procedure is done under CT or fluoroscopic guidance (not unguided, ultrasound-guided or MRI-guided)."
+    },
+    {
+      "criterion": "medical-record-elements",
+      "evidence_stage": "post_service",
+      "text": "The record includes the performing provider's assessment for the visit, relevant history, pertinent test or procedure results, and a signed and dated visit record or operative report."
+    },
+    {
+      "criterion": "thermal-rf-only",
+      "evidence_stage": "post_service",
+      "text": "The denervation uses thermal radiofrequency, not a non-thermal modality (chemical, low-grade thermal energy under 80 degrees Celsius, laser neurolysis or cryoablation)."
+    }
+  ],
+  "attachments": [
+    {
+      "document": "DocumentReference/note-pain-clinic-eval",
+      "source": "DocumentReference/note-pain-clinic-eval",
+      "title": "Pain clinic initial evaluation",
+      "cited_by": [
+        {
+          "criterion": "chronic-axial-pain-functional-deficit",
+          "verdict": "met"
+        },
+        {
+          "criterion": "pain-minimum-3-months",
+          "verdict": "met"
+        },
+        {
+          "criterion": "conservative-care-failed",
+          "verdict": "met"
+        },
+        {
+          "criterion": "no-untreated-radiculopathy",
+          "verdict": "met"
+        },
+        {
+          "criterion": "no-non-facet-pathology",
+          "verdict": "met"
+        },
+        {
+          "criterion": "pain-scale-at-baseline",
+          "verdict": "met"
+        },
+        {
+          "criterion": "no-generalized-pain-indication",
+          "verdict": "met"
+        },
+        {
+          "criterion": "not-after-alif",
+          "verdict": "met"
+        }
+      ],
+      "links_dropped": [
+        "Encounter/enc-pain-clinic-eval"
+      ]
+    },
+    {
+      "document": "DocumentReference/note-repeat-rfa-planning",
+      "source": "DocumentReference/note-repeat-rfa-planning",
+      "title": "Pain clinic follow-up",
+      "cited_by": [
+        {
+          "criterion": "chronic-axial-pain-functional-deficit",
+          "verdict": "met"
+        },
+        {
+          "criterion": "pain-minimum-3-months",
+          "verdict": "met"
+        },
+        {
+          "criterion": "conservative-care-failed",
+          "verdict": "met"
+        },
+        {
+          "criterion": "no-untreated-radiculopathy",
+          "verdict": "met"
+        },
+        {
+          "criterion": "no-non-facet-pathology",
+          "verdict": "met"
+        }
+      ],
+      "links_dropped": [
+        "Encounter/enc-repeat-rfa-planning"
+      ]
+    }
+  ],
+  "cited_not_attached": [
+    {
+      "resource": "Observation/odi-recurrence",
+      "cited_by": [
+        {
+          "criterion": "disability-scale-at-baseline",
+          "verdict": "met"
+        }
+      ]
+    },
+    {
+      "resource": "Observation/pain-post-rfa1-1mo",
+      "cited_by": [
+        {
+          "criterion": "prior-rfa-50pct-6-months",
+          "verdict": "met"
+        }
+      ]
+    },
+    {
+      "resource": "Observation/pain-post-rfa1-3mo",
+      "cited_by": [
+        {
+          "criterion": "prior-rfa-50pct-6-months",
+          "verdict": "met"
+        }
+      ]
+    },
+    {
+      "resource": "Observation/pain-post-rfa1-6mo",
+      "cited_by": [
+        {
+          "criterion": "prior-rfa-50pct-6-months",
+          "verdict": "met"
+        }
+      ]
+    },
+    {
+      "resource": "Observation/pain-post-rfa1-8mo",
+      "cited_by": [
+        {
+          "criterion": "prior-rfa-50pct-6-months",
+          "verdict": "met"
+        }
+      ]
+    },
+    {
+      "resource": "Observation/pain-pre-rfa1",
+      "cited_by": [
+        {
+          "criterion": "prior-rfa-50pct-6-months",
+          "verdict": "met"
+        }
+      ]
+    },
+    {
+      "resource": "Procedure/rfa1",
+      "cited_by": [
+        {
+          "criterion": "prior-rfa-50pct-6-months",
+          "verdict": "met"
+        },
+        {
+          "criterion": "diagnostics-repeated-after-2-years",
+          "verdict": "not_applicable"
+        }
+      ]
+    }
+  ],
+  "diagnoses": [
+    {
+      "condition": "Condition/chronic-low-back-pain",
+      "snomed": "278860009",
+      "icd10cm": null,
+      "status": "not mapped; left out of the draft",
+      "reason": "No code on the covered list represents chronic low back pain: the list covers spondylosis, ankylosing hyperostosis and other specified dorsopathies, and the low back pain codes are not on it. Mapping it to a spondylosis code would assert a diagnosis the coded chart does not contain; facet arthropathy appears only in the MRI report and note text."
+    }
+  ],
+  "placeholders": [
+    "Organization/insurer-placeholder",
+    "Organization/requestor-placeholder",
+    "Coverage/coverage-placeholder",
+    "Patient identifier (project namespace) and name (data-absent-reason: unknown)"
+  ],
+  "x12_codes": [
+    {
+      "element": "service_type",
+      "system": "https://codesystem.x12.org/005010/1365",
+      "code": "1",
+      "from": "Claim-MedicalServicesAuthorizationExample, item.category"
+    },
+    {
+      "element": "request_type",
+      "system": "https://codesystem.x12.org/005010/1525",
+      "code": "IN",
+      "from": "Claim-MedicalServicesAuthorizationExample, extension-serviceItemRequestType"
+    },
+    {
+      "element": "certification_type",
+      "system": "https://codesystem.x12.org/005010/1322",
+      "code": "I",
+      "from": "Claim-MedicalServicesAuthorizationExample, extension-certificationType"
+    },
+    {
+      "element": "report_type",
+      "system": "https://codesystem.x12.org/005010/755",
+      "code": "PY",
+      "from": "Claim-ReferralAuthorizationExample, extension-documentInformation"
+    },
+    {
+      "element": "transmission_method",
+      "system": "https://codesystem.x12.org/005010/756",
+      "code": "EL",
+      "from": "Claim-ReferralAuthorizationExample, extension-documentInformation"
+    },
+    {
+      "element": "relationship",
+      "system": "https://codesystem.x12.org/005010/1069",
+      "code": "18",
+      "from": "Coverage-InsuranceExample, relationship"
+    }
+  ],
+  "reviewer_tasks": [
+    "The chart's coded Condition, chronic low back pain (SNOMED 278860009), has no equivalent on A58364 v42's covered list. Assign an ICD-10-CM code from that list if the documentation supports one. See the attached notes and the MRI report (DiagnosticReport/mri-lumbar in the chart, not cited by any verdict and so not attached).",
+    "Replace the placeholder payer, coverage and requestor with the real participants.",
+    "Confirm each X12 code against the X12 278 guide (codes taken from the IG examples).",
+    "Confirm the LOINC document type given to each attached note.",
+    "Decide which attachments to send; every cited note is attached, whatever its verdict."
+  ]
+}

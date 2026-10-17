@@ -1,0 +1,23 @@
+# Warnings the HL7 FHIR Validator is expected to give on the draft PAS requests, offline
+# (-tx n/a). scripts/validate_pas.py fails on any error, and on any warning that matches
+# none of these. Each entry says why the warning is expected; remove an entry once its
+# cause is gone.
+warnings:
+  - message: "(?i)code ?system 'https://codesystem\\.x12\\.org/005010/\\d+' could not be found"
+    reason: >-
+      X12 code systems are copyright of X12 and published only to members (PAS 2.2.1,
+      "X12 Terminology"), so the validator has no definition to check them against. The
+      codes used are taken from the IG's own examples and listed in each envelope for the
+      reviewer to confirm.
+  - message: "ValueSet 'https://valueset\\.x12\\.org/\\S+' not found"
+    reason: >-
+      The X12 value sets that PAS binds to are likewise published only to X12 members.
+  - message: "dom-6: 'A resource should have narrative for robust management'"
+    reason: >-
+      A best-practice recommendation, not a conformance rule. The drafts carry no
+      narrative; the review envelope is the human-readable view.
+  - message: "None of the codings provided are in the value set 'IdentifierType' \\(http://hl7\\.org/fhir/ValueSet/identifier-type\\|4\\.0\\.1\\)"
+    reason: >-
+      The coverage profile requires the member id type MB (v2-0203), which is not in the
+      base R4 identifier-type value set; the binding is extensible and the IG's own
+      Coverage example gets the same warning.
