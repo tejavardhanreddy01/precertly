@@ -4,7 +4,7 @@
 
 Precertly reads a patient chart (FHIR R4) and a requested procedure, checks each payer coverage criterion against the chart, cites the exact evidence for each verdict, and drafts a prior-authorization request shaped like the HL7 Da Vinci PAS format. A human reviews and approves. It never auto-denies.
 
-> 🚧 **In active development.** Chart ingest, search, cited per-criterion verdicts and the eval harness work today, for facet joint interventions. The PAS-shaped request, the reviewer UI and the deployment are not built yet.
+> 🚧 **In active development.** Chart ingest, search, cited per-criterion verdicts and the eval harness work today, for facet joint interventions. Draft PAS requests are built and validated for review, but not ready to send. The reviewer UI and the deployment are not built yet.
 
 ## Why
 
@@ -93,13 +93,19 @@ Experiment 2 (line-level evidence handles) failed its pre-registration (145 and 
 
 Two runs on the same commit differ on up to 14 of 184 verdicts, so an effect is claimed only for a verdict that is wrong in every baseline run and right in every experiment run. The remaining false approval (facet-11) is a retrieval miss. Experiments are pre-registered in the notes before they run, and failures are reported with the rest.
 
+## Draft PAS requests
+
+For each case, `python -m precertly.pas` builds a draft [Da Vinci PAS 2.2.1](https://hl7.org/fhir/us/davinci-pas/2.2.1/) request Bundle from the recorded verdicts, plus a review envelope. The Bundle holds the Claim (CPT codes as codes only), the patient, the cited notes as attachments, and labelled placeholders for the payer, coverage and requestor, which the synthetic data lacks. The verdicts, readiness and reviewer tasks are in the envelope, never in the Bundle. Nothing is submitted.
+
+The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on all 11 drafts; `scripts/validate_pas.py` runs it, and so does CI. Every draft is marked not ready to send: it has no diagnosis code from the billing article's covered list. Design and limits are in [evals/pas/README.md](evals/pas/README.md).
+
 ## Roadmap
 
 - [x] Policy criteria for 4 procedures, validated in CI
 - [x] Chart ingest and hybrid search (Postgres full-text + pgvector)
 - [x] Cited per-criterion verdicts on Bedrock, with deterministic rules and quote verification
-- [ ] Line-level evidence handles (experiment 2) and retrieval by evidence type (experiment 3)
-- [ ] PAS-shaped request bundle
+- [ ] After launch: quotes checked within cited lines (experiment 2b) and retrieval by evidence type (experiment 3)
+- [x] Draft Da Vinci PAS 2.2.1 request bundles for review, validated by the HL7 FHIR Validator (not ready to send: no covered diagnosis code, placeholder participants)
 - [ ] Eval harness: 40 labeled cases (11 facet cases so far), CI gate
 - [ ] AWS deployment (AgentCore, ECS, RDS, CDK)
 - [ ] Reviewer UI, MCP server, demo mode

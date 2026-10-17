@@ -83,3 +83,27 @@ jobs:
         run: |
           uv export --frozen --all-groups --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
           uv run pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt"
+
+  pas-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Committed PAS drafts match the builder
+        run: uv run python -m precertly.pas --check
+      # The validator jar and the PAS package are pinned by sha256 in the script, which
+      # checks them after every restore; the package cache holds the IG's dependencies.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            data/fhir-validator/bin
+            ~/.fhir/packages
+          key: fhir-validator-${{ hashFiles('scripts/validate_pas.py') }}
+      - run: java -version
+      - name: HL7 FHIR Validator on the PAS drafts (offline)
+        run: uv run python scripts/validate_pas.py

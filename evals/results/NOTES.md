@@ -117,6 +117,7 @@ The verdicts in (b) are targets, not effect claims. An effect is claimed only un
 2. **facet-04 `no-diagnostic-at-level-of-successful-rfa`** is labeled not applicable (no previously successful RFA). The model said not_met in 1.1a, 1.1b and v2b, which flips the case outcome to not_met. The rule is absent here (no coded ablation), so this is the model's reasoning on a conditional criterion. Not fixed now.
 3. **facet-11 false approval** (`conservative-care-failed`): the note that contradicts the others is not retrieved. This is the target of experiment 3 (retrieval by evidence type).
 4. ~~**High priority: "does not apply" needs no citation.**~~ Closed by verifier version 2; see [Verifier version 2](#verifier-version-2-not-applicable-needs-condition-evidence) below.
+5. **Requests carry no ICD-10-CM code on the billing article's covered list.** The draft PAS requests (`evals/pas/`) have no diagnosis: the only Condition recorded as the reason for a facet procedure, chronic low back pain (SNOMED 278860009), has no equivalent on A58364 v42's covered list (`src/precertly/pas/diagnosis_map.yaml`), and in four cases no Condition is recorded as a reason at all. Consider a request-stage criterion that checks diagnosis codes against the covered list, and a fixture with a coded facet-arthropathy Condition (needs a re-baseline). After launch.
 
 ## Verifier version 2: not applicable needs condition evidence
 
