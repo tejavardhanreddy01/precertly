@@ -90,6 +90,6 @@ Done:
 
 - Draft PAS 2.2.1 request bundles for the 11 facet cases (`evals/pas/`), validated with zero errors by the pinned HL7 FHIR Validator (CI job `pas-validate`); not ready to send (no covered diagnosis code, placeholder participants; open issue 5).
 
-Next: eval cases for PAP, spinal cord stimulator and bariatric surgery.
+Next: the PAP eval cases are merged and the bariatric surgery eval cases are in progress; spinal cord stimulator cases follow.
 
 Experiments after launch, each pre-registered in `evals/results/NOTES.md` before running: experiment 2b (the model copies the quote, which must fall within the cited lines; 3-line cap), then experiment 3, retrieval by evidence type (the facet-11 retrieval miss). Do not loosen a verification check to recover verdicts.
