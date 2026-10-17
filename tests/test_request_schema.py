@@ -20,6 +20,7 @@ from precertly.judgment.structured import FACET_CODES, StructuredChart
 from precertly.policies import load_policies
 
 GOLDEN = Path(__file__).parent / "golden" / "facet_request_chunks.json"
+GOLDEN_OTHER = Path(__file__).parent / "golden" / "request_chunks_pap_bariatric.json"
 FACET_CASE = yaml.safe_load((EVALS_DIR / "cases" / "facet" / "facet-02.yaml").read_text())
 FACET_REQUEST = FACET_CASE["request"]
 PAP_REQUEST = {
@@ -201,6 +202,19 @@ def test_same_site_raises_rather_than_answering_unclear(field):
 def test_facet_request_chunks_match_the_golden():
     golden = json.loads(GOLDEN.read_text())
     cases = facet_cases()
+    assert sorted(cases) == sorted(golden)
+    for case_id, case in cases.items():
+        assert [[c.id, c.text] for c in case.request.chunks()] == golden[case_id], case_id
+
+
+def test_pap_and_bariatric_request_chunks_match_the_golden():
+    """Captured before the spinal cord stimulator fields were added."""
+    golden = json.loads(GOLDEN_OTHER.read_text())
+    cases = {
+        k: c
+        for k, c in load_cases().items()
+        if c.policy in ("pap-sleep-apnea", "bariatric-surgery")
+    }
     assert sorted(cases) == sorted(golden)
     for case_id, case in cases.items():
         assert [[c.id, c.text] for c in case.request.chunks()] == golden[case_id], case_id
