@@ -42,6 +42,7 @@ def test_every_planned_case_exists():
         "facet-joint-interventions": 11,
         "pap-sleep-apnea": 6,
         "bariatric-surgery": 6,
+        "spinal-cord-stimulator": 6,
     }
 
 

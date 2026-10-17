@@ -1,0 +1,86 @@
+id: scs-01
+policy: spinal-cord-stimulator
+policy_version:
+  NCD 160.7: "1"
+  LCD L36204: "23"
+  Article A57792: "12"
+variant: permanent
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: permanent implantation of a spinal cord stimulator
+  codes: ["63650", "63685"]
+  leads: 2
+  contacts: 16
+  place_of_service: "24"  # synthetic; the setting the criteria read
+bundle: bundles/scs-01.json
+expected_overall: met
+tags: [clean]
+notes: >-
+  Clean permanent case. Chronic low back and left leg pain for 71 months after a lumbar microdiscectomy, four failed modalities, a psychological evaluation and a team conference, a 7-day trial that lowered pain from 8/10 to 2/10 (75%) with better walking tolerance, and a request for 2 leads and 16 contacts in an ambulatory surgical center. Every scored criterion is met. The request is at the stated maximum of 2 leads and 16 contacts, which meets it under GUIDELINES rule 1.
+expected:
+  - criterion: late-resort-chronic-intractable-pain
+    outcome: met
+    fact: >-
+      Low back and left leg pain for 71 months, still 8/10 after medication, physical therapy, surgery and psychological therapy. The pain clinic evaluation of 2026-05-18 and the team conference of 2026-06-23 both call spinal cord stimulation a late resort.
+    evidence: [Condition/chronic-pain, DocumentReference/note-pain-clinic-eval, DocumentReference/note-team-conference]
+
+  - criterion: other-modalities-tried-or-unsuitable
+    outcome: met
+    fact: >-
+      Naproxen (minimal benefit), 12 weeks of physical therapy (no improvement), a left L4-5 microdiscectomy (6 weeks of relief), gabapentin, duloxetine and oxycodone with acetaminophen (pain still 8/10) and cognitive behavioral therapy (pain unchanged) were tried and did not prove satisfactory.
+    evidence: [MedicationRequest/naproxen, MedicationRequest/gabapentin, MedicationRequest/duloxetine, MedicationRequest/oxycodone-apap, Procedure/physical-therapy-course, Procedure/lumbar-microdiscectomy, Procedure/cbt-course, DocumentReference/note-pt-discharge, DocumentReference/note-postop, DocumentReference/note-pain-clinic-2021, DocumentReference/note-cbt-discharge, DocumentReference/note-pain-clinic-2022, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: multidisciplinary-screening
+    outcome: met
+    fact: >-
+      The conference of 2026-06-23 had a pain physician, a spine surgeon, a clinical psychologist and a physical therapist, who reviewed the physical evaluation of 2026-05-18 and the psychological evaluation of 2026-06-09.
+    evidence: [Encounter/enc-team-conference, DocumentReference/note-team-conference, DocumentReference/note-psych-eval, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: trial-pain-relief-before-permanent
+    outcome: met
+    fact: >-
+      A 7-day trial with temporary percutaneous leads (2026-08-04 to 2026-08-11) lowered pain from 8/10 to 2/10.
+    evidence: [Procedure/scs-trial, Observation/pain-pre-trial, Observation/pain-end-trial, DocumentReference/note-trial-procedure, DocumentReference/note-trial-result]
+
+  - criterion: screening-documented-in-chart
+    outcome: met
+    fact: >-
+      The history and examination (2026-05-18), the psychological evaluation (2026-06-09) and the team conference (2026-06-23) are in the chart.
+    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-psych-eval, DocumentReference/note-team-conference]
+
+  - criterion: leads-max-2-or-16-contacts
+    outcome: met
+    fact: >-
+      The request is for 2 leads and 16 contacts, which is within a maximum of 2 leads or 16 contacts.
+    evidence: [request.leads, request.contacts]
+
+  - criterion: trial-success-50pct-and-function
+    outcome: met
+    fact: >-
+      Pain fell from 8/10 to 2/10, (8 - 2) / 8 = 75% reduction in target pain, with analgesic medications unchanged; walking tolerance rose from 10 to 40 minutes.
+    evidence: [Observation/pain-pre-trial, Observation/pain-end-trial, DocumentReference/note-trial-result]
+
+  - criterion: positive-trial-documented
+    outcome: met
+    fact: >-
+      The end-of-trial note records a positive response and the surgical visit of 2026-09-01 cites it.
+    evidence: [DocumentReference/note-trial-result, DocumentReference/note-permanent-plan]
+
+  - criterion: permanent-placed-in-asc-or-hospital
+    outcome: met
+    fact: >-
+      The request's place of service is 24, an ambulatory surgical center.
+    evidence: [request.place_of_service]
+
+  - criterion: one-permanent-stimulator-per-lifetime
+    outcome: met
+    fact: >-
+      The evaluation of 2026-05-18 says there was no previous trial or implant, and the surgical visit of 2026-09-01 says this would be the first permanent stimulator.
+    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-permanent-plan]
+
+  - criterion: diagnosis-and-prior-therapies-in-record
+    outcome: met
+    fact: >-
+      The chart holds the diagnosis (chronic low back and left leg pain after lumbar surgery), the lumbar MRI of 2026-04-20 and each therapy tried with its result.
+    evidence: [Condition/chronic-pain, DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval, DocumentReference/note-pt-discharge, DocumentReference/note-postop, DocumentReference/note-pain-clinic-2021, DocumentReference/note-cbt-discharge, DocumentReference/note-pain-clinic-2022]
