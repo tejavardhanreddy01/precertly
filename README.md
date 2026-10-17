@@ -4,7 +4,7 @@
 
 Precertly reads a patient chart (FHIR R4) and a requested procedure, checks each payer coverage criterion against the chart, cites the exact evidence for each verdict, and drafts a prior-authorization request shaped like the HL7 Da Vinci PAS format. A human reviews and approves. It never auto-denies.
 
-> 🚧 **In active development.** Chart ingest, search, cited per-criterion verdicts and the eval harness work today, for facet joint interventions. Draft PAS requests are built and validated for review, but not ready to send. The reviewer UI and the deployment are not built yet.
+> 🚧 **In active development.** Chart ingest, search, cited per-criterion verdicts and the eval harness have been run for facet joint interventions only: 11 of the 29 labeled eval cases have been scored. The other 18 cases (PAP, bariatric surgery and spinal cord stimulators) and their request fields are tested offline only, not yet run against the model. Draft PAS requests are built and validated for the 11 facet cases, but not ready to send. The reviewer UI and the deployment are not built yet.
 
 ## Why
 
@@ -69,7 +69,9 @@ Outcomes are `met`, `not_met` or `insufficient`. Precertly never denies; a human
 
 ## Evals
 
-Eleven labeled facet cases ([`evals/cases/facet/`](evals/cases/facet)) are built on a trimmed Synthea patient by [`evals/build_cases.py`](evals/build_cases.py), so each expected answer is known by construction. Labeling rules are in [evals/GUIDELINES.md](evals/GUIDELINES.md) and the case format in [evals/README.md](evals/README.md).
+There are 29 labeled eval cases in four sets, each with a plan: [facet joint interventions](evals/cases/facet) (PLAN.md), [PAP devices](evals/cases/pap), [bariatric surgery](evals/cases/bariatric) and [spinal cord stimulators](evals/cases/spinal-cord-stimulators). The counts, the real mix per set and which cases are scored are in [evals/README.md](evals/README.md#mix-per-procedure). Each case is built on a trimmed Synthea patient by [`evals/build_cases.py`](evals/build_cases.py), so each expected answer is known by construction; the bariatric and spinal cord stimulator bundles remove or rewrite resources of that patient (see their plans). Labeling rules are in [evals/GUIDELINES.md](evals/GUIDELINES.md) and the case format in [evals/README.md](evals/README.md).
+
+**Labeled is not scored.** A case is scored when a complete recorded run has a verdict for every labeled criterion. Only the 11 facet cases are, so every result below is facet-only. The PAP, bariatric and spinal cord stimulator cases are labeled but have not been run against the model; their false-approval rate, accuracy and citation precision are unknown. The target of 10 per procedure (40 in all) is post-launch.
 
 ```bash
 uv run python evals/build_cases.py --check                  # committed bundles match the build script
@@ -81,7 +83,7 @@ uv run python -m precertly.evals.prompt_check <results.json>  # rebuild every re
 uv run python -m precertly.evals.rescore <results.json> --out <derived.json>  # re-check recorded answers offline
 ```
 
-Latest pair (experiment 1.1, Amazon Nova 2 Lite, with rules), from [evals/results/NOTES.md](evals/results/NOTES.md):
+Latest pair (experiment 1.1, Amazon Nova 2 Lite, with rules; the 11 facet cases only, 184 scored criteria), from [evals/results/NOTES.md](evals/results/NOTES.md):
 
 | Metric | Run a | Run b |
 | --- | --- | --- |
@@ -95,9 +97,9 @@ Two runs on the same commit differ on up to 14 of 184 verdicts, so an effect is 
 
 ## Draft PAS requests
 
-For each case, `python -m precertly.pas` builds a draft [Da Vinci PAS 2.2.1](https://hl7.org/fhir/us/davinci-pas/2.2.1/) request Bundle from the recorded verdicts, plus a review envelope. The Bundle holds the Claim (CPT codes as codes only), the patient, the cited notes as attachments, and labelled placeholders for the payer, coverage and requestor, which the synthetic data lacks. The verdicts, readiness and reviewer tasks are in the envelope, never in the Bundle. Nothing is submitted.
+For each facet case, `python -m precertly.pas` builds a draft [Da Vinci PAS 2.2.1](https://hl7.org/fhir/us/davinci-pas/2.2.1/) request Bundle from the recorded verdicts, plus a review envelope. The Bundle holds the Claim (CPT codes as codes only), the patient, the cited notes as attachments, and labelled placeholders for the payer, coverage and requestor, which the synthetic data lacks. The verdicts, readiness and reviewer tasks are in the envelope, never in the Bundle. Nothing is submitted.
 
-The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on all 11 drafts; `scripts/validate_pas.py` runs it, and so does CI. Every draft is marked not ready to send: it has no diagnosis code from the billing article's covered list. Design and limits are in [evals/pas/README.md](evals/pas/README.md).
+The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on all 11 facet drafts; `scripts/validate_pas.py` runs it, and so does CI. Every draft is marked not ready to send: it has no diagnosis code from the billing article's covered list. Design and limits are in [evals/pas/README.md](evals/pas/README.md).
 
 ## Roadmap
 
@@ -106,7 +108,9 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 - [x] Cited per-criterion verdicts on Bedrock, with deterministic rules and quote verification
 - [ ] After launch: quotes checked within cited lines (experiment 2b) and retrieval by evidence type (experiment 3)
 - [x] Draft Da Vinci PAS 2.2.1 request bundles for review, validated by the HL7 FHIR Validator (not ready to send: no covered diagnosis code, placeholder participants)
-- [ ] Eval harness: 40 labeled cases (11 facet cases so far), CI gate
+- [x] 29 labeled eval cases for the 4 procedures, built by script and checked in CI
+- [ ] Eval results for every labeled case (only the 11 facet cases have been scored so far)
+- [ ] After launch (target, not built): 10 cases per procedure (40 in all) and a CI gate on the scores
 - [ ] AWS deployment (AgentCore, ECS, RDS, CDK)
 - [ ] Reviewer UI, MCP server, demo mode
 

@@ -83,7 +83,7 @@ Out of scope, stated openly: a chart that is falsified at the source (for exampl
 | Evals | Wrong verdicts from the model or retrieval | Labeled cases; false-approval rate, accuracy, citation precision |
 | Variance | Nondeterminism | Every eval since baseline v2 is a pair of runs on one commit at temperature 0 (the client default); baseline v1 and the canaries were single runs. Temperature 0 was not deterministic with Nova 2 Lite on Bedrock: two runs on identical evidence differed on 14 of 184 verdicts. An effect is claimed only for verdicts wrong in every baseline run and right in every experiment run; everything else is reported as within the noise band. Experiments with deterministic rules also make the baseline model call in shadow, so each run carries its own model-only comparison |
 | FHIR conformance | A draft that does not conform to PAS 2.2.1 | The official HL7 FHIR Validator 6.10.4 (sha256-checked), offline, with the PAS package pinned by sha256, over every committed draft; zero errors, every warning in an allowlist with its reason (`scripts/validate_pas.py`, CI job `pas-validate`) |
-| Human review | Wrong labels or wrong design | Label review against the guideline by a single annotator (current); second annotator (planned) |
+| Human review | Wrong labels or wrong design | Label review against the guideline by a single annotator (current); blinded second annotation, reported as an LLM consistency check and a human second annotator, separately (planned; protocol in [`evals/GUIDELINES.md`](../evals/GUIDELINES.md#review-and-agreement)) |
 
 ### Edge cases the ingest and judgment paths must handle
 
@@ -112,17 +112,17 @@ Currently, Bedrock errors other than a rejected tool choice stop the run; no ver
 
 ## Release gates
 
-Thresholds are starting goals and are published with the real numbers, including failures. Current is experiment 1.1, both runs (11 facet cases, 184 scored criteria); details in [`evals/results/NOTES.md`](../evals/results/NOTES.md).
+Thresholds are starting goals and are published with the real numbers, including failures. Current is experiment 1.1, both runs, on the 11 facet cases only (184 scored criteria). The other 18 of the 29 labeled cases (PAP, bariatric, spinal cord stimulator) have not been scored, so no gate below has a number for them; details in [`evals/results/NOTES.md`](../evals/results/NOTES.md).
 
 Experiment 2 (line-level evidence handles) was tried and reverted; prompt version 3 remains the default. See [`evals/results/NOTES.md`](../evals/results/NOTES.md#experiment-2-line-level-evidence-handles).
 
-| Gate | Threshold | Current |
+| Gate | Threshold | Current (facet cases only) |
 | --- | --- | --- |
 | False-approval rate on the eval set | Under 2%, and zero on adversarial injection cases. The gate is only testable once the set has enough negative labels; until then, results report raw counts (for example 2 of 9), not a rate | 1 of 9 not_met or insufficient labels in each run: fails, though the gate is not meaningful at this sample size. No injection cases yet |
 | Criterion accuracy | Over 90% | 96.2% and 95.7%: passes |
 | Citation precision | Over 90% | 74.4% and 74.8%: fails |
 | Verdict flips across repeated runs | Reported; any flip on a `not_met` or `insufficient` label is investigated | 3 of 184 verdicts differ between the two runs; the largest measured difference between two runs is 14 of 184 |
-| PAS conformance | Zero validator errors on every draft; no warning outside the allowlist | 0 errors on 11 of 11 drafts; 383 warnings, all allowlisted (X12 terminology, base R4 identifier-type, narrative best practice) |
+| PAS conformance | Zero validator errors on every draft; no warning outside the allowlist | 0 errors on 11 of 11 facet drafts; 383 warnings, all allowlisted (X12 terminology, base R4 identifier-type, narrative best practice) |
 | CI | Green, with database tests running, not skipped. Separate jobs: `lint` (ruff check, ruff format --check), `typecheck` (pyright, standard mode, on `src/`), `test` (`alembic upgrade head` and `alembic check` on the service database, `evals/build_cases.py --check`, pytest) and `security` (`pip-audit`) | Green; database tests run; pyright reports no errors, with no baseline |
 
 ## Known limitations
@@ -132,11 +132,18 @@ Kept current and published with results.
 - Draft PAS requests are not ready to send. They carry no diagnosis: the one candidate Condition, chronic low back pain, has no equivalent on billing article A58364 v42's covered ICD-10-CM list. The payer, coverage and requestor are synthetic placeholders. The X12 codes, taken from the IG's examples, cannot be validated without X12 membership, and the situationally required X12 fields are not known for the same reason.
 - Offline validation checks PAS structure and profiles but not codes from external code systems (CPT, LOINC, place of service, X12). The coded evidence the verdicts cite (Conditions, Procedures, Observations) is listed in the envelope rather than attached, because the synthetic fixtures do not conform to US Core.
 
-- The eval set is single-annotator and not clinically validated until a second annotator reviews it.
-- All facet cases share one background patient.
-- In every PAP case `osa-symptom-or-condition` is `met`, so its not-met path is untested: the shared background patient has a coded active ischemic heart disease Condition, which the criterion names, and the cases keep that background. A chart with neither a listed symptom nor a listed condition cannot be built on this template (see `evals/cases/pap/PLAN.md`).
+- Only the 11 facet cases have been scored. 18 of the 29 labeled cases (PAP, bariatric, spinal cord stimulator) have no recorded run, so every release-gate, accuracy, citation-precision and false-approval number in this repository is facet-only. The count and the definition of scored are in [`evals/README.md`](../evals/README.md#mix-per-procedure).
+- The eval set is single-annotator and not clinically validated. The protocol for a blinded second annotation is in [`evals/GUIDELINES.md`](../evals/GUIDELINES.md#review-and-agreement), and `bariatric-05` and `scs-05` are flagged for it because their labels rest on our reading of GUIDELINES rule 4. The packet generator that protocol needs is not built.
+- The facet and PAP cases share one background patient. The bariatric and spinal cord stimulator bundles remove or rewrite resources of it (see their plans).
+- **Background notes remain in the facet and PAP bundles.** The template's 11 background notes (each with a twin report) all say "No complaints" and list acetaminophen only. In recorded experiment 1.1 (2 runs), background note chunks reached the model for 150 of 184 verdicts per run, and no recorded response cites, quotes or mentions one. In facet-11, 3 of the 8 chart slots for `conservative-care-failed` were background notes and the contradicting `note-pt-records` was not retrieved; this is the likely mechanism of the open facet-11 false approval and is a retrieval question (experiment 3). Whether to remove the notes is a post-launch decision that needs a new baseline pair. The bariatric bundles had the two note pairs that conflict with the active orlistat removed, and the SCS bundles have all 22 background notes removed ([bariatric plan](../evals/cases/bariatric/PLAN.md), [SCS plan](../evals/cases/spinal-cord-stimulators/PLAN.md)). Evidence: `evals/results/2026-10-14-experiment-1.1a.json` and `-1.1b.json`.
+- `python -m precertly.evals.prompt_check` reports one hash difference on `evals/results/2026-10-16-experiment-2-canary-superseded.json` (facet-01 `no-untreated-radiculopathy`, 17 calls checked), by design: the line-splitting rule changed after that file was recorded (commit `d126600`). The file is not edited.
+- **Undefined boundaries and untested paths, per procedure.** The cases avoid boundaries the policy text does not define (GUIDELINES rule 2), so some paths are never exercised. Each plan lists them under Known limitations; in short:
+  - Facet ([plan](../evals/cases/facet/PLAN.md#known-limitations)): `therapeutic-injection` is not covered; routine pain scores and analgesics are left out of the background.
+  - PAP ([plan](../evals/cases/pap/PLAN.md#known-limitations)): `osa-symptom-or-condition` is `met` in every case, so its not-met path is untested (the shared background patient has a coded active ischemic heart disease Condition, which the criterion names); the short-study criterion is `not_applicable` in all six; the late re-evaluation and E0471 are not covered.
+  - Bariatric ([plan](../evals/cases/bariatric/PLAN.md#known-limitations)): no sleeve case is met; `obesity-comorbidity` is never `not_met` and `nationally-covered-procedure` is always `met`; the sleeve variant has no procedure criterion, so a non-covered open sleeve gastrectomy cannot be scored.
+  - Spinal cord stimulators ([plan](../evals/cases/spinal-cord-stimulators/PLAN.md#known-limitations)): `psychological-screening` is never `insufficient` or `not_met`; the repeat-trial path is untested; several criteria never fail; a replacement of a working stimulator is undecided.
+- **Jurisdiction is not checked for spinal cord stimulators.** LCD L36204 and Article A57792 apply only in Noridian Jurisdiction F, other MACs have different LCDs, and the policy has no payer-stage criterion, so nothing flags a request from another jurisdiction.
 - Synthetic charts are cleaner than real ones; routine pain scores and analgesics are left out of the background.
-- Spinal cord stimulator criteria follow one MAC's LCD (Noridian JF); other jurisdictions differ.
 - Policies are encoded at a fixed version; a revised LCD requires re-encoding and re-verification.
 - Under the experimental prompt version 4 (line handles, experiment 2), the model's first-words echo disagrees with its cited handle in about 14% of line citations, most often by echoing the line before the handle. Such verdicts become `insufficient`, which costs correct verdicts and makes runs disagree more (19 of 184 in the experiment 2 pair), but never approves. The echo cannot tell which of the two lines the model meant.
 - A not-applicable verdict cites evidence consistent with the condition not holding, but an absence cannot be proven by a quote; the citation shows context, not proof. In experiment 1.1 every model not-applicable verdict on `no-diagnostic-at-level-of-successful-rfa` cites the plan to ablate if the blocks confirm the diagnosis, which implies no prior ablation without stating it.

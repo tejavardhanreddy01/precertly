@@ -537,7 +537,7 @@ def test_disability_score_for_a_repeat_request_is_from_the_current_episode():
     assert outcome(run(criterion, [before_ablation, ablation, later_block, current])) == "absent"
 
 
-# --- the eleven cases ------------------------------------------------------------------
+# --- the eval cases ------------------------------------------------------------------
 
 
 def test_no_decided_result_contradicts_a_label():
