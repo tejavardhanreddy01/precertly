@@ -47,6 +47,9 @@ class PriorAuthRequest(BaseModel):
     region: str
     levels: list[str] = Field(min_length=1)
     same_day_blocks: list[str] = Field(default_factory=list)
+    # CMS place-of-service code for the requested service, used only to draft the PAS
+    # request. It is not rendered in chunks(), so the judgment prompt never shows it.
+    place_of_service: str | None = Field(default=None, pattern=r"^\d{2}$")
 
     def chunks(self) -> list[EvidenceChunk]:
         """One citable chunk per field, with id 'request.<field>'."""
