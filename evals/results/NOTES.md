@@ -113,7 +113,7 @@ The verdicts in (b) are targets, not effect claims. An effect is claimed only un
 
 **Open issues:**
 
-1. **Whole-note quotes always verify.** (Experiment 2: with line handles, 1.4% and 2.4% of citations span more than one line, but the first-words echo it needs fails often; see below.) In the four hand-read verdicts the model quoted entire notes. A quote containing the whole chunk passes verification however little of it bears on the outcome, so verification says less than it seems to. This is the target of experiment 2 (line-level evidence handles), measured as the share of verified quotes longer than one line: 14% and 19% in baseline v2a / v2b, 13% and 16% in experiment 1a / 1b, and 19% and 17% in 1.1a / 1.1b.
+1. **Whole-note quotes always verify.** Still open. Experiment 2 targeted it: with line handles only 1.4% and 2.4% of citations spanned more than one line, but the first-words echo that line handles need disagreed with the cited handle in about 14% of line citations, and experiment 2 was reverted (see its decision below). Prompt version 3, the default, still verifies whole-note quotes. In the four hand-read verdicts the model quoted entire notes. A quote containing the whole chunk passes verification however little of it bears on the outcome, so verification says less than it seems to. This is the target of experiment 2 (line-level evidence handles), measured as the share of verified quotes longer than one line: 14% and 19% in baseline v2a / v2b, 13% and 16% in experiment 1a / 1b, and 19% and 17% in 1.1a / 1.1b.
 2. **facet-04 `no-diagnostic-at-level-of-successful-rfa`** is labeled not applicable (no previously successful RFA). The model said not_met in 1.1a, 1.1b and v2b, which flips the case outcome to not_met. The rule is absent here (no coded ablation), so this is the model's reasoning on a conditional criterion. Not fixed now.
 3. **facet-11 false approval** (`conservative-care-failed`): the note that contradicts the others is not retrieved. This is the target of experiment 3 (retrieval by evidence type).
 4. ~~**High priority: "does not apply" needs no citation.**~~ Closed by verifier version 2; see [Verifier version 2](#verifier-version-2-not-applicable-needs-condition-evidence) below.
@@ -214,3 +214,18 @@ Pre-registered before any code for it was written. Design reviewed separately; t
 
 - facet-04 `no-diagnostic-at-level-of-successful-rfa` (labeled not applicable) is not_met, applicable, in both runs, as in 1.1. Open issue 2 stands.
 - Not-applicable verdicts on `no-diagnostic-at-level-of-successful-rfa` now cite "No prior diagnostic facet procedures." (facet-07 in 2a; facet-06, 07, 08 and 11 in 2b), usually alongside the plan line. That line states an absence, but of prior diagnostic facet procedures, not of a prior ablation. No verdict cited "No prior radiofrequency ablation or spinal injections." No effect is claimed.
+
+### Decision: failed and reverted
+
+**Experiment 2 failed its pre-registration on (b), (c) and (f)** and is reverted. Prompt version 3 is the default again, byte for byte: its prompt and system text (`prompt_check` rebuilds all 194 calls in each 1.1 file and each issue 4 rescored file) and its output schema (a test fixes the schema's hash). Prompt version 4 stays in the code as an opt-in setting (`PRECERTLY_PROMPT_VERSION=4` or `--prompt-version 4`), so experiment 2 can be reproduced; its two runs also rebuild exactly. Kept for both versions: invalidations counted by kind, the cause of each difference in `compare`, and free-text detection from the chunker's offsets.
+
+**Root cause.** In run 2a, 66 of 483 line citations failed the echo. 37 echoed the line immediately before the cited handle (the model reads a handle as labelling the text in front of it, as a citation marker does), and in `pain-scale-at-baseline` it did so in every case. Most of the 27 that matched no line were one-word echoes, below the two-word minimum ("- Pain", "Levels:", "Today:"). Three split `medial_branch_block` at its underscores ("Technique: medial"). The remaining 2 were further off.
+
+**Criterion (c) was wrong in design.** It said differences caused by a citation verifying in one run only would be 0 by construction, because quotes are extracted by code. But the echo and the cap are themselves checks on the model's answer, and they can pass in one run and fail in the other: 16 of the 19 differences were exactly that. A future pre-registration must not treat a check on model output as removing variance.
+
+**Open issue 1 stays open** (above), with experiment 2's finding recorded there.
+
+**Next experiments, after launch:**
+
+- Experiment 2b: the model copies its quote, as in prompt version 3, and also gives the line handle or range it comes from; the quote must fall within the cited lines (at most 3). The check stays on content, so a misnumbered handle and a misquote are both caught, and the cap keeps citations short.
+- Experiment 3: retrieval by evidence type (open issue 3, the facet-11 retrieval miss).
