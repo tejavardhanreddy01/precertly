@@ -1,0 +1,69 @@
+id: pap-02
+policy: pap-sleep-apnea
+policy_version:
+  LCD L33718: "52"
+  Article A52467: "54"
+variant: initial
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: single-level CPAP device (E0601)
+  codes: ["E0601"]
+bundle: bundles/pap-02.json
+expected_overall: not_met
+tags: [clean, fails]
+notes: >-
+  One change from pap-01: the home test gave an AHI of 3.4 (23 events over 6 h 50 min) instead of 32.1. The patient still has documented sleepiness and the coded ischemic heart disease, so osa-symptom-or-condition stays met; those facts do not replace the AHI requirement, which both ranges state. 3.4 is clear of the 5 boundary.
+changed_labels:
+  - criterion: ahi-15-plus
+    quote: >-
+      is greater than or equal to 15 events per hour with a minimum of 30 events
+    why: >-
+      The index is 3.4 events per hour with 23 events, below both 15 events per hour and the 30-event minimum.
+  - criterion: ahi-5-to-14
+    quote: >-
+      is greater than or equal to 5 and less than or equal to 14 events per hour with a minimum of 10 events
+    why: >-
+      The index is 3.4 events per hour, below 5, so neither AHI range is met and the variant logic cannot be satisfied.
+expected:
+  - criterion: in-person-evaluation-before-sleep-test
+    outcome: met
+    fact: >-
+      In-person sleep medicine evaluation by the treating physician on 2026-08-24, 9 days before the home sleep apnea test of 2026-09-02.
+    evidence: [Encounter/enc-sleep-eval, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]
+
+  - criterion: ahi-15-plus
+    outcome: not_met
+    fact: >-
+      AHI 3.4 events per hour (23 events over 6 h 50 min of recording) is below 15 events per hour, and the 23 events are below the 30-event minimum.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: ahi-5-to-14
+    outcome: not_met
+    fact: >-
+      AHI 3.4 is below 5 events per hour, so it is also outside the 5 to 14 range.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: osa-symptom-or-condition
+    outcome: met
+    fact: >-
+      Excessive daytime sleepiness is documented in the evaluation note (dozes off when seated, nearly fell asleep while driving); the chart also codes ischemic heart disease, which the criterion names.
+    evidence: [DocumentReference/note-sleep-eval, Condition/37b75dda-e187-ae40-4f8f-f53efc54cfc9]
+
+  - criterion: short-study-event-minimum
+    outcome: not_applicable
+    fact: >-
+      The recording time was 6 h 50 min, not less than 2 hours, so the condition does not hold.
+    evidence: []
+
+  - criterion: sleep-test-type
+    outcome: met
+    fact: >-
+      A Type III home sleep apnea test; the criterion accepts a home-based sleep test of Types II, III, IV or Other.
+    evidence: [DiagnosticReport/report-sleep-test]
+
+  - criterion: sleep-test-ordered-by-treating-practitioner
+    outcome: met
+    fact: >-
+      The evaluation note says the treating physician for sleep-disordered breathing ordered the study at the in-person visit; a ServiceRequest records the order.
+    evidence: [ServiceRequest/sr-sleep-test, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]

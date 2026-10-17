@@ -1,0 +1,98 @@
+id: pap-06
+policy: pap-sleep-apnea
+policy_version:
+  LCD L33718: "52"
+  Article A52467: "54"
+variant: continued
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: continued coverage of the CPAP device (E0601) beyond the first three months
+  codes: ["E0601"]
+bundle: bundles/pap-06.json
+expected_overall: insufficient
+tags: [adversarial, missing-evidence]
+notes: >-
+  The same chain as pap-03 up to the day-61 re-evaluation of 2026-08-22, with improvement documented, but no download, usage report or review note anywhere, and the re-evaluation note does not mention one. GUIDELINES rule 3 (silence is not evidence of absence) is written for criteria phrased as an absence and does not apply as such; both adherence criteria are positive requirements, so the Outcomes table decides. not_met needs evidence that the criterion is not satisfied, and nothing in the record shows the 4-hour or 70% line was missed; the patient's own statement that the mask is worn most nights is not objective evidence, and says nothing about the report. insufficient fits: the evidence is absent. Had a note said that no download was obtained, adherence-report-in-record would be not_met (rule 5); this record does not say so.
+changed_labels:
+  - criterion: ahi-5-to-14
+    quote: >-
+      is greater than or equal to 5 and less than or equal to 14 events per hour with a minimum of 10 events
+    why: >-
+      The index is 28.4 events per hour, above 14, so the lower range is not the one met.
+  - criterion: adherence-4h-70pct
+    quote: >-
+      Objective evidence of adherence to use of the PAP device, reviewed by the treating practitioner.
+    why: >-
+      The criterion requires objective evidence of adherence. The record has none, only the patient's report that the mask is worn most nights, so the criterion cannot be decided.
+  - criterion: adherence-report-in-record
+    quote: >-
+      Documentation of adherence to PAP therapy shall be accomplished through direct download or visual inspection of usage data with documentation provided in a written report format
+    why: >-
+      The criterion requires usage data documented in a written report in the medical record. No such report is in the record and no note says whether one was obtained.
+expected:
+  - criterion: in-person-evaluation-before-sleep-test
+    outcome: met
+    fact: >-
+      In-person sleep medicine evaluation by the treating physician on 2026-05-04, 15 days before the polysomnogram of 2026-05-19.
+    evidence: [Encounter/enc-sleep-eval, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]
+
+  - criterion: ahi-15-plus
+    outcome: met
+    fact: >-
+      AHI 28.4 events per hour (196 events over 6 h 54 min of sleep): at least 15 per hour with at least 30 events.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: ahi-5-to-14
+    outcome: not_met
+    fact: >-
+      AHI 28.4 is above the 5 to 14 range, so the lower range does not apply.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: osa-symptom-or-condition
+    outcome: met
+    fact: >-
+      Excessive daytime sleepiness is documented in the evaluation note (dozes off when seated, nearly fell asleep while driving); the chart also codes ischemic heart disease, which the criterion names, diagnosed 2026-07-21 and so in the chart when the request is made.
+    evidence: [DocumentReference/note-sleep-eval, Condition/37b75dda-e187-ae40-4f8f-f53efc54cfc9]
+
+  - criterion: short-study-event-minimum
+    outcome: not_applicable
+    fact: >-
+      The total sleep time was 6 h 54 min, not less than 2 hours, so the condition does not hold.
+    evidence: []
+
+  - criterion: sleep-test-type
+    outcome: met
+    fact: >-
+      A polysomnogram performed in a facility-based sleep laboratory, which the criterion names as 'a polysomnogram performed in a facility-based laboratory (Type I study)'.
+    evidence: [DiagnosticReport/report-sleep-test]
+
+  - criterion: sleep-test-ordered-by-treating-practitioner
+    outcome: met
+    fact: >-
+      The evaluation note says the treating physician for sleep-disordered breathing ordered the study at the in-person visit; a ServiceRequest records the order.
+    evidence: [ServiceRequest/sr-sleep-test, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]
+
+  - criterion: reevaluation-day-31-to-91
+    outcome: met
+    fact: >-
+      Therapy started 2026-06-22; the in-person re-evaluation on 2026-08-22 is day 61, within the 31st to 91st day, and documents that the patient is benefiting.
+    evidence: [Encounter/enc-reeval, DocumentReference/note-reeval, DeviceUseStatement/cpap-use, DocumentReference/note-cpap-setup]
+
+  - criterion: symptoms-improved-in-person
+    outcome: met
+    fact: >-
+      The in-person re-evaluation documents that daytime sleepiness is much improved and that the snoring and pauses in breathing have stopped.
+    evidence: [DocumentReference/note-reeval]
+
+  - criterion: adherence-4h-70pct
+    outcome: insufficient
+    fact: >-
+      The re-evaluation note records only that the patient reports wearing the mask most nights. No download, usage report or other objective measure of nightly use appears anywhere in the record, so adherence cannot be decided either way.
+    evidence: [DocumentReference/note-reeval]
+
+  - criterion: adherence-report-in-record
+    outcome: insufficient
+    fact: >-
+      No download report, written or otherwise, is in the record, and no note says that one was obtained or that none exists.
+    evidence: [DocumentReference/note-reeval]

@@ -12,15 +12,16 @@ Two steps:
 
        SYNTHEA_REFERENCE_DATE=20261001 SYNTHEA_OUTPUT=<dir> data/synthea/generate.sh 100
 
-2. build: add the facet history to that background from a set of facts, one set per case.
-   A case differs from its variant's clean baseline only in the facts it overrides, so the
-   notes, observations and procedures in a bundle always agree with each other, except
-   where a case is about a disagreement.
+2. build: add a case's history to that background from a set of facts, one set per case
+   (facet joint interventions, then PAP devices). A case differs from its variant's clean
+   baseline only in the facts it overrides, so the notes, observations and procedures in a
+   bundle always agree with each other, except where a case is about a disagreement.
 
 The request itself is not in the bundle. Each case file states it in its `request` block
-(dates, procedure, codes, region, levels, same-day blocks, and `technique`). `technique`
-is a structured field written by hand in the case file, one of medial_branch_block,
-intraarticular_injection or radiofrequency_ablation; nothing parses it from text.
+(dates, procedure and codes; facet cases also region, levels, same-day blocks and
+`technique`). `technique` is a structured field written by hand in the case file, one of
+medial_branch_block, intraarticular_injection or radiofrequency_ablation; nothing parses
+it from text.
 
 Synthetic data only. Resources a label can cite get readable, stable ids.
 """
@@ -258,7 +259,7 @@ REPEAT_RFA = replace(
     planning=date(2026, 9, 21),
 )
 
-CASES: dict[str, Facts] = {
+FACET_CASES: dict[str, Facts] = {
     "facet-01": INITIAL_RFA,
     "facet-02": replace(INITIAL_RFA, mbb2_post=2),
     "facet-03": replace(SECOND_DIAGNOSTIC, planned_second_block=date(2026, 10, 8)),
@@ -294,12 +295,14 @@ def _note(note_id: str, when: date, title: str, text: str, encounter: str) -> Re
     }
 
 
-def _encounter(encounter_id: str, when: date, kind: str, end: date | None = None) -> Resource:
+def _encounter(
+    encounter_id: str, when: date, kind: str, end: date | None = None, cls: str = "AMB"
+) -> Resource:
     return {
         "resourceType": "Encounter",
         "id": encounter_id,
         "status": "finished",
-        "class": {"code": "AMB"},
+        "class": {"code": cls},
         "type": [{"text": kind}],
         "period": {"start": when.isoformat(), "end": (end or when).isoformat()},
     }
@@ -777,7 +780,7 @@ def facet_history(facts: Facts) -> list[Resource]:
     return resources
 
 
-def label_evidence(facts: Facts) -> dict[str, list[str]]:
+def facet_label_evidence(facts: Facts) -> dict[str, list[str]]:
     """For each criterion, every resource or request field that states the fact.
 
     The guideline asks labels to list every resource that establishes them. Deriving the
@@ -937,7 +940,484 @@ def label_evidence(facts: Facts) -> dict[str, list[str]]:
     }
 
 
-CASE_FILES = EVALS / "cases" / "facet"
+# --- PAP devices (LCD L33718, article A52467): the history, generated from facts ----------
+
+# The shared background patient already has this coded Condition. It is one of the three
+# comorbidities that osa-symptom-or-condition names, so that criterion is met in every PAP
+# case and its not-met path is untested (cases/pap/PLAN.md, known limitations).
+IHD_CONDITION = "Condition/37b75dda-e187-ae40-4f8f-f53efc54cfc9"
+# LOINC 28633-6, "Polysomnography (sleep) study", confirmed on the LOINC terminology
+# (tx.fhir.org, LOINC 2.82). The only total apnea-hypopnea index code there, 69990-0, is
+# defined over 24 hours, so the index is recorded as text only.
+PSG_LOINC = "28633-6"
+HISTORY_AFTER_IHD = "ischemic heart disease, followed by cardiology, and obesity."
+HISTORY_BEFORE_IHD = "obesity. No other chronic condition that bears on sleep."
+
+# Bi-level case (pap-04): the one intended conflict is how long the patient used an E0601.
+CPAP_SETUP = date(2026, 1, 12)
+CPAP_FOLLOW_UP = date(2026, 3, 10)  # note: in use nightly since the setup
+CPAP_FIRST_USE = date(2026, 8, 4)  # note: first PAP use, no previous PAP use
+CPAP_REFIT_VISIT = date(2026, 8, 18)
+CPAP_TELEPHONE = date(2026, 9, 25)
+
+# Continued-coverage cases: night 1 is the night therapy starts, and the first three months
+# end on the night of 2026-09-21 (92 nights).
+FIRST_THREE_MONTHS = 92
+BEST_WINDOW = 30
+NIGHTS_REQUIRED = 20  # the near miss: 21 of 30 nights is exactly 70%
+
+
+@dataclass(frozen=True)
+class PapFacts:
+    """What is true in a PAP case's chart. Defaults are the clean first-device history."""
+
+    variant: str = "initial"
+    evaluation: date = date(2026, 8, 24)  # in person, before the sleep test
+    test_date: date = date(2026, 9, 2)
+    results_visit: date = date(2026, 9, 10)
+    facility_test: bool = False  # True: Type I polysomnogram; False: Type III home test
+    study_minutes: int = 430  # recording time (home test) or total sleep time (polysomnogram)
+    events: int = 230
+    ahi_coded: bool = True  # False: the index is only in the report and the notes
+    history: str = HISTORY_AFTER_IHD
+    # Continued coverage
+    therapy_start: date | None = None
+    reeval: date | None = None
+    download: bool = True  # False: no download or usage report anywhere in the record
+
+    @property
+    def ahi(self) -> float:
+        return round(self.events * 60 / self.study_minutes, 1)
+
+
+PAP_INITIAL = PapFacts()
+PAP_CONTINUED = PapFacts(
+    variant="continued",
+    evaluation=date(2026, 5, 4),
+    test_date=date(2026, 5, 19),
+    results_visit=date(2026, 6, 2),
+    facility_test=True,
+    study_minutes=414,
+    events=196,
+    history=HISTORY_BEFORE_IHD,
+    therapy_start=date(2026, 6, 22),
+    reeval=date(2026, 8, 22),  # day 61 after the start of therapy
+)
+PAP_BILEVEL = PapFacts(
+    variant="initial-bilevel",
+    evaluation=date(2025, 11, 20),
+    test_date=date(2025, 12, 4),
+    results_visit=date(2025, 12, 16),
+    study_minutes=400,
+    events=178,
+    history=HISTORY_BEFORE_IHD,
+)
+
+PAP_CASES: dict[str, PapFacts] = {
+    "pap-01": PAP_INITIAL,
+    "pap-02": replace(PAP_INITIAL, events=23, study_minutes=410),
+    "pap-03": PAP_CONTINUED,
+    "pap-04": PAP_BILEVEL,
+    "pap-05": replace(PAP_INITIAL, events=77, study_minutes=390, ahi_coded=False),
+    "pap-06": replace(PAP_CONTINUED, download=False),
+}
+
+
+def _hm(minutes: int) -> str:
+    return f"{minutes // 60} h {minutes % 60} min"
+
+
+def usage_hours() -> list[float]:
+    """Hours of PAP use on each of the first 92 nights.
+
+    Nights that count (4 hours or more) are 4.6 hours or more and the others 3.4 or less, so
+    no night sits near the 4-hour line. Use is low in the first weeks, at two nights in three
+    for the next six, and lower again after that.
+    """
+    hours = []
+    for night in range(1, FIRST_THREE_MONTHS + 1):
+        if night <= 25:
+            counts = night % 3 == 0
+        elif night <= 70:
+            counts = night % 3 != 0
+        else:
+            counts = night % 2 == 0
+        hours.append(
+            round(4.6 + (night * 7 % 33) / 10, 1) if counts else round((night * 5 % 35) / 10, 1)
+        )
+    return hours
+
+
+def best_window(hours: list[float]) -> tuple[int, int]:
+    """(first night of the earliest best 30-night window, nights of 4+ hours in it)."""
+    counts = [
+        sum(h >= 4.0 for h in hours[start : start + BEST_WINDOW])
+        for start in range(len(hours) - BEST_WINDOW + 1)
+    ]
+    best = max(counts)
+    return counts.index(best) + 1, best
+
+
+def _study_report(f: PapFacts) -> str:
+    if f.facility_test:
+        study = (
+            "Type I study: attended polysomnogram performed in a facility-based sleep laboratory."
+        )
+        basis = f"Total sleep time: {_hm(f.study_minutes)} ({f.study_minutes} minutes)."
+        index = f"Apnea-hypopnea index (AHI): {f.ahi} events per hour of sleep."
+        title = "Polysomnogram report (Type I)"
+    else:
+        study = (
+            f"Type III home sleep apnea test, recorded at home on {f.test_date.isoformat()}. "
+            "Channels: airflow, respiratory effort and pulse oximetry."
+        )
+        basis = f"Recording time: {_hm(f.study_minutes)} ({f.study_minutes} minutes)."
+        index = f"Apnea-hypopnea index (AHI): {f.ahi} events per hour of recording."
+        title = "Home sleep apnea test report (Type III)"
+    return f"""{f.test_date.isoformat()}
+{title}
+
+Study: {study}
+Ordered by: the patient's treating sleep physician, at the in-person evaluation of {f.evaluation.isoformat()}.
+{basis}
+Respiratory events (apneas and hypopneas): {f.events}.
+{index}
+"""
+
+
+def _pap_workup(f: PapFacts) -> list[Resource]:
+    """Evaluation, order, sleep test and the results visit with the CPAP prescription."""
+    test_name = (
+        "attended polysomnogram (Type I)" if f.facility_test else "home sleep apnea test (Type III)"
+    )
+    eval_note = f"""Reason for visit: loud snoring, witnessed pauses in breathing and daytime sleepiness. First visit with me.
+History: the patient snores loudly most nights and a household member has seen pauses in breathing during sleep. Wakes unrefreshed. Excessive daytime sleepiness: dozes off when seated in the afternoon and has nearly fallen asleep while driving. No complaint of insomnia.
+Past history: {f.history}
+Exam, in person today: crowded oropharynx (Mallampati class 3). Lungs clear. Heart rhythm regular.
+Assessment: suspected obstructive sleep apnea.
+Plan: {test_name} to assess for obstructive sleep apnea. I am this patient's treating physician for sleep-disordered breathing and I ordered the study at today's visit. Results will be reviewed at a follow-up visit.
+"""
+    if f.ahi >= 15:
+        assessment = "obstructive sleep apnea."
+    elif f.ahi >= 5:
+        assessment = "obstructive sleep apnea with excessive daytime sleepiness."
+    else:
+        assessment = (
+            "AHI within the normal range. The patient remains very sleepy and I am requesting "
+            "a trial of CPAP."
+        )
+    basis = "of sleep" if f.facility_test else "of recording"
+    if f.variant == "continued":
+        plan = "CPAP device (E0601) ordered. Therapy starts when the supplier delivers it."
+    elif f.variant == "initial-bilevel":
+        plan = "single-level CPAP device (E0601), auto-titrating 5 to 15 cm H2O. Supplier to set it up."
+    else:
+        plan = "single-level CPAP device (E0601), auto-titrating 5 to 15 cm H2O, mask fitted by the supplier. Request prior authorization."
+    results_note = f"""Results of the {test_name} of {f.test_date.isoformat()}: AHI {f.ahi} events per hour ({f.events} events over {_hm(f.study_minutes)} {basis}).
+Assessment: {assessment}
+Plan: {plan}
+"""
+    report = {
+        "resourceType": "DiagnosticReport",
+        "id": "report-sleep-test",
+        "status": "final",
+        "code": (
+            {"coding": [{"system": "http://loinc.org", "code": PSG_LOINC}], "text": "Polysomnogram"}
+            if f.facility_test
+            else {"text": "Home sleep apnea test"}
+        ),
+        "effectiveDateTime": f.test_date.isoformat(),
+        "presentedForm": [_attachment(_study_report(f))],
+    }
+    resources = [
+        _encounter("enc-sleep-eval", f.evaluation, "Sleep medicine evaluation, in person"),
+        _note(
+            "note-sleep-eval",
+            f.evaluation,
+            "Sleep medicine initial evaluation",
+            eval_note,
+            "enc-sleep-eval",
+        ),
+        {
+            "resourceType": "ServiceRequest",
+            "id": "sr-sleep-test",
+            "status": "completed",
+            "intent": "order",
+            "code": {"text": test_name.capitalize()},
+            "authoredOn": f.evaluation.isoformat(),
+            "encounter": {"reference": "Encounter/enc-sleep-eval"},
+            "reasonCode": [{"text": "Suspected obstructive sleep apnea"}],
+        },
+    ]
+    if f.facility_test:
+        resources.append(_encounter("enc-sleep-test", f.test_date, "Facility-based polysomnogram"))
+        report["encounter"] = {"reference": "Encounter/enc-sleep-test"}
+    if f.ahi_coded:
+        report["result"] = [{"reference": "Observation/obs-ahi"}]
+        report["conclusion"] = f"AHI {f.ahi} events per hour."
+        resources.append(
+            {
+                "resourceType": "Observation",
+                "id": "obs-ahi",
+                "status": "final",
+                "category": [{"coding": [{"code": "procedure"}]}],
+                "code": {"text": "Apnea-hypopnea index (AHI)"},
+                "valueQuantity": {"value": f.ahi, "unit": "events/hour"},
+                "effectiveDateTime": f.test_date.isoformat(),
+            }
+        )
+    resources += [
+        report,
+        _encounter("enc-sleep-results", f.results_visit, "Sleep medicine follow-up, in person"),
+        _note(
+            "note-sleep-results",
+            f.results_visit,
+            "Sleep medicine follow-up, test results",
+            results_note,
+            "enc-sleep-results",
+        ),
+    ]
+    return resources
+
+
+def _first_three_months_end(f: PapFacts) -> date:
+    assert f.therapy_start
+    return f.therapy_start + timedelta(days=FIRST_THREE_MONTHS - 1)
+
+
+def _pap_continued(f: PapFacts) -> list[Resource]:
+    assert f.therapy_start and f.reeval
+    start, reeval = f.therapy_start, f.reeval
+    day = (reeval - start).days
+    setup_note = f"""Supplier setup visit. CPAP device (E0601) delivered and set up. Full-face mask fitted and checked for leaks. The patient and a household member were shown how to use and clean the equipment and how to read the device display.
+Therapy begins tonight, {start.isoformat()}.
+"""
+    ongoing = (
+        "Device usage data will be downloaded at the end of the third month and reviewed."
+        if f.download
+        else "Return visit in six months."
+    )
+    reeval_note = f"""Re-evaluation {day} days after the start of CPAP therapy (started {start.isoformat()}), in person.
+Symptoms: daytime sleepiness is much improved. The patient no longer dozes off when seated, wakes feeling more refreshed, and a household member reports that the snoring and the pauses in breathing have stopped.
+Therapy: the patient reports wearing the mask most nights and has no problem with the mask or the pressure.
+Past history update: ischemic heart disease diagnosed in July, followed by cardiology.
+Assessment: obstructive sleep apnea. The patient is benefiting from PAP therapy.
+Plan: continue CPAP at current settings. {ongoing}
+"""
+    resources = [
+        _encounter("enc-cpap-setup", start, "Supplier setup visit"),
+        _note(
+            "note-cpap-setup",
+            start,
+            "Supplier setup note, CPAP",
+            setup_note,
+            "enc-cpap-setup",
+        ),
+        {
+            "resourceType": "DeviceUseStatement",
+            "id": "cpap-use",
+            "status": "active",
+            "device": {"display": "CPAP device (E0601)"},
+            "timingPeriod": {"start": start.isoformat()},
+            "recordedOn": start.isoformat(),
+            "reasonCode": [{"text": "Obstructive sleep apnea"}],
+        },
+        _encounter("enc-reeval", reeval, "Sleep medicine re-evaluation, in person"),
+        _note(
+            "note-reeval",
+            reeval,
+            "Sleep medicine re-evaluation on CPAP",
+            reeval_note,
+            "enc-reeval",
+        ),
+    ]
+    if f.download:
+        resources += _pap_download(f)
+    return resources
+
+
+def _pap_download(f: PapFacts) -> list[Resource]:
+    """The usage report for the first three months, dated after its last night, and the
+    practitioner's review, dated after the report."""
+    assert f.therapy_start
+    start, last = f.therapy_start, _first_three_months_end(f)
+    report_date, review_date = last + timedelta(days=2), last + timedelta(days=3)
+    hours = usage_hours()
+    first, qualifying = best_window(hours)
+    assert qualifying == NIGHTS_REQUIRED, "the best 30-night window must be exactly 20"
+    window_start = start + timedelta(days=first - 1)
+    window_end = window_start + timedelta(days=BEST_WINDOW - 1)
+    any_use = sum(h > 0 for h in hours)
+    long_nights = sum(h >= 4.0 for h in hours)
+    average = sum(hours) / len(hours)
+    rows = []
+    for begin in range(1, len(hours) + 1, 10):
+        end = min(begin + 9, len(hours))
+        span = f"{(start + timedelta(days=begin - 1)).isoformat()} to {(start + timedelta(days=end - 1)).isoformat()}"
+        values = " ".join(f"{h:.1f}" for h in hours[begin - 1 : end])
+        rows.append(f"Nights {begin}-{end} ({span}): {values}")
+    table = "\n".join(rows)
+    percent = round(qualifying / BEST_WINDOW * 100)
+    report = f"""Device: CPAP (E0601), written report of the device download.
+Data period: {start.isoformat()} to {last.isoformat()}, {len(hours)} nights, the first three months of therapy. Night 1 is {start.isoformat()}.
+Summary of usage:
+- Nights with any use: {any_use} of {len(hours)}.
+- Average use: {average:.1f} hours per night over all {len(hours)} nights.
+- Nights with use of 4 hours or more: {long_nights} of {len(hours)}.
+Best consecutive 30-night period (earliest if several are equal): nights {first} to {first + BEST_WINDOW - 1} ({window_start.isoformat()} to {window_end.isoformat()}), use of 4 hours or more on {qualifying} of {BEST_WINDOW} nights ({percent}%).
+Nightly use in hours:
+{table}
+"""
+    review = f"""Reviewed the PAP device download report dated {report_date.isoformat()}, covering {start.isoformat()} to {last.isoformat()}. The report is filed in the medical record.
+Plan: the patient will be contacted about mask comfort and encouraged to use the device for more hours each night.
+"""
+    return [
+        _encounter("enc-pap-download", report_date, "Device data download", cls="VR"),
+        _note(
+            "note-pap-download",
+            report_date,
+            "PAP device download report",
+            report,
+            "enc-pap-download",
+        ),
+        _encounter(
+            "enc-adherence-review", review_date, "Practitioner review of device data", cls="VR"
+        ),
+        _note(
+            "note-adherence-review",
+            review_date,
+            "Practitioner review of PAP download",
+            review,
+            "enc-adherence-review",
+        ),
+    ]
+
+
+def _pap_bilevel(f: PapFacts) -> list[Resource]:
+    """Two sleep-clinic notes that disagree on how long the patient used an E0601, then a
+    telephone order for an E0470 with no visit after it."""
+    march = f"""Follow-up on CPAP therapy. The CPAP device (E0601) was set up by the supplier on {CPAP_SETUP.isoformat()} and the patient has used it nightly since then.
+Mask: full-face. The patient reports some mask leak. No other complaints today.
+Plan: continue current settings. Return in six months.
+"""
+    august = f"""Visit to start PAP therapy. First use of PAP therapy was the night of {CPAP_FIRST_USE.isoformat()}, on CPAP at 8 cm H2O. No previous PAP use.
+Mask: the full-face mask was refit today. It is properly fit and the patient is comfortable in it.
+Daytime sleepiness persists. CPAP pressure raised to 10 cm H2O.
+Plan: return in four weeks.
+"""
+    telephone = f"""Telephone encounter. Reviewed the patient's CPAP device download and spoke with the patient.
+CPAP has failed to meet therapeutic goals despite optimal therapy: the device-reported residual AHI remains elevated and the daytime sleepiness persists.
+Interface fit and comfort: the full-face mask was refit at the visit of {CPAP_REFIT_VISIT.isoformat()}. An appropriate interface has been properly fit and the patient is using it without difficulty. This mask will be used with the bi-level device.
+Pressure settings: the current CPAP pressure of 14 cm H2O prevents the patient from tolerating the therapy; the patient wakes and removes the mask. Lower pressure settings of 8, 10 and 12 cm H2O were tried but failed to adequately control the symptoms of obstructive sleep apnea, to improve sleep quality and to reduce the AHI to acceptable levels.
+Plan: change to a bi-level device without back-up rate (E0470). The order was placed by telephone today and no visit is scheduled before the device is supplied. Request prior authorization.
+"""
+    return [
+        _encounter(
+            "enc-cpap-followup-march", CPAP_FOLLOW_UP, "Sleep medicine follow-up, in person"
+        ),
+        _note(
+            "note-cpap-followup-march",
+            CPAP_FOLLOW_UP,
+            "Sleep medicine follow-up on CPAP",
+            march,
+            "enc-cpap-followup-march",
+        ),
+        _encounter("enc-cpap-followup-august", CPAP_REFIT_VISIT, "Sleep medicine visit, in person"),
+        _note(
+            "note-cpap-followup-august",
+            CPAP_REFIT_VISIT,
+            "Sleep medicine visit, start of PAP therapy",
+            august,
+            "enc-cpap-followup-august",
+        ),
+        _encounter("enc-telephone", CPAP_TELEPHONE, "Telephone encounter", cls="VR"),
+        _note(
+            "note-telephone",
+            CPAP_TELEPHONE,
+            "Telephone encounter, change to bi-level device",
+            telephone,
+            "enc-telephone",
+        ),
+    ]
+
+
+def pap_history(f: PapFacts) -> list[Resource]:
+    resources = _pap_workup(f)
+    if f.variant == "continued":
+        resources += _pap_continued(f)
+    elif f.variant == "initial-bilevel":
+        resources += _pap_bilevel(f)
+    return resources
+
+
+def pap_label_evidence(f: PapFacts) -> dict[str, list[str]]:
+    """For each criterion, every resource that states the fact (see facet_label_evidence)."""
+    eval_note, eval_enc = "DocumentReference/note-sleep-eval", "Encounter/enc-sleep-eval"
+    report, results = "DiagnosticReport/report-sleep-test", "DocumentReference/note-sleep-results"
+    index = ["Observation/obs-ahi"] if f.ahi_coded else []
+    evidence = {
+        "in-person-evaluation-before-sleep-test": [eval_enc, eval_note, report],
+        "ahi-15-plus": [report, *index, results],
+        "ahi-5-to-14": [report, *index, results],
+        "osa-symptom-or-condition": [eval_note, IHD_CONDITION],
+        "short-study-event-minimum": [report],
+        "sleep-test-type": [report],
+        "sleep-test-ordered-by-treating-practitioner": [
+            "ServiceRequest/sr-sleep-test",
+            eval_note,
+            report,
+        ],
+    }
+    telephone = "DocumentReference/note-telephone"
+    evidence |= {
+        "cpap-tried-and-ineffective": [telephone],
+        "interface-fit-addressed": [telephone, "DocumentReference/note-cpap-followup-august"],
+        "cpap-pressure-settings-failed": [telephone],
+        "new-evaluation-after-3-months-on-cpap": [
+            "DocumentReference/note-cpap-followup-march",
+            "DocumentReference/note-cpap-followup-august",
+            telephone,
+        ],
+    }
+    reeval = "DocumentReference/note-reeval"
+    adherence = (
+        ["DocumentReference/note-pap-download", "DocumentReference/note-adherence-review"]
+        if f.download
+        else [reeval]
+    )
+    evidence |= {
+        "reevaluation-day-31-to-91": [
+            "Encounter/enc-reeval",
+            reeval,
+            "DeviceUseStatement/cpap-use",
+            "DocumentReference/note-cpap-setup",
+        ],
+        "symptoms-improved-in-person": [reeval],
+        "adherence-4h-70pct": adherence,
+        "adherence-report-in-record": adherence,
+    }
+    return evidence
+
+
+CASES: dict[str, Facts | PapFacts] = {**FACET_CASES, **PAP_CASES}
+
+
+def label_evidence(facts: Facts | PapFacts) -> dict[str, list[str]]:
+    if isinstance(facts, PapFacts):
+        return pap_label_evidence(facts)
+    return facet_label_evidence(facts)
+
+
+def history(facts: Facts | PapFacts) -> list[Resource]:
+    return pap_history(facts) if isinstance(facts, PapFacts) else facet_history(facts)
+
+
+def case_path(case_id: str) -> Path:
+    """The case file: evals/cases/<facet|pap>/<case id>.yaml."""
+    folder = "pap" if isinstance(CASES[case_id], PapFacts) else "facet"
+    return EVALS / "cases" / folder / f"{case_id}.yaml"
+
+
 _CRITERION = re.compile(r"^  - criterion: (\S+)$")
 _OUTCOME = re.compile(r"^    outcome: (\S+)$")
 _EVIDENCE = re.compile(r"^    evidence: \[.*\]$")
@@ -946,7 +1426,7 @@ _EVIDENCE = re.compile(r"^    evidence: \[.*\]$")
 def with_generated_evidence(case_id: str) -> str:
     """The case file's text with each label's evidence list set from label_evidence."""
     generated = label_evidence(CASES[case_id])
-    lines = (CASE_FILES / f"{case_id}.yaml").read_text(encoding="utf-8").splitlines()
+    lines = case_path(case_id).read_text(encoding="utf-8").splitlines()
     criterion = outcome = None
     for i, line in enumerate(lines):
         if match := _CRITERION.match(line):
@@ -962,10 +1442,10 @@ def with_generated_evidence(case_id: str) -> str:
 def build(case_id: str) -> dict[str, Any]:
     background = json.loads(TEMPLATE.read_text(encoding="utf-8"))
     patient_id = next(r["id"] for r in background if r["resourceType"] == "Patient")
-    history = facet_history(CASES[case_id])
-    for resource in history:
+    added = history(CASES[case_id])
+    for resource in added:
         resource["subject"] = {"reference": f"Patient/{patient_id}"}
-    resources = background + history
+    resources = background + added
     return {
         "resourceType": "Bundle",
         "type": "collection",
@@ -1003,7 +1483,7 @@ def main() -> int:
         # the bundle, and the evidence lists in the case file, both come from the facts
         outputs = {
             BUNDLES / f"{case_id}.json": dumps(build(case_id)),
-            CASE_FILES / f"{case_id}.yaml": with_generated_evidence(case_id),
+            case_path(case_id): with_generated_evidence(case_id),
         }
         for path, text in outputs.items():
             if args.check:

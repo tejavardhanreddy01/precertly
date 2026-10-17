@@ -48,7 +48,8 @@ def claim(case_id: str) -> dict:
     return bundle(case_id)["entry"][0]["resource"]
 
 
-IDS = sorted(CASES)
+# Drafts are built from recorded facet verdicts; no other policy has any yet.
+IDS = sorted(c for c in CASES if CASES[c].policy == "facet-joint-interventions")
 
 
 def codings(value) -> list[dict]:

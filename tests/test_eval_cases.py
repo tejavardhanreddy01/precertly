@@ -4,6 +4,7 @@ import importlib.util
 import json
 import re
 import sys
+from collections import Counter
 
 import pytest
 
@@ -36,7 +37,8 @@ def _build_module():
 
 def test_every_planned_case_exists():
     assert set(_plan()) == set(CASES)
-    assert len(CASES) == 11
+    by_policy = Counter(case.policy for case in CASES.values())
+    assert by_policy == {"facet-joint-interventions": 11, "pap-sleep-apnea": 6}
 
 
 @pytest.mark.parametrize("case", CASES.values(), ids=list(CASES))
@@ -138,7 +140,7 @@ def test_committed_bundles_match_the_build_script():
 def test_label_evidence_lists_are_generated_by_the_build_script():
     build_cases = _build_module()
     for case in CASES.values():
-        path = EVALS_DIR / "cases" / "facet" / f"{case.id}.yaml"
+        path = build_cases.case_path(case.id)
         assert path.read_text(encoding="utf-8") == build_cases.with_generated_evidence(case.id)
         generated = build_cases.label_evidence(build_cases.CASES[case.id])
         for label in case.expected:

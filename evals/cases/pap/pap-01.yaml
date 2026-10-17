@@ -1,0 +1,64 @@
+id: pap-01
+policy: pap-sleep-apnea
+policy_version:
+  LCD L33718: "52"
+  Article A52467: "54"
+variant: initial
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: single-level CPAP device (E0601)
+  codes: ["E0601"]
+bundle: bundles/pap-01.json
+expected_overall: met
+tags: [clean, meets]
+notes: >-
+  The clean baseline for the initial variant; no fact is changed. The evaluation, order, home test, results and plan agree across the notes and the coded Observation. Only the lower AHI range does not apply, because the index is far above it.
+changed_labels:
+  - criterion: ahi-5-to-14
+    quote: >-
+      is greater than or equal to 5 and less than or equal to 14 events per hour with a minimum of 10 events
+    why: >-
+      The index is 32.1 events per hour, above 14, so the 5 to 14 range is not the one met; the case is met through the 15-or-more range.
+expected:
+  - criterion: in-person-evaluation-before-sleep-test
+    outcome: met
+    fact: >-
+      In-person sleep medicine evaluation by the treating physician on 2026-08-24, 9 days before the home sleep apnea test of 2026-09-02.
+    evidence: [Encounter/enc-sleep-eval, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]
+
+  - criterion: ahi-15-plus
+    outcome: met
+    fact: >-
+      AHI 32.1 events per hour (230 events over 7 h 10 min of recording): at least 15 per hour with at least 30 events.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: ahi-5-to-14
+    outcome: not_met
+    fact: >-
+      AHI 32.1 is above the 5 to 14 range, so the lower range does not apply.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: osa-symptom-or-condition
+    outcome: met
+    fact: >-
+      Excessive daytime sleepiness is documented in the evaluation note (dozes off when seated, nearly fell asleep while driving); the chart also codes ischemic heart disease, which the criterion names.
+    evidence: [DocumentReference/note-sleep-eval, Condition/37b75dda-e187-ae40-4f8f-f53efc54cfc9]
+
+  - criterion: short-study-event-minimum
+    outcome: not_applicable
+    fact: >-
+      The recording time was 7 h 10 min, not less than 2 hours, so the condition does not hold.
+    evidence: []
+
+  - criterion: sleep-test-type
+    outcome: met
+    fact: >-
+      A Type III home sleep apnea test; the criterion accepts a home-based sleep test of Types II, III, IV or Other.
+    evidence: [DiagnosticReport/report-sleep-test]
+
+  - criterion: sleep-test-ordered-by-treating-practitioner
+    outcome: met
+    fact: >-
+      The evaluation note says the treating physician for sleep-disordered breathing ordered the study at the in-person visit; a ServiceRequest records the order.
+    evidence: [ServiceRequest/sr-sleep-test, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]
