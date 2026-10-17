@@ -121,7 +121,13 @@ def test_a_bariatric_bundle_has_none_of_the_removed_and_keeps_the_rest(case_id):
 
 
 def test_every_removed_resource_is_still_in_every_facet_and_pap_bundle():
-    other = {k: v for k, v in load_cases().items() if v.policy != "bariatric-surgery"}
+    # the stimulator bundles remove the same cardiac cluster on their own, so they are not
+    # part of this check
+    other = {
+        k: v
+        for k, v in load_cases().items()
+        if v.policy in ("facet-joint-interventions", "pap-sleep-apnea")
+    }
     assert len(other) == 17
     for case in other.values():
         present = {ref(e["resource"]) for e in load_bundle(case.bundle_path())["entry"]}

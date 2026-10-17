@@ -8,11 +8,25 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from precertly.judgment.structured import FACET_CODES
+from precertly.judgment.structured import FACET_CODES, SCS_CODES
 from precertly.llm import Exchange, LLMUsage
 
 # The facet-only request fields. A request for any other procedure leaves them unset.
 FACET_FIELDS = ("technique", "region", "levels", "same_day_blocks")
+# The spinal cord stimulator request fields. A request for any other procedure leaves them
+# unset; a stimulator request also needs a place of service (SCS_SETTINGS).
+SCS_FIELDS = ("leads", "contacts")
+# CMS place-of-service codes a stimulator request may carry, in the words the model sees.
+# The LCD and the article name the setting of a permanent implant (an ASC, an outpatient
+# hospital or a hospital), and these codes are how the request states it. There is no second
+# field for the setting, so a request cannot hold two values that disagree.
+SCS_SETTINGS = {
+    "11": "office",
+    "19": "off-campus outpatient hospital",
+    "21": "inpatient hospital",
+    "22": "on-campus outpatient hospital",
+    "24": "ambulatory surgical center",
+}
 
 
 class Outcome(StrEnum):
@@ -55,8 +69,14 @@ class PriorAuthRequest(BaseModel):
     levels: list[str] | None = Field(default=None, min_length=1)
     # An empty list means the request lists no other blocks; None means it does not say.
     same_day_blocks: list[str] | None = None
-    # CMS place-of-service code for the requested service, used only to draft the PAS
-    # request. It is not rendered in chunks(), so the judgment prompt never shows it.
+    # Spinal cord stimulator fields (SCS_FIELDS): required on a stimulator request, unset on
+    # any other. contacts is the total across leads.
+    leads: int | None = Field(default=None, ge=1)
+    contacts: int | None = Field(default=None, ge=1)
+    # CMS place-of-service code for the requested service. It drafts the PAS request, and a
+    # stimulator request must set it (SCS_SETTINGS), because the setting of a permanent
+    # implant is a coverage criterion. chunks() renders it for a stimulator request only,
+    # so the prompts of every other request never show it.
     place_of_service: str | None = Field(default=None, pattern=r"^\d{2}$")
 
     @model_validator(mode="after")
@@ -76,6 +96,38 @@ class PriorAuthRequest(BaseModel):
             raise ValueError(f"a facet request ({why}) must set {', '.join(missing)}")
         return self
 
+    @model_validator(mode="after")
+    def _scs_fields_complete(self) -> PriorAuthRequest:
+        """A request with a stimulator code needs leads, contacts and a place of service, and
+        leads or contacts on any other request is an error (they would be silently ignored)."""
+        scs_codes = sorted(set(self.codes) & SCS_CODES)
+        given = [f for f in SCS_FIELDS if getattr(self, f) is not None]
+        if given and not scs_codes:
+            raise ValueError(
+                f"{', '.join(given)} belong to a spinal cord stimulator request, "
+                f"which needs one of the codes {sorted(SCS_CODES)}"
+            )
+        if not scs_codes:
+            return self
+        if set(self.codes) & FACET_CODES:
+            raise ValueError("a request cannot carry both facet and spinal cord stimulator codes")
+        missing = [f for f in (*SCS_FIELDS, "place_of_service") if getattr(self, f) is None]
+        if missing:
+            why = f"a spinal cord stimulator request (codes {scs_codes})"
+            raise ValueError(f"{why} must set {', '.join(missing)}")
+        if self.place_of_service not in SCS_SETTINGS:
+            raise ValueError(
+                f"place_of_service {self.place_of_service!r} is not one of {sorted(SCS_SETTINGS)}"
+            )
+        assert self.leads is not None and self.contacts is not None
+        if self.contacts < self.leads:
+            raise ValueError(f"{self.contacts} contacts cannot be fewer than {self.leads} leads")
+        return self
+
+    @property
+    def is_scs(self) -> bool:
+        return bool(set(self.codes) & SCS_CODES)
+
     def chunks(self) -> list[EvidenceChunk]:
         """One citable chunk per field that is set, with id 'request.<field>'."""
         labels = {
@@ -87,6 +139,8 @@ class PriorAuthRequest(BaseModel):
             "region": "Spinal region",
             "levels": "Levels",
             "same_day_blocks": "Other blocks planned for the same day",
+            "leads": "Number of leads",
+            "contacts": "Total number of contacts",
         }
         chunks = []
         for field, label in labels.items():
@@ -96,6 +150,14 @@ class PriorAuthRequest(BaseModel):
             if isinstance(value, list):
                 value = ", ".join(value) if value else "none"
             chunks.append(EvidenceChunk(id=f"request.{field}", text=f"{label}: {value}"))
+        if self.is_scs and self.place_of_service is not None:
+            setting = SCS_SETTINGS[self.place_of_service]
+            chunks.append(
+                EvidenceChunk(
+                    id="request.place_of_service",
+                    text=f"Place of service: {setting} (code {self.place_of_service})",
+                )
+            )
         return chunks
 
 

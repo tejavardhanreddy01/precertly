@@ -1,0 +1,92 @@
+id: scs-04
+policy: spinal-cord-stimulator
+policy_version:
+  NCD 160.7: "1"
+  LCD L36204: "23"
+  Article A57792: "12"
+variant: trial
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: spinal cord stimulator trial with temporary percutaneous leads
+  codes: ["63650"]
+  leads: 1
+  contacts: 8
+  place_of_service: "24"  # synthetic; the setting the criteria read
+bundle: bundles/scs-04.json
+expected_overall: insufficient
+tags: [adversarial, missing-evidence]
+notes: >-
+  Missing evidence. No note in the chart records education, discussion or disclosure of the therapy, its risks or its benefits, and none says that it did not take place; there is no education visit and the notes before the request (the team conference and the request visit) say nothing about it. The LCD requires proper patient education, discussion and disclosure, so the criterion is insufficient under the Outcomes table (silence is not evidence that it was missing). Everything else is as the clean trial case: a psychological evaluation finds no substance use disorder, the chart says there was no previous trial, and the request is for 1 lead and 8 contacts.
+changed_labels:
+  - criterion: patient-education-and-disclosure
+    quote: >-
+      Must undergo proper patient education, discussion, and disclosure
+    why: >-
+      No note records education, discussion or disclosure and none records that it did not happen. Q7 is a positive requirement, so with no evidence either way the label is insufficient, not not_met.
+expected:
+  - criterion: late-resort-chronic-intractable-pain
+    outcome: met
+    fact: >-
+      Low back and left leg pain for 71 months, still 8/10 after medication, physical therapy, surgery and psychological therapy. The pain clinic evaluation of 2026-05-18 and the team conference of 2026-09-15 both call spinal cord stimulation a late resort.
+    evidence: [Condition/chronic-pain, DocumentReference/note-pain-clinic-eval, DocumentReference/note-team-conference]
+
+  - criterion: other-modalities-tried-or-unsuitable
+    outcome: met
+    fact: >-
+      Naproxen (minimal benefit), 12 weeks of physical therapy (no improvement), a left L4-5 microdiscectomy (6 weeks of relief), gabapentin, duloxetine and oxycodone with acetaminophen (pain still 8/10) and cognitive behavioral therapy (pain unchanged) were tried and did not prove satisfactory.
+    evidence: [MedicationRequest/naproxen, MedicationRequest/gabapentin, MedicationRequest/duloxetine, MedicationRequest/oxycodone-apap, Procedure/physical-therapy-course, Procedure/lumbar-microdiscectomy, Procedure/cbt-course, DocumentReference/note-pt-discharge, DocumentReference/note-postop, DocumentReference/note-pain-clinic-2021, DocumentReference/note-cbt-discharge, DocumentReference/note-pain-clinic-2022, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: multidisciplinary-screening
+    outcome: met
+    fact: >-
+      The conference of 2026-09-15 had a pain physician, a spine surgeon, a clinical psychologist and a physical therapist, who reviewed the physical evaluation of 2026-05-18 and the psychological evaluation of 2026-09-08.
+    evidence: [Encounter/enc-team-conference, DocumentReference/note-team-conference, DocumentReference/note-psych-eval, DocumentReference/note-pain-clinic-eval]
+
+  - criterion: screening-documented-in-chart
+    outcome: met
+    fact: >-
+      The history and examination (2026-05-18), the psychological evaluation (2026-09-08) and the team conference (2026-09-15) are in the chart.
+    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-psych-eval, DocumentReference/note-team-conference]
+
+  - criterion: no-active-substance-abuse
+    outcome: met
+    fact: >-
+      The psychological evaluation of 2026-09-08 assesses substance use and records no current or past substance use disorder and a urine drug screen consistent with the prescribed oxycodone.
+    evidence: [DocumentReference/note-psych-eval]
+
+  - criterion: patient-education-and-disclosure
+    outcome: insufficient
+    fact: >-
+      No note in the chart records education, discussion or disclosure of the therapy, and none says it did not take place.
+    evidence: [DocumentReference/note-team-conference, DocumentReference/note-trial-request]
+
+  - criterion: psychological-screening
+    outcome: met
+    fact: >-
+      A clinical psychologist evaluated the patient on 2026-09-08.
+    evidence: [Procedure/psychological-evaluation, DocumentReference/note-psych-eval]
+
+  - criterion: trials-max-2-per-region-lifetime
+    outcome: met
+    fact: >-
+      The evaluation of 2026-05-18 says there was no previous trial or implant, so this would be the first trial.
+    evidence: [DocumentReference/note-pain-clinic-eval, DocumentReference/note-trial-request]
+
+  - criterion: leads-max-2-or-16-contacts
+    outcome: met
+    fact: >-
+      The request is for 1 lead and 8 contacts. That is within a maximum of 2 leads or 16 contacts.
+    evidence: [request.leads, request.contacts]
+
+  - criterion: repeat-trial-extenuating-circumstances
+    outcome: not_applicable
+    fact: >-
+      The evaluation of 2026-05-18 states that there was no previous spinal cord stimulator trial or implant, so the condition (a previous trial failed) does not hold.
+    evidence: []
+
+  - criterion: diagnosis-and-prior-therapies-in-record
+    outcome: met
+    fact: >-
+      The chart holds the diagnosis (chronic low back and left leg pain after lumbar surgery), the lumbar MRI of 2026-04-20 and each therapy tried with its result.
+    evidence: [Condition/chronic-pain, DiagnosticReport/mri-lumbar, DocumentReference/note-pain-clinic-eval, DocumentReference/note-pt-discharge, DocumentReference/note-postop, DocumentReference/note-pain-clinic-2021, DocumentReference/note-cbt-discharge, DocumentReference/note-pain-clinic-2022]

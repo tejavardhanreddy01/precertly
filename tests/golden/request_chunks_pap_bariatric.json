@@ -1,0 +1,218 @@
+{
+  "bariatric-01": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: laparoscopic Roux-en-Y gastric bypass"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 43644"
+    ]
+  ],
+  "bariatric-02": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: laparoscopic adjustable gastric banding"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 43770"
+    ]
+  ],
+  "bariatric-03": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: stand-alone laparoscopic sleeve gastrectomy"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 43775"
+    ]
+  ],
+  "bariatric-04": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: stand-alone laparoscopic sleeve gastrectomy"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 43775"
+    ]
+  ],
+  "bariatric-05": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: open Roux-en-Y gastric bypass"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 43846"
+    ]
+  ],
+  "bariatric-06": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: laparoscopic Roux-en-Y gastric bypass"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 43644"
+    ]
+  ],
+  "pap-01": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: single-level CPAP device (E0601)"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: E0601"
+    ]
+  ],
+  "pap-02": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: single-level CPAP device (E0601)"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: E0601"
+    ]
+  ],
+  "pap-03": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: continued coverage of the CPAP device (E0601) beyond the first three months"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: E0601"
+    ]
+  ],
+  "pap-04": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: bi-level device without back-up rate (E0470)"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: E0470"
+    ]
+  ],
+  "pap-05": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: single-level CPAP device (E0601)"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: E0601"
+    ]
+  ],
+  "pap-06": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: continued coverage of the CPAP device (E0601) beyond the first three months"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: E0601"
+    ]
+  ]
+}

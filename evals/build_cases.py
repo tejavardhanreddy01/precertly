@@ -13,15 +13,16 @@ Two steps:
        SYNTHEA_REFERENCE_DATE=20261001 SYNTHEA_OUTPUT=<dir> data/synthea/generate.sh 100
 
 2. build: add a case's history to that background from a set of facts, one set per case
-   (facet joint interventions, then PAP devices, then bariatric surgery). A case differs
+   (facet joint interventions, then PAP devices, bariatric surgery, then spinal cord
+   stimulators). A case differs
    from its variant's clean baseline only in the facts it overrides, so the notes,
    observations and procedures in a bundle always agree with each other, except where a
-   case is about a disagreement. Bariatric bundles also change the background itself: see
-   cases/bariatric/PLAN.md.
+   case is about a disagreement. Bariatric and spinal cord stimulator bundles also change the
+   background itself: see cases/bariatric/PLAN.md and cases/spinal-cord-stimulators/PLAN.md.
 
 The request itself is not in the bundle. Each case file states it in its `request` block
 (dates, procedure and codes; facet cases also region, levels, same-day blocks and
-`technique`). `technique` is a structured field written by hand in the case file, one of
+`technique`; stimulator cases also leads, contacts and place of service). `technique` is a structured field written by hand in the case file, one of
 medial_branch_block, intraarticular_injection or radiofrequency_ablation; nothing parses
 it from text.
 
@@ -1875,14 +1876,865 @@ BARIATRIC_CASES: dict[str, BariatricFacts] = {
     "bariatric-06": BariatricFacts(weight=117.5, diabetes=False),
 }
 
-CASES: dict[str, Facts | PapFacts | BariatricFacts] = {
-    **FACET_CASES,
-    **PAP_CASES,
-    **BARIATRIC_CASES,
+# --- Spinal cord stimulators (NCD 160.7, LCD L36204, article A57792): the history ---------
+
+# The shared background cannot serve these cases as it is. Its 11 clinic notes read "No
+# complaints" with acetaminophen as the only medication in every period an SCS history needs
+# to cover, and its ischemic heart disease and coronary intervention would defer any trial
+# lead. An SCS bundle therefore starts from the template with those removed and one DAST-10
+# total rewritten (cases/spinal-cord-stimulators/PLAN.md lists every change). The template
+# file, and the facet, PAP and bariatric bundles, are not touched.
+DAST_TOTAL = f"Observation/{_P}-7379-2f446a673ba9"  # total score 2 on 2025-07-15, rewritten to 0
+SCS_REMOVED: tuple[str, ...] = (
+    # the 11 background notes and their twin reports (identical text)
+    "DocumentReference/c51717c9-a06a-4067-edf7-7bedf17ccfa3",
+    "DiagnosticReport/97583fea-5ec2-bc35-1be2-623c4647d832",
+    "DocumentReference/7fc433c4-3564-21a6-91ec-bd0bd3789198",
+    "DiagnosticReport/29af9190-d89b-c5a0-52a3-541edede0ab1",
+    "DocumentReference/f4723689-faca-1ed4-6e53-7d891beca769",
+    "DiagnosticReport/9b135c75-6e31-1c97-7b77-80c680c058c0",
+    "DocumentReference/c42a95c7-ee92-41a6-d653-1f0f8ca6b198",
+    "DiagnosticReport/0a26b754-d88f-a285-331a-79e2ded1e796",
+    "DocumentReference/ab44a957-6c29-abeb-f2e2-bdc75e3bd474",
+    "DiagnosticReport/3790268a-1756-917a-c596-68cf287f853c",
+    "DocumentReference/f6ba0ccb-1752-effe-1bd8-851cd71b38a1",
+    "DiagnosticReport/2d959dc6-9c73-5be5-37cd-96cfb0b7ffb4",
+    "DocumentReference/ad8b6791-c5e2-872f-9f9d-901b0d809b9f",
+    "DiagnosticReport/b5a9e535-f29f-fe02-c6d2-d8f8809e4047",
+    "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2",
+    "DiagnosticReport/703eb6d6-25bc-c714-f55a-b35aafdf18fb",
+    "DocumentReference/8a804714-d88f-1efa-b374-09a2ded1640b",
+    "DiagnosticReport/842f4763-17a4-7525-d5ef-0fabb9c9939d",
+    "DocumentReference/8ce34cbb-7dcb-26e3-5bed-84b486df6b87",
+    "DiagnosticReport/ea559e77-5506-0eef-e976-c0ffe97ff036",
+    "DocumentReference/771daebe-064d-3403-07ae-f308433dd783",
+    "DiagnosticReport/cf4a10ce-e5a8-9a4e-5891-aee3559aac77",
+    # the cardiac coded resources
+    f"Condition/{_P}-4f8f-f53efc54cfc9",
+    f"Condition/{_P}-149d-10660d15eefd",
+    f"Encounter/{_P}-919a-852251f5aff3",
+    f"Encounter/{_P}-065e-55ee51cb2573",
+    f"Encounter/{_P}-4c99-3aab45f0cd0d",
+    f"Procedure/{_P}-c852-d61e8e01c819",
+    f"Procedure/{_P}-63b7-95497c5dd0b4",
+    f"Procedure/{_P}-f6e7-8385846bf707",
+    f"Procedure/{_P}-1674-33cf97dc9b5c",
+    f"Procedure/{_P}-5b70-175be4e23f55",
+    f"Procedure/{_P}-c5ed-5ffe4c89afec",
+    f"Observation/{_P}-3757-ee628716a210",
+    f"MedicationRequest/{_P}-7172-b7842d7a2b47",
+    f"MedicationRequest/{_P}-c0f4-15273b5391f3",
+    f"MedicationRequest/{_P}-acd3-2a7639746de8",
+    f"MedicationRequest/{_P}-d1b7-2b381bed9ed0",
+)
+
+# The settings a stimulator request may state, as the request chunk words them
+# (precertly.judgment.models.SCS_SETTINGS; a test keeps the two equal).
+SCS_SETTING_WORDS = {
+    "11": "office",
+    "19": "off-campus outpatient hospital",
+    "21": "inpatient hospital",
+    "22": "on-campus outpatient hospital",
+    "24": "ambulatory surgical center",
+}
+
+# One chronic pain history for all six cases: onset, then four modalities that fail.
+SCS_ONSET = date(2020, 6, 8)
+SCS_PCP = date(2020, 9, 14)  # naproxen, referral to physical therapy
+SCS_PT_START, SCS_PT_END = date(2020, 10, 5), date(2020, 12, 28)  # 12 weeks
+SCS_MRI_2021 = date(2021, 1, 19)  # reported in the surgical follow-up note
+SCS_SURGERY = date(2021, 4, 12)  # left L4-5 microdiscectomy
+SCS_POSTOP_MRI = date(2021, 7, 6)  # reported in the surgical follow-up note
+SCS_POSTOP = date(2021, 7, 13)
+SCS_PAIN_CLINIC = date(2021, 9, 21)  # gabapentin, duloxetine
+SCS_CBT_START, SCS_CBT_END = date(2022, 2, 7), date(2022, 4, 4)  # 8 weekly sessions
+SCS_PAIN_CLINIC_2022 = date(2022, 3, 15)  # oxycodone with acetaminophen
+SCS_MRI = date(2026, 4, 20)
+SCS_EVAL = date(2026, 5, 18)  # pain clinic re-evaluation
+SCS_BASELINE_NRS = 8
+# Permanent variant: psychological evaluation and team conference, education, a 7-day trial,
+# the surgical visit and the pre-anesthesia evaluation.
+SCS_PERMANENT_DATES = dict(
+    psych=date(2026, 6, 9),
+    conference=date(2026, 6, 23),
+    education=date(2026, 7, 7),
+    trial=date(2026, 8, 4),
+    trial_end=date(2026, 8, 11),
+    plan=date(2026, 9, 1),
+    preanesthesia=date(2026, 9, 28),
+)
+# Trial variant: the same steps, later, ending with the visit that requests the trial.
+SCS_TRIAL_DATES = dict(
+    psych=date(2026, 9, 8),
+    conference=date(2026, 9, 15),
+    education=date(2026, 9, 22),
+    request=date(2026, 9, 29),
+)
+
+PAIN_TEXT = "Chronic low back and left leg pain after lumbar surgery"
+CPT_SCS_TRIAL_LEADS = "63650"
+CPT_SCS_GENERATOR = "63685"
+SNOMED_CHRONIC_LOW_BACK_PAIN = "278860009"  # already used by the facet history
+
+# Statements the notes make. The notes are written from these, and the evidence lists and
+# the tests check the same strings, so a note and the fact a label cites cannot drift.
+S_ONSET = "Low back and left leg pain since {onset}, now present for {months} months."
+S_INTRACTABLE = (
+    f"Pain remains intractable: {SCS_BASELINE_NRS}/10 on the {NRS} despite the treatments above."
+)
+S_LATE_EVAL = "spinal cord stimulation is being considered as a late resort"
+S_NO_PREVIOUS = "No previous spinal cord stimulator trial or implant."
+S_PHYSICAL = "Physical evaluation, in person today:"
+S_PSYCH = "Psychological evaluation by a clinical psychologist"
+S_TEAM = "Attendees: pain physician, spine surgeon, clinical psychologist, physical therapist."
+S_CHRONIC_TEAM = "chronic intractable low back and left leg pain"
+S_LATE_TEAM = "spinal cord stimulation is a late resort for this patient"
+S_NO_SUBSTANCE = "no current or past substance use disorder"
+S_COCAINE_SHORT = "active cocaine use disorder"
+S_COCAINE = f"{S_COCAINE_SHORT}, moderate"
+SCS_LAST_USE = date(2026, 9, 4)  # scs-02: the patient's report of last cocaine use
+S_COCAINE_SCREEN = "Urine drug screen positive for cocaine metabolite on {day}."
+S_ADDICTION = "The patient declined the referral to addiction medicine."
+S_RISKS = "Extensive discussion of the risks and benefits of the therapy."
+S_FIRST_TRIAL = "This would be the patient's first trial."
+S_FIRST_PERMANENT = "This would be the patient's first permanent spinal cord stimulator."
+S_EARLIER_IMPLANT = "Spinal cord stimulator generator in the right gluteal pocket (implanted 2023)."
+S_ANALGESICS = "Analgesic medications unchanged during the trial."
+S_FUNCTION = "walking tolerance rose from 10 minutes to 40 minutes"
+S_POSITIVE = "Assessment: positive response to the trial."
+S_POSITIVE_PLAN = "positive response to the trial"
+S_TRIAL_PLACED = "temporary percutaneous epidural leads placed at T8-T10"
+S_PT = "no improvement in pain or function"
+S_NAPROXEN = "naproxen 500 mg twice daily from 2020-09-14 with minimal benefit"
+S_POSTOP_RETURN = "then the back and leg pain returned to its earlier level"
+S_CBT_RESULT = f"pain unchanged at {SCS_BASELINE_NRS}/10"
+S_MEDS_2022 = (
+    f"Pain remains {SCS_BASELINE_NRS}/10 on gabapentin 600 mg three times daily and duloxetine "
+    "60 mg daily, both at full doses."
+)
+
+# Text of the coded resources, as the chunker shows it.
+T_NAPROXEN = "Naproxen 500 mg oral tablet"
+T_GABAPENTIN = "Gabapentin 300 mg oral capsule"
+T_DULOXETINE = "Duloxetine 30 mg delayed-release oral capsule"
+T_OXYCODONE = "Oxycodone hydrochloride 5 mg and acetaminophen 325 mg oral tablet"
+T_PT = "Physical therapy, 12-week course"
+T_SURGERY = "Left L4-5 microdiscectomy"
+T_CBT = "Cognitive behavioral therapy for chronic pain, 8 weekly sessions"
+T_PSYCH_PROCEDURE = "Psychological evaluation by a clinical psychologist"
+T_TRIAL = "Spinal cord stimulator trial, temporary percutaneous epidural leads"
+T_CONFERENCE = "Multidisciplinary pain conference"
+T_COCAINE = "Cocaine use disorder"
+T_MRI_CONCLUSION = (
+    "Post-surgical changes at L4-5 with epidural scarring. No recurrent disc herniation. "
+    "No evidence of infection."
+)
+
+
+@dataclass(frozen=True)
+class ScsFacts:
+    """What is true in a stimulator case's chart. Defaults are the clean permanent case."""
+
+    variant: str = "permanent"
+    leads: int = 2
+    contacts: int = 16  # total across leads; every lead here has 8
+    place_of_service: str = "24"
+    trial_end_nrs: int = 2  # permanent: pain at the end of the 7-day trial, from 8/10
+    substance: bool = False  # trial: an active cocaine use disorder is documented
+    education: bool = True  # a visit with the risks-and-benefits discussion is documented
+    earlier_implant: bool = False  # permanent: the pre-anesthesia note records a 2023 generator
+
+    @property
+    def setting(self) -> str:
+        return SCS_SETTING_WORDS[self.place_of_service]
+
+    @property
+    def dates(self) -> dict[str, date]:
+        return SCS_TRIAL_DATES if self.variant == "trial" else SCS_PERMANENT_DATES
+
+
+def scs_relief(pre: int, post: int) -> int:
+    """Percent reduction, asserted to be a whole number so the stated figure is exact."""
+    percent, remainder = divmod((pre - post) * 100, pre)
+    assert remainder == 0, (pre, post)
+    return percent
+
+
+def scs_design_checks(f: ScsFacts) -> None:
+    """The design of a case, asserted, so a changed number cannot quietly move a label."""
+    assert f.variant in ("trial", "permanent")
+    assert f.place_of_service in SCS_SETTING_WORDS
+    assert f.contacts == 8 * f.leads, "every lead has 8 contacts"
+    assert _months_between(SCS_ONSET, SCS_EVAL) == 71
+    assert (SCS_PT_END - SCS_PT_START).days == 84 and (SCS_CBT_END - SCS_CBT_START).days == 56
+    assert f.variant == "trial" or f.leads in (2, 3)
+    if f.variant == "permanent":
+        assert (f.dates["trial_end"] - f.dates["trial"]).days == 7
+        percent = scs_relief(SCS_BASELINE_NRS, f.trial_end_nrs)
+        # the near miss sits exactly on the stated 50%; every other case clears it clearly
+        assert percent == 50 if f.trial_end_nrs == 4 else percent >= 60, percent
+    else:
+        assert f.leads == 1 and f.contacts == 8
+        assert not f.earlier_implant
+    for day in [*f.dates.values(), SCS_ONSET, SCS_PCP, SCS_PT_START, SCS_PT_END, SCS_SURGERY]:
+        assert day < REQUEST_DATE and day.weekday() < 5, day
+
+
+def scs_background(background: list[Resource]) -> list[Resource]:
+    """The template for a stimulator case: the 11 notes with their twins and the cardiac
+    cluster removed, and the DAST-10 total of 2025-07-15 rewritten to 0."""
+    removed = set(SCS_REMOVED)
+    refs = {f"{r['resourceType']}/{r['id']}" for r in background}
+    assert removed <= refs, sorted(removed - refs)
+    kept = [r for r in background if f"{r['resourceType']}/{r['id']}" not in removed]
+    assert len(SCS_REMOVED) == 38 and len(kept) == len(background) - 38 == 130
+    rewritten = 0
+    for resource in kept:
+        if f"{resource['resourceType']}/{resource['id']}" == DAST_TOTAL:
+            # the template has no item-level DAST-10 answers: the total stands alone
+            assert resource["valueQuantity"]["value"] == 2 and "component" not in resource
+            resource["valueQuantity"]["value"] = 0
+            rewritten += 1
+    assert rewritten == 1
+    return kept
+
+
+def _scs_leads(f: ScsFacts) -> str:
+    return f"{f.leads} percutaneous lead{'s' if f.leads > 1 else ''} ({f.contacts} contacts)"
+
+
+def _scs_medication(
+    med_id: str, text: str, when: date, status: str, dosage: str, encounter: str
+) -> Resource:
+    return {
+        "resourceType": "MedicationRequest",
+        "id": med_id,
+        "status": status,
+        "intent": "order",
+        "medicationCodeableConcept": {"text": text},
+        "authoredOn": when.isoformat(),
+        "encounter": {"reference": f"Encounter/{encounter}"},
+        "dosageInstruction": [{"text": dosage}],
+        "reasonReference": [{"reference": "Condition/chronic-pain"}],
+    }
+
+
+def _scs_procedure(
+    procedure_id: str,
+    text: str,
+    encounter: str,
+    *,
+    when: date | None = None,
+    period: tuple[date, date] | None = None,
+    coding: list[dict[str, str]] | None = None,
+    clock: str | None = None,
+) -> Resource:
+    resource: Resource = {
+        "resourceType": "Procedure",
+        "id": procedure_id,
+        "status": "completed",
+        "code": {"coding": coding, "text": text} if coding else {"text": text},
+    }
+    if period:
+        resource["performedPeriod"] = {"start": period[0].isoformat(), "end": period[1].isoformat()}
+    else:
+        assert when is not None
+        resource["performedDateTime"] = _at(when, clock)
+    resource["encounter"] = {"reference": f"Encounter/{encounter}"}
+    resource["reasonReference"] = [{"reference": "Condition/chronic-pain"}]
+    return resource
+
+
+def _scs_event_date(resource: Resource) -> str:
+    keys = ("effectiveDateTime", "authoredOn", "onsetDateTime", "date", "performedDateTime")
+    for key in (*keys, "recordedDate"):
+        if key in resource:
+            return resource[key][:10]
+    if "performedPeriod" in resource:
+        return resource["performedPeriod"]["start"]
+    return resource["period"]["start"]
+
+
+def _scs_order(resource: Resource) -> tuple[str, str]:
+    return _scs_event_date(resource), resource["resourceType"]
+
+
+def scs_history(f: ScsFacts) -> list[Resource]:
+    scs_design_checks(f)
+    d = f.dates
+    trial = f.variant == "trial"
+    months = _months_between(SCS_ONSET, SCS_EVAL)
+    onset = S_ONSET.format(onset=SCS_ONSET.isoformat(), months=months)
+    setting = f.setting
+    resources: list[Resource] = []
+
+    def visit(
+        when: date,
+        enc_id: str,
+        kind: str,
+        note_id: str,
+        title: str,
+        text: str,
+        start: date | None = None,
+    ) -> None:
+        """An encounter and the note written at its end; a course starts before its note."""
+        resources.extend(
+            [
+                _encounter(enc_id, start or when, kind, when if start else None),
+                _note(note_id, when, title, text, enc_id),
+            ]
+        )
+
+    resources.append(
+        {
+            "resourceType": "Condition",
+            "id": "chronic-pain",
+            "clinicalStatus": {"coding": [{"code": "active"}]},
+            "verificationStatus": {"coding": [{"code": "confirmed"}]},
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://snomed.info/sct",
+                        "code": SNOMED_CHRONIC_LOW_BACK_PAIN,
+                        "display": "Chronic low back pain (finding)",
+                    }
+                ],
+                "text": PAIN_TEXT,
+            },
+            "onsetDateTime": SCS_ONSET.isoformat(),
+            "recordedDate": SCS_PCP.isoformat(),
+        }
+    )
+
+    # --- the four modalities that fail ---------------------------------------------------
+    visit(
+        SCS_PCP,
+        "enc-pcp",
+        "Primary care visit",
+        "note-pcp",
+        "Primary care visit",
+        f"""Chief complaint: low back pain with pain down the left leg.
+History: low back pain that began on {SCS_ONSET.isoformat()} after lifting, radiating down the back of the left leg to the foot. No weakness. No bowel or bladder changes.
+Exam: tenderness over the lower lumbar paraspinal muscles. Straight-leg raise positive on the left. Strength 5/5 in both legs.
+Plan: naproxen 500 mg twice daily with food. Referral to physical therapy.
+""",
+    )
+    resources.append(
+        _scs_medication(
+            "naproxen",
+            T_NAPROXEN,
+            SCS_PCP,
+            "completed",
+            "1 tablet twice daily with food",
+            "enc-pcp",
+        )
+    )
+    visit(
+        SCS_PT_END,
+        "enc-pt",
+        "Physical therapy",
+        "note-pt-discharge",
+        "Physical therapy discharge summary",
+        f"""Course: {SCS_PT_START.isoformat()} to {SCS_PT_END.isoformat()} (12 weeks), 22 of 24 scheduled sessions attended.
+Treatment: core stabilization, flexion-based exercise, manual therapy and a home exercise program, performed as instructed.
+Outcome: {S_PT}. Pain {SCS_BASELINE_NRS}/10 on the {NRS} at discharge, unchanged from the start of therapy.
+Recommendation: return to the referring physician.
+""",
+        start=SCS_PT_START,
+    )
+    resources.append(
+        _scs_procedure(
+            "physical-therapy-course",
+            T_PT,
+            "enc-pt",
+            period=(SCS_PT_START, SCS_PT_END),
+            coding=[
+                {
+                    "system": "http://snomed.info/sct",
+                    "code": "91251008",
+                    "display": "Physical therapy procedure (regime/therapy)",
+                }
+            ],
+        )
+    )
+    visit(
+        SCS_POSTOP,
+        "enc-postop",
+        "Spine surgery follow-up",
+        "note-postop",
+        "Spine surgery follow-up",
+        f"""History: low back and left leg pain since {SCS_ONSET.isoformat()}. Lumbar MRI of {SCS_MRI_2021.isoformat()} showed a left paracentral disc herniation at L4-5 with compression of the left L5 root. Left L4-5 microdiscectomy was performed on {SCS_SURGERY.isoformat()}.
+Course: relief for about 6 weeks, {S_POSTOP_RETURN}. Lumbar MRI of {SCS_POSTOP_MRI.isoformat()}: no recurrent herniation or compressive lesion; post-surgical scarring at L4-5.
+Assessment: persistent pain after lumbar surgery, with no further surgical target.
+Plan: referral to the pain clinic.
+""",
+    )
+    resources.append(
+        _scs_procedure(
+            "lumbar-microdiscectomy",
+            T_SURGERY,
+            "enc-postop",
+            when=SCS_SURGERY,
+        )
+    )
+    visit(
+        SCS_PAIN_CLINIC,
+        "enc-pain-clinic-2021",
+        "Pain clinic visit",
+        "note-pain-clinic-2021",
+        "Pain clinic initial visit",
+        f"""History: low back and left leg pain since {SCS_ONSET.isoformat()}, {SCS_BASELINE_NRS}/10 on the {NRS}. Treatments so far: {S_NAPROXEN} (stopped); physical therapy for 12 weeks with {S_PT}; left L4-5 microdiscectomy on {SCS_SURGERY.isoformat()} with 6 weeks of relief.
+Exam: tenderness over the lower lumbar paraspinal muscles; reduced sensation over the left lateral calf; strength 5/5.
+Plan: gabapentin, increased to 600 mg three times daily, and duloxetine, increased to 60 mg daily. Review in 6 months.
+""",
+    )
+    resources += [
+        _scs_medication(
+            "gabapentin",
+            T_GABAPENTIN,
+            SCS_PAIN_CLINIC,
+            "active",
+            "increased to 600 mg three times daily",
+            "enc-pain-clinic-2021",
+        ),
+        _scs_medication(
+            "duloxetine",
+            T_DULOXETINE,
+            SCS_PAIN_CLINIC,
+            "active",
+            "increased to 60 mg once daily",
+            "enc-pain-clinic-2021",
+        ),
+    ]
+    visit(
+        SCS_PAIN_CLINIC_2022,
+        "enc-pain-clinic-2022",
+        "Pain clinic visit",
+        "note-pain-clinic-2022",
+        "Pain clinic follow-up",
+        f"""{S_MEDS_2022} Cognitive behavioral therapy for chronic pain was started on {SCS_CBT_START.isoformat()} (8 weekly sessions).
+Plan: add oxycodone 5 mg with acetaminophen 325 mg, up to 4 tablets a day. Continue gabapentin and duloxetine.
+""",
+    )
+    resources.append(
+        _scs_medication(
+            "oxycodone-apap",
+            T_OXYCODONE,
+            SCS_PAIN_CLINIC_2022,
+            "active",
+            "1 tablet up to 4 times daily as needed",
+            "enc-pain-clinic-2022",
+        )
+    )
+    visit(
+        SCS_CBT_END,
+        "enc-cbt",
+        "Cognitive behavioral therapy",
+        "note-cbt-discharge",
+        "Cognitive behavioral therapy discharge summary",
+        f"""Course: {SCS_CBT_START.isoformat()} to {SCS_CBT_END.isoformat()}, 8 weekly sessions, all attended.
+Treatment: pain coping skills, pacing and relaxation training, practiced between sessions.
+Outcome: skills learned and used; {S_CBT_RESULT} on the {NRS}.
+""",
+        start=SCS_CBT_START,
+    )
+    resources.append(
+        _scs_procedure("cbt-course", T_CBT, "enc-cbt", period=(SCS_CBT_START, SCS_CBT_END))
+    )
+
+    # --- the pain clinic re-evaluation ---------------------------------------------------
+    mri_report = f"""{SCS_MRI.isoformat()}
+MRI lumbar spine without contrast
+
+Indication: chronic low back and left leg pain after lumbar surgery.
+Findings: post-surgical changes at L4-5 with epidural scarring. No recurrent disc herniation. No significant central canal or foraminal narrowing at any level. No evidence of discitis, osteomyelitis or other infection. No mass.
+Impression: {T_MRI_CONCLUSION}
+"""
+    resources += [
+        _encounter("enc-mri", SCS_MRI, "Imaging visit"),
+        {
+            "resourceType": "DiagnosticReport",
+            "id": "mri-lumbar",
+            "status": "final",
+            "code": {"text": "MRI lumbar spine without contrast"},
+            "effectiveDateTime": SCS_MRI.isoformat(),
+            "encounter": {"reference": "Encounter/enc-mri"},
+            "conclusion": T_MRI_CONCLUSION,
+            "presentedForm": [_attachment(mri_report)],
+        },
+    ]
+    visit(
+        SCS_EVAL,
+        "enc-pain-clinic-eval",
+        "Pain clinic evaluation",
+        "note-pain-clinic-eval",
+        "Pain clinic re-evaluation",
+        f"""History: {onset} The pain is constant, worse with standing and walking, and the patient can walk for only 10 minutes. It followed a lifting injury and persisted after a left L4-5 microdiscectomy on {SCS_SURGERY.isoformat()}.
+
+Treatments tried: {S_NAPROXEN}; physical therapy for 12 weeks with {S_PT}; left L4-5 microdiscectomy with 6 weeks of relief; gabapentin 600 mg three times daily and duloxetine 60 mg daily since {SCS_PAIN_CLINIC.isoformat()} and oxycodone 5 mg with acetaminophen 325 mg, up to 4 tablets a day, since {SCS_PAIN_CLINIC_2022.isoformat()}, with the pain still {SCS_BASELINE_NRS}/10; cognitive behavioral therapy for chronic pain (8 sessions, 2022) with {S_CBT_RESULT}.
+
+{S_INTRACTABLE}
+
+Past history: left L4-5 microdiscectomy on {SCS_SURGERY.isoformat()}. {S_NO_PREVIOUS}
+
+{S_PHYSICAL} lumbar paraspinal tenderness, reduced sensation over the left lateral calf, strength 5/5 in both legs, straight-leg raise positive on the left, no signs of infection.
+
+Imaging: lumbar MRI of {SCS_MRI.isoformat()}: post-surgical changes at L4-5, no compressive lesion, no infection.
+
+Assessment: {PAIN_TEXT.lower()}, intractable to medication, physical therapy, surgery and psychological therapy.
+Plan: {S_LATE_EVAL}. Referral for psychological evaluation and review by the multidisciplinary pain team.
+""",
+    )
+    resources.append(
+        _score("pain-nrs-baseline", SCS_EVAL, SCS_BASELINE_NRS, "enc-pain-clinic-eval")
+    )
+
+    # --- psychological evaluation and the team conference --------------------------------
+    if f.substance:
+        substance = (
+            f"Substance use assessment: {S_COCAINE}. {S_COCAINE_SCREEN.format(day=d['psych'].isoformat())} "
+            "Oxycodone also detected, consistent with the prescription. "
+            f"The patient reports last use on {SCS_LAST_USE.isoformat()}. No alcohol misuse."
+        )
+        recommendation = (
+            "Psychological recommendation: defer until the substance use disorder is treated."
+        )
+    else:
+        substance = (
+            f"Substance use assessment: {S_NO_SUBSTANCE}. Urine drug screen of "
+            f"{d['psych'].isoformat()} consistent with the prescribed oxycodone, no other "
+            "substance. No alcohol misuse."
+        )
+        recommendation = (
+            "Psychological recommendation: no psychological contraindication to spinal cord "
+            "stimulation."
+        )
+    visit(
+        d["psych"],
+        "enc-psych-eval",
+        "Psychological evaluation",
+        "note-psych-eval",
+        "Psychological evaluation",
+        f"""{S_PSYCH}: structured clinical interview and review of the records.
+Mood and anxiety: no major depressive disorder, anxiety disorder or somatic symptom disorder. Mood is appropriate to the chronic pain.
+Pain-related coping: good; uses the pacing and relaxation skills from the 2022 therapy course. No cognitive impairment.
+{substance}
+{recommendation}
+""",
+    )
+    resources.append(
+        _scs_procedure(
+            "psychological-evaluation", T_PSYCH_PROCEDURE, "enc-psych-eval", when=d["psych"]
+        )
+    )
+    if f.substance:
+        resources.append(
+            {
+                "resourceType": "Condition",
+                "id": "cocaine-use-disorder",
+                "clinicalStatus": {"coding": [{"code": "active"}]},
+                "verificationStatus": {"coding": [{"code": "confirmed"}]},
+                "code": {"text": T_COCAINE},
+                "recordedDate": d["psych"].isoformat(),
+            }
+        )
+        team = (
+            f"Psychology reports an {S_COCAINE_SHORT}. Refer to addiction medicine first; "
+            "reconsider the trial after treatment."
+        )
+    else:
+        team = "Proceed to a spinal cord stimulator trial."
+    visit(
+        d["conference"],
+        "enc-team-conference",
+        T_CONFERENCE,
+        "note-team-conference",
+        T_CONFERENCE,
+        f"""{S_TEAM}
+Reviewed: the pain clinic evaluation of {SCS_EVAL.isoformat()} (physical evaluation), the psychological evaluation of {d["psych"].isoformat()}, the lumbar MRI of {SCS_MRI.isoformat()} and the treatments tried.
+Diagnosis: {S_CHRONIC_TEAM} after lumbar surgery.
+Team assessment: {S_LATE_TEAM}, after medication, physical therapy, surgery and psychological therapy.
+Recommendation: {team}
+""",
+    )
+    if f.education:
+        visit(
+            d["education"],
+            "enc-education",
+            "Spinal cord stimulation education visit",
+            "note-education",
+            "Spinal cord stimulation education visit",
+            f"""Education visit with the pain physician and the nurse. How a trial and a permanent implant work, the expected benefit and its limits (no guarantee of relief), and the risks: infection, bleeding, lead migration, nerve injury, device malfunction and the need for further surgery. Alternatives reviewed. Written material given. All questions answered.
+{S_RISKS} Signed consent for the trial.
+""",
+        )
+
+    if trial:
+        extra = (
+            f" {S_COCAINE_SCREEN.format(day=d['psych'].isoformat())} {S_ADDICTION}"
+            if f.substance
+            else ""
+        )
+        visit(
+            d["request"],
+            "enc-trial-request",
+            "Pain clinic visit",
+            "note-trial-request",
+            "Pain clinic visit, request for a spinal cord stimulator trial",
+            f"""Follow-up after the multidisciplinary pain conference of {d["conference"].isoformat()}. Pain {SCS_BASELINE_NRS}/10 on the {NRS}.{extra}
+{S_FIRST_TRIAL}
+Plan: spinal cord stimulator trial with {_scs_leads(f)}. Planned setting: {setting}. Request prior authorization.
+""",
+        )
+        return sorted(resources, key=_scs_order)
+
+    # --- permanent: the trial, the result, the surgical visit ----------------------------
+    percent = scs_relief(SCS_BASELINE_NRS, f.trial_end_nrs)
+    visit(
+        d["trial"],
+        "enc-trial",
+        "Spinal cord stimulator trial",
+        "note-trial-procedure",
+        "Procedure note, spinal cord stimulator trial",
+        f"""Indication: {S_CHRONIC_TEAM} after lumbar surgery.
+Procedure: {S_TRIAL_PLACED} under fluoroscopy and connected to an external pulse generator. Local anesthetic. No complications.
+Pain before the procedure: {SCS_BASELINE_NRS}/10 on the {NRS}.
+Plan: trial for 7 days, then removal of the leads.
+""",
+    )
+    resources += [
+        _scs_procedure(
+            "scs-trial",
+            T_TRIAL,
+            "enc-trial",
+            when=d["trial"],
+            coding=[{"system": CPT, "code": CPT_SCS_TRIAL_LEADS}],
+            clock=DURING,
+        ),
+        _score("pain-pre-trial", d["trial"], SCS_BASELINE_NRS, "enc-trial", clock=BEFORE),
+    ]
+    visit(
+        d["trial_end"],
+        "enc-trial-result",
+        "Spinal cord stimulator trial, end of trial",
+        "note-trial-result",
+        "Spinal cord stimulator trial, end of trial visit",
+        f"""The temporary leads were removed today after the 7-day trial.
+Pain: {SCS_BASELINE_NRS}/10 before the trial and {f.trial_end_nrs}/10 at the end of the 7-day trial on the {NRS}: ({SCS_BASELINE_NRS} - {f.trial_end_nrs}) / {SCS_BASELINE_NRS} = {percent}% reduction in target pain (low back and left leg pain).
+{S_ANALGESICS}
+Function: {S_FUNCTION}; the patient sat through a 60-minute meal.
+{S_POSITIVE}
+Plan: permanent implantation.
+""",
+    )
+    resources.append(_score("pain-end-trial", d["trial_end"], f.trial_end_nrs, "enc-trial-result"))
+    first = f"{S_FIRST_PERMANENT}\n" if not f.earlier_implant else ""
+    visit(
+        d["plan"],
+        "enc-permanent-plan",
+        "Surgical visit",
+        "note-permanent-plan",
+        "Surgical visit, permanent implantation",
+        f"""Trial of {d["trial"].isoformat()} to {d["trial_end"].isoformat()}: {S_POSITIVE_PLAN}.
+{first}Plan: permanent implantation of {_scs_leads(f)} with an implantable pulse generator. Planned setting: {setting}. Request prior authorization.
+""",
+    )
+    history = f"Past surgical history: left L4-5 microdiscectomy ({SCS_SURGERY.isoformat()})."
+    if f.earlier_implant:
+        history += f" {S_EARLIER_IMPLANT}"
+    visit(
+        d["preanesthesia"],
+        "enc-preanesthesia",
+        "Pre-anesthesia evaluation",
+        "note-preanesthesia",
+        "Pre-anesthesia evaluation",
+        f"""Planned procedure: permanent spinal cord stimulator implantation.
+{history}
+Medications: gabapentin, duloxetine, oxycodone with acetaminophen. No anticoagulants. No known allergies.
+Exam: airway Mallampati class 2; heart and lungs normal. ASA class 2.
+""",
+    )
+    return sorted(resources, key=_scs_order)
+
+
+S_RELIEF = "({pre} - {post}) / {pre} = {percent}% reduction in target pain"
+
+
+def _scs_relief_sentence(f: ScsFacts) -> str:
+    post = f.trial_end_nrs
+    return S_RELIEF.format(
+        pre=SCS_BASELINE_NRS, post=post, percent=scs_relief(SCS_BASELINE_NRS, post)
+    )
+
+
+def scs_label_phrases(f: ScsFacts) -> dict[str, dict[str, list[str]]]:
+    """For each note-backed criterion of the case's variant: every resource that states the
+    fact the label rests on, and the statements it must contain.
+
+    A statement is a substring of the decoded note, or of the chunk text of a coded resource.
+    The lists are complete and exact: a test checks that every cited resource contains its
+    statements and that a note carrying a criterion's marker (SCS_MARKERS) is cited. For a
+    criterion labeled insufficient because nothing addresses it, the list holds the notes that
+    would carry the fact and no statements: a test checks that they do not.
+    """
+    n = "DocumentReference/{}".format
+    d = f.dates
+    onset = S_ONSET.format(onset=SCS_ONSET.isoformat(), months=_months_between(SCS_ONSET, SCS_EVAL))
+    phrases: dict[str, dict[str, list[str]]] = {
+        "late-resort-chronic-intractable-pain": {
+            "Condition/chronic-pain": [PAIN_TEXT],
+            n("note-pain-clinic-eval"): [onset, S_INTRACTABLE, S_LATE_EVAL],
+            n("note-team-conference"): [S_CHRONIC_TEAM, S_LATE_TEAM],
+        },
+        "other-modalities-tried-or-unsuitable": {
+            "MedicationRequest/naproxen": [T_NAPROXEN],
+            "MedicationRequest/gabapentin": [T_GABAPENTIN],
+            "MedicationRequest/duloxetine": [T_DULOXETINE],
+            "MedicationRequest/oxycodone-apap": [T_OXYCODONE],
+            "Procedure/physical-therapy-course": [T_PT],
+            "Procedure/lumbar-microdiscectomy": [T_SURGERY],
+            "Procedure/cbt-course": [T_CBT],
+            n("note-pt-discharge"): [S_PT],
+            n("note-postop"): [S_POSTOP_RETURN],
+            n("note-pain-clinic-2021"): [S_NAPROXEN],
+            n("note-cbt-discharge"): [S_CBT_RESULT],
+            n("note-pain-clinic-2022"): [S_MEDS_2022],
+            n("note-pain-clinic-eval"): [S_INTRACTABLE],
+        },
+        "multidisciplinary-screening": {
+            "Encounter/enc-team-conference": [T_CONFERENCE],
+            n("note-team-conference"): [S_TEAM],
+            n("note-psych-eval"): [S_PSYCH],
+            n("note-pain-clinic-eval"): [S_PHYSICAL],
+        },
+        "screening-documented-in-chart": {
+            n("note-pain-clinic-eval"): [onset, S_PHYSICAL],
+            n("note-psych-eval"): [S_PSYCH],
+            n("note-team-conference"): [S_TEAM],
+        },
+        "diagnosis-and-prior-therapies-in-record": {
+            "Condition/chronic-pain": [PAIN_TEXT],
+            "DiagnosticReport/mri-lumbar": [T_MRI_CONCLUSION],
+            n("note-pain-clinic-eval"): [onset, S_INTRACTABLE],
+            n("note-pt-discharge"): [S_PT],
+            n("note-postop"): [S_POSTOP_RETURN],
+            n("note-pain-clinic-2021"): [S_NAPROXEN],
+            n("note-cbt-discharge"): [S_CBT_RESULT],
+            n("note-pain-clinic-2022"): [S_MEDS_2022],
+        },
+    }
+    if f.variant == "trial":
+        if f.substance:
+            substance = {
+                "Condition/cocaine-use-disorder": [T_COCAINE],
+                n("note-psych-eval"): [S_COCAINE],
+                n("note-team-conference"): [S_COCAINE_SHORT],
+                n("note-trial-request"): [
+                    S_COCAINE_SCREEN.format(day=d["psych"].isoformat()),
+                    S_ADDICTION,
+                ],
+            }
+        else:
+            substance = {n("note-psych-eval"): [S_NO_SUBSTANCE]}
+        education = (
+            {n("note-education"): [S_RISKS]}
+            if f.education
+            else {n("note-team-conference"): [], n("note-trial-request"): []}
+        )
+        phrases |= {
+            "no-active-substance-abuse": substance,
+            "patient-education-and-disclosure": education,
+            "psychological-screening": {
+                "Procedure/psychological-evaluation": [T_PSYCH_PROCEDURE],
+                n("note-psych-eval"): [S_PSYCH],
+            },
+            "trials-max-2-per-region-lifetime": {
+                n("note-pain-clinic-eval"): [S_NO_PREVIOUS],
+                n("note-trial-request"): [S_FIRST_TRIAL],
+            },
+        }
+        return phrases
+    score = "Value: {} {{score}}".format
+    pre, post = SCS_BASELINE_NRS, f.trial_end_nrs
+    relief = _scs_relief_sentence(f)
+    phrases |= {
+        "trial-pain-relief-before-permanent": {
+            "Procedure/scs-trial": [T_TRIAL],
+            "Observation/pain-pre-trial": [score(pre), f"Date: {d['trial'].isoformat()}"],
+            "Observation/pain-end-trial": [score(post), f"Date: {d['trial_end'].isoformat()}"],
+            n("note-trial-procedure"): [S_TRIAL_PLACED],
+            n("note-trial-result"): [relief],
+        },
+        "trial-success-50pct-and-function": {
+            "Observation/pain-pre-trial": [score(pre)],
+            "Observation/pain-end-trial": [score(post)],
+            n("note-trial-result"): [relief, S_ANALGESICS, S_FUNCTION],
+        },
+        "positive-trial-documented": {
+            n("note-trial-result"): [S_POSITIVE],
+            n("note-permanent-plan"): [S_POSITIVE_PLAN],
+        },
+        "one-permanent-stimulator-per-lifetime": {
+            n("note-pain-clinic-eval"): [S_NO_PREVIOUS],
+            **(
+                {n("note-preanesthesia"): [S_EARLIER_IMPLANT]}
+                if f.earlier_implant
+                else {n("note-permanent-plan"): [S_FIRST_PERMANENT]}
+            ),
+        },
+    }
+    return phrases
+
+
+# A statement that only one criterion's resources should make: a note that carries it must be
+# cited by that criterion (tested). Only the criteria of the case's variant are checked.
+SCS_MARKERS: dict[str, str] = {
+    "late-resort-chronic-intractable-pain": r"late resort",
+    "no-active-substance-abuse": r"substance use|cocaine",
+    "patient-education-and-disclosure": r"risks and benefits",
+    "psychological-screening": r"Psychological evaluation by a clinical psychologist",
+    "trials-max-2-per-region-lifetime": r"first trial|No previous spinal cord stimulator trial",
+    "trial-success-50pct-and-function": r"reduction in target pain",
+    "positive-trial-documented": r"positive response",
+    "one-permanent-stimulator-per-lifetime": (
+        r"No previous spinal cord stimulator|first permanent spinal cord stimulator"
+        r"|Spinal cord stimulator generator"
+    ),
 }
 
 
-def label_evidence(facts: Facts | PapFacts | BariatricFacts) -> dict[str, list[str]]:
+def scs_label_evidence(f: ScsFacts) -> dict[str, list[str]]:
+    """For each scored criterion of the case's variant, every resource or request field that
+    states the fact. The request-stage criteria cite the request, as GUIDELINES rule 7 says."""
+    evidence = {criterion: list(refs) for criterion, refs in scs_label_phrases(f).items()}
+    evidence["leads-max-2-or-16-contacts"] = ["request.leads", "request.contacts"]
+    if f.variant == "trial":
+        evidence["repeat-trial-extenuating-circumstances"] = []  # not_applicable: nothing cited
+    else:
+        evidence["permanent-placed-in-asc-or-hospital"] = ["request.place_of_service"]
+    return evidence
+
+
+SCS_CASES: dict[str, ScsFacts] = {
+    "scs-01": ScsFacts(),
+    "scs-02": ScsFacts(variant="trial", leads=1, contacts=8, place_of_service="22", substance=True),
+    "scs-03": ScsFacts(leads=3, contacts=24, place_of_service="22", trial_end_nrs=4),
+    "scs-04": ScsFacts(variant="trial", leads=1, contacts=8, education=False),
+    "scs-05": ScsFacts(earlier_implant=True),
+    "scs-06": ScsFacts(place_of_service="11"),
+}
+
+CASES: dict[str, Facts | PapFacts | BariatricFacts | ScsFacts] = {
+    **FACET_CASES,
+    **PAP_CASES,
+    **BARIATRIC_CASES,
+    **SCS_CASES,
+}
+
+
+def label_evidence(facts: Facts | PapFacts | BariatricFacts | ScsFacts) -> dict[str, list[str]]:
+    if isinstance(facts, ScsFacts):
+        return scs_label_evidence(facts)
     if isinstance(facts, BariatricFacts):
         return bariatric_label_evidence(facts)
     if isinstance(facts, PapFacts):
@@ -1890,17 +2742,21 @@ def label_evidence(facts: Facts | PapFacts | BariatricFacts) -> dict[str, list[s
     return facet_label_evidence(facts)
 
 
-def history(facts: Facts | PapFacts | BariatricFacts) -> list[Resource]:
+def history(facts: Facts | PapFacts | BariatricFacts | ScsFacts) -> list[Resource]:
+    if isinstance(facts, ScsFacts):
+        return scs_history(facts)
     if isinstance(facts, BariatricFacts):
         return bariatric_history(facts)
     return pap_history(facts) if isinstance(facts, PapFacts) else facet_history(facts)
 
 
 def case_path(case_id: str) -> Path:
-    """The case file: evals/cases/<facet|pap|bariatric>/<case id>.yaml."""
+    """The case file: evals/cases/<facet|pap|bariatric|spinal-cord-stimulators>/<case id>.yaml."""
     facts = CASES[case_id]
     folder = (
-        "bariatric"
+        "spinal-cord-stimulators"
+        if isinstance(facts, ScsFacts)
+        else "bariatric"
         if isinstance(facts, BariatricFacts)
         else "pap"
         if isinstance(facts, PapFacts)
@@ -1935,6 +2791,8 @@ def build(case_id: str) -> dict[str, Any]:
     facts = CASES[case_id]
     if isinstance(facts, BariatricFacts):
         background = bariatric_background(background, facts)
+    elif isinstance(facts, ScsFacts):
+        background = scs_background(background)
     patient_id = next(r["id"] for r in background if r["resourceType"] == "Patient")
     added = history(facts)
     for resource in added:

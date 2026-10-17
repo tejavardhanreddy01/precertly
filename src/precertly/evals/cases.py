@@ -15,11 +15,12 @@ from pydantic import BaseModel, Field, model_validator
 from precertly.judgment.logic import JUDGED_STAGES as SCORED_STAGES
 from precertly.judgment.logic import judged_criteria as scored_criteria
 from precertly.judgment.logic import overall_outcome
-from precertly.judgment.models import FACET_FIELDS, Outcome
+from precertly.judgment.models import FACET_FIELDS, SCS_FIELDS, Outcome
 from precertly.judgment.models import PriorAuthRequest as Request
 
 EVALS_DIR = Path(__file__).resolve().parents[3] / "evals"
 FACET_POLICY = "facet-joint-interventions"
+SCS_POLICY = "spinal-cord-stimulator"
 
 
 class Label(BaseModel):
@@ -77,6 +78,18 @@ class EvalCase(BaseModel):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _scs_request_complete(self) -> EvalCase:
+        """A stimulator case needs the stimulator request fields and a place of service,
+        whatever its codes say, so a mistyped code cannot turn it into a non-stimulator case."""
+        if self.policy == SCS_POLICY:
+            missing = [
+                f for f in (*SCS_FIELDS, "place_of_service") if getattr(self.request, f) is None
+            ]
+            if missing:
+                raise ValueError(f"{self.id}: a {SCS_POLICY} request must set {', '.join(missing)}")
+        return self
+
     def outcomes(self) -> dict[str, Outcome]:
         return {label.criterion: label.outcome for label in self.expected}
 
@@ -100,6 +113,7 @@ def load_cases(directory: Path = EVALS_DIR / "cases") -> dict[str, EvalCase]:
 __all__ = [
     "EVALS_DIR",
     "FACET_POLICY",
+    "SCS_POLICY",
     "SCORED_STAGES",
     "ChangedLabel",
     "EvalCase",
