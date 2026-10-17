@@ -47,6 +47,23 @@ def test_a_facet_request_missing_a_facet_field_is_rejected(field):
         PriorAuthRequest.model_validate(without(FACET_REQUEST, field))
 
 
+def test_same_day_blocks_is_a_required_facet_field():
+    """Named outright, so dropping it from FACET_FIELDS cannot silently remove this check."""
+    assert "same_day_blocks" in FACET_FIELDS
+    with pytest.raises(ValidationError, match="same_day_blocks"):
+        PriorAuthRequest.model_validate(without(FACET_REQUEST, "same_day_blocks"))
+    with pytest.raises(ValidationError, match="same_day_blocks"):
+        PriorAuthRequest.model_validate(FACET_REQUEST | {"same_day_blocks": None})
+    # an empty list is an answer ("none listed") and stays valid
+    assert PriorAuthRequest.model_validate(FACET_REQUEST | {"same_day_blocks": []})
+
+
+def test_a_facet_case_missing_same_day_blocks_fails_to_load():
+    request = without(FACET_REQUEST, "same_day_blocks")
+    with pytest.raises(ValidationError, match="same_day_blocks"):
+        EvalCase.model_validate(FACET_CASE | {"request": request})
+
+
 def test_a_facet_request_with_empty_levels_is_rejected():
     with pytest.raises(ValidationError):
         PriorAuthRequest.model_validate(FACET_REQUEST | {"levels": []})
