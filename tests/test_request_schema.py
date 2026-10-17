@@ -13,10 +13,10 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from precertly.evals.cases import EVALS_DIR, FACET_POLICY, EvalCase, load_cases
+from precertly.evals.cases import EVALS_DIR, FACET_POLICY, SCS_POLICY, EvalCase, load_cases
 from precertly.judgment import rules
-from precertly.judgment.models import FACET_FIELDS, PriorAuthRequest
-from precertly.judgment.structured import FACET_CODES, StructuredChart
+from precertly.judgment.models import FACET_FIELDS, SCS_FIELDS, SCS_SETTINGS, PriorAuthRequest
+from precertly.judgment.structured import FACET_CODES, SCS_CODES, StructuredChart
 from precertly.policies import load_policies
 
 GOLDEN = Path(__file__).parent / "golden" / "facet_request_chunks.json"
@@ -28,6 +28,21 @@ PAP_REQUEST = {
     "service_date": "2026-10-19",
     "procedure": "continuous positive airway pressure device",
     "codes": ["E0601"],
+}
+BARIATRIC_REQUEST = {
+    "date": "2026-10-05",
+    "service_date": "2026-10-19",
+    "procedure": "laparoscopic Roux-en-Y gastric bypass",
+    "codes": ["43644"],
+}
+SCS_REQUEST = {
+    "date": "2026-10-05",
+    "service_date": "2026-10-19",
+    "procedure": "permanent implantation of a spinal cord stimulator",
+    "codes": ["63650", "63685"],
+    "leads": 2,
+    "contacts": 16,
+    "place_of_service": "24",
 }
 
 
@@ -218,3 +233,106 @@ def test_pap_and_bariatric_request_chunks_match_the_golden():
     assert sorted(cases) == sorted(golden)
     for case_id, case in cases.items():
         assert [[c.id, c.text] for c in case.request.chunks()] == golden[case_id], case_id
+
+
+# --- (vi) the spinal cord stimulator fields ---------------------------------------------
+
+
+def test_an_scs_request_loads_and_renders_its_fields_in_plain_words():
+    request = PriorAuthRequest.model_validate(SCS_REQUEST)
+    assert [[c.id, c.text] for c in request.chunks()] == [
+        ["request.date", "Request date: 2026-10-05"],
+        ["request.service_date", "Planned date of service: 2026-10-19"],
+        [
+            "request.procedure",
+            "Requested procedure: permanent implantation of a spinal cord stimulator",
+        ],
+        ["request.codes", "Procedure codes: 63650, 63685"],
+        ["request.leads", "Number of leads: 2"],
+        ["request.contacts", "Total number of contacts: 16"],
+        ["request.place_of_service", "Place of service: ambulatory surgical center (code 24)"],
+    ]
+
+
+@pytest.mark.parametrize("field", [*SCS_FIELDS, "place_of_service"])
+def test_an_scs_request_missing_a_field_is_rejected(field):
+    with pytest.raises(ValidationError, match=field):
+        PriorAuthRequest.model_validate(without(SCS_REQUEST, field))
+    with pytest.raises(ValidationError, match=field):
+        PriorAuthRequest.model_validate(SCS_REQUEST | {field: None})
+
+
+@pytest.mark.parametrize("code", sorted(SCS_CODES))
+def test_any_scs_code_makes_it_an_scs_request(code):
+    with pytest.raises(ValidationError, match="leads, contacts, place_of_service"):
+        PriorAuthRequest.model_validate(PAP_REQUEST | {"codes": ["E0601", code]})
+
+
+@pytest.mark.parametrize("field", SCS_FIELDS)
+@pytest.mark.parametrize(
+    "request_fields",
+    [PAP_REQUEST, BARIATRIC_REQUEST, FACET_REQUEST],
+    ids=["pap", "bariatric", "facet"],
+)
+def test_scs_fields_on_a_non_scs_request_are_rejected(request_fields, field):
+    with pytest.raises(ValidationError, match=field):
+        PriorAuthRequest.model_validate(request_fields | {field: 2})
+
+
+def test_a_request_with_facet_and_scs_codes_is_rejected():
+    with pytest.raises(ValidationError, match="both facet and spinal cord stimulator"):
+        PriorAuthRequest.model_validate(
+            FACET_REQUEST
+            | {"codes": ["64635", "63650"], "leads": 1, "contacts": 8, "place_of_service": "24"}
+        )
+
+
+def test_place_of_service_must_be_one_of_the_stimulator_settings():
+    for code in SCS_SETTINGS:
+        assert PriorAuthRequest.model_validate(SCS_REQUEST | {"place_of_service": code})
+    for code in ("12", "23", "81"):
+        with pytest.raises(ValidationError, match="place_of_service"):
+            PriorAuthRequest.model_validate(SCS_REQUEST | {"place_of_service": code})
+
+
+def test_contacts_cannot_be_fewer_than_leads_and_both_are_positive():
+    with pytest.raises(ValidationError, match="fewer than"):
+        PriorAuthRequest.model_validate(SCS_REQUEST | {"leads": 3, "contacts": 2})
+    for field in SCS_FIELDS:
+        with pytest.raises(ValidationError):
+            PriorAuthRequest.model_validate(SCS_REQUEST | {field: 0})
+
+
+def test_place_of_service_is_still_not_rendered_for_other_requests():
+    for fields in (FACET_REQUEST, PAP_REQUEST, BARIATRIC_REQUEST):
+        request = PriorAuthRequest.model_validate(fields | {"place_of_service": "11"})
+        assert all("place" not in c.id for c in request.chunks())
+        assert request.chunks() == PriorAuthRequest.model_validate(fields).chunks()
+
+
+def test_an_scs_case_without_the_fields_fails_to_load_even_without_an_scs_code():
+    case = {
+        "id": "scs-x",
+        "policy": SCS_POLICY,
+        "policy_version": {},
+        "variant": "trial",
+        "request": {k: v for k, v in PAP_REQUEST.items()},
+        "bundle": "bundles/scs-x.json",
+        "expected": [{"criterion": "c", "outcome": "met", "fact": "f"}],
+        "expected_overall": "met",
+        "notes": "n",
+    }
+    PriorAuthRequest.model_validate(case["request"])  # the request alone cannot tell
+    with pytest.raises(ValidationError, match="leads, contacts, place_of_service"):
+        EvalCase.model_validate(case)
+
+
+def test_scs_codes_are_the_policys_variant_codes_and_no_other_policys():
+    policies = load_policies()
+    routed = {code for variant in policies[SCS_POLICY].variants for code in variant.codes}
+    assert routed == SCS_CODES
+    assert not SCS_CODES & FACET_CODES
+    for policy_id, policy in policies.items():
+        if policy_id != SCS_POLICY:
+            for variant in policy.variants:
+                assert not set(variant.codes) & SCS_CODES, (policy_id, variant.id)

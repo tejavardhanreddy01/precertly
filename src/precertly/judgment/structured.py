@@ -27,6 +27,10 @@ FACET_RFA = {
 # Every facet procedure code. PriorAuthRequest uses it to tell a facet request, which must
 # carry technique, region, levels and same_day_blocks, from any other request.
 FACET_CODES = frozenset().union(*FACET_INJECTION.values(), *FACET_RFA.values())
+# Spinal cord stimulator code numbers: the policy's variants route on these (numbers only,
+# no descriptors). PriorAuthRequest uses them to tell a stimulator request, which must carry
+# leads, contacts and a place of service, from any other request.
+SCS_CODES = frozenset({"63650", "63655", "63685"})
 REGIONS = {
     "cervical": "cervical_thoracic",
     "thoracic": "cervical_thoracic",
