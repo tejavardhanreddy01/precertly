@@ -54,6 +54,7 @@ Some criteria have a `condition` in the policy file (for example, a rule that ap
 ```bash
 uv run python -m precertly.evals.run --estimate   # calls, tokens and time; no AWS, no database
 uv run python -m precertly.evals.run              # real run: needs the local database and AWS credentials
+uv run python -m precertly.evals.run --prompt-version 4   # experimental line-handle prompt (experiment 2); 3 is the default
 ```
 
 A real run ingests each case, judges every chart- and request-stage criterion, and writes all verdicts, rationales and citations to `evals/results/`. Where the label is not `not_applicable`, a criterion the agent finds not applicable counts as `met` when scoring, because that is its effect on the case outcome.

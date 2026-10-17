@@ -31,6 +31,23 @@ def _final(verdict: dict[str, Any]) -> str:
     return verdict["outcome"] if verdict["applicable"] else "not_applicable"
 
 
+def difference_cause(a: dict[str, Any], b: dict[str, Any]) -> str:
+    """Why two verdicts on the same criterion differ.
+
+    "citation verified in one run only": the model gave the same outcome in both runs and
+    one was invalidated. "model outcome changed": the model's own outcome differs.
+    "applicability changed": same outcome, both valid, but only one found that the
+    criterion's condition does not hold.
+    """
+    if a["model_outcome"] != b["model_outcome"]:
+        return "model outcome changed"
+    if (a["invalidated"] is None) != (b["invalidated"] is None):
+        return "citation verified in one run only"
+    if a["applicable"] != b["applicable"]:
+        return "applicability changed"
+    return "other"
+
+
 def compare(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     """What differs between two runs, and whether they are a clean pair."""
     va, vb = _verdicts(a), _verdicts(b)
@@ -67,7 +84,13 @@ def compare(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
         "verdicts": len(shared),
         "evidence_identical": sum(va[k]["chunk_ids"] == vb[k]["chunk_ids"] for k in shared),
         "verdicts_differ": [
-            {"case": k[0], "criterion": k[1], "a": _final(va[k]), "b": _final(vb[k])}
+            {
+                "case": k[0],
+                "criterion": k[1],
+                "a": _final(va[k]),
+                "b": _final(vb[k]),
+                "cause": difference_cause(va[k], vb[k]),
+            }
             for k in shared
             if _final(va[k]) != _final(vb[k])
         ],

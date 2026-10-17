@@ -28,6 +28,10 @@ class EvidenceChunk(BaseModel):
     id: str
     text: str
     effective_date: date | None = None
+    # True for a verbatim slice of a free-text attachment (a note or a report's
+    # presentedForm: the chunker set char_start), False for text rendered from coded
+    # fields or a request field. Free text is split into lines; the rest is one line.
+    free_text: bool = False
 
 
 class PriorAuthRequest(BaseModel):
@@ -72,6 +76,21 @@ class Citation(BaseModel):
     quote: str = Field(description="Words copied exactly from that evidence item")
 
 
+# Why a verdict was invalidated. Older results files record only the reason text; see
+# judge.invalidation_kind for how it maps to these.
+InvalidationKind = Literal[
+    "no_usable_answer",
+    "quote_not_found",
+    "unknown_handle",
+    "citation_too_long",
+    "handle_mismatch",
+    "missing_citation",
+    "chart_citation_required",
+    "condition_evidence",
+    "condition_contradicts_computed",
+]
+
+
 class ModelJudgment(BaseModel):
     """Judgment of one coverage criterion against the evidence provided."""
 
@@ -91,12 +110,18 @@ class ModelJudgment(BaseModel):
 
 
 class VerifiedCitation(BaseModel):
-    """A citation whose quote was found in the chunk, with its position there."""
+    """A citation checked against its chunk: the quoted text and its position there.
+
+    From verifier version 3 the quote is the cited lines, extracted by the verifier, and
+    first_line / last_line give them; earlier files hold the model's own verified quote.
+    """
 
     chunk_id: str
     quote: str
     char_start: int
     char_end: int
+    first_line: int | None = None
+    last_line: int | None = None
 
     @property
     def resource(self) -> str:
@@ -131,6 +156,7 @@ class ShadowVerdict(BaseModel):
     outcome: Literal["met", "not_met", "insufficient"]
     applicable: bool
     invalidated: str | None
+    invalidation: InvalidationKind | None = None
     model_outcome: str
     citations: list[VerifiedCitation]
     usage: LLMUsage
@@ -146,9 +172,10 @@ class CriterionVerdict(BaseModel):
     confidence: float
     rationale: str
     citations: list[VerifiedCitation] = Field(default_factory=list)
-    # Set when the model's answer was overridden: a quote was not found in its chunk, or
-    # a met / not_met answer cited nothing. The outcome is then "insufficient".
+    # Set when the model's answer was overridden: a citation did not check out, or the
+    # citations do not meet what the outcome needs. The outcome is then "insufficient".
     invalidated: str | None = None
+    invalidation: InvalidationKind | None = None  # the kind of invalidated, from version 3
     model_outcome: str
     chunk_ids: list[str] = Field(default_factory=list, description="Evidence shown to the model")
     usage: LLMUsage
@@ -172,6 +199,7 @@ class CriterionVerdict(BaseModel):
             rationale=self.rationale,
             citations=self.shadow.citations,
             invalidated=self.shadow.invalidated,
+            invalidation=self.shadow.invalidation,
             model_outcome=self.shadow.model_outcome,
             chunk_ids=self.chunk_ids,
             usage=self.shadow.usage,

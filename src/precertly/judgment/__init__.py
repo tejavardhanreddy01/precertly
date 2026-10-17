@@ -2,7 +2,7 @@
 
 from precertly.judgment.evidence import ChartEvidence, retrieval_query
 from precertly.judgment.judge import (
-    VERIFIER_VERSION,
+    VERIFIER_VERSIONS,
     condition_citation_problem,
     find_quote,
     judge_case,
@@ -32,7 +32,7 @@ __all__ = [
     "RULES",
     "RULES_VERSION",
     "SYSTEM",
-    "VERIFIER_VERSION",
+    "VERIFIER_VERSIONS",
     "CaseJudgment",
     "ChartEvidence",
     "ChecklistItem",

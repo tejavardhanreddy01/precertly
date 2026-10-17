@@ -1,3 +1,5 @@
+import hashlib
+
 import pytest
 
 from precertly.evals import load_cases
@@ -83,7 +85,11 @@ def test_calling_a_failed_criterion_not_applicable_is_also_a_false_approval():
 def test_too_cautious_is_wrong_but_not_a_false_approval():
     case = CASES["facet-01"]
     label = case.expected[0]
-    cautious = {label.criterion: _verdict(label, "insufficient", cite=[], invalidated="x")}
+    cautious = {
+        label.criterion: _verdict(
+            label, "insufficient", cite=[], invalidated="met with no citation"
+        )
+    }
     summary = summarize([score_case(case, _judgment(case, cautious, overall=Outcome.INSUFFICIENT))])
     assert (summary.false_approvals, summary.cases_correct) == (0, 0)
     assert summary.criteria_correct == summary.scored_criteria - 1
@@ -210,12 +216,14 @@ def test_runner_saves_after_every_case_and_can_be_resumed(tmp_path, monkeypatch)
     from precertly.evals import run
 
     metadata = {"run_date": "2026-10-13", "git_sha": "abc"}
-    monkeypatch.setattr(run, "run_metadata", lambda rules=False: dict(metadata))
+    monkeypatch.setattr(
+        run, "run_metadata", lambda rules=False, prompt_version=None: dict(metadata)
+    )
     out = tmp_path / "results.json"
     seen_on_disk = []
 
     def fake_run(crash_after=None):
-        async def _run(cases, save, rules=False):
+        async def _run(cases, save, rules=False, prompt_version="3"):
             results = []
             for number, case in enumerate(cases, start=1):
                 judgment = _judgment(case)
@@ -247,7 +255,7 @@ def test_runner_saves_after_every_case_and_can_be_resumed(tmp_path, monkeypatch)
     assert finished["summary"]["cases"] == 3
 
 
-def test_unusable_answers_are_counted_apart_from_quote_invalidations():
+def test_invalidations_are_counted_by_kind_with_unusable_answers_apart():
     case = CASES["facet-01"]
     first, second = case.expected[0], case.expected[1]
     no_answer = _verdict(first, "insufficient", cite=[], invalidated="no structured answer: x")
@@ -259,7 +267,8 @@ def test_unusable_answers_are_counted_apart_from_quote_invalidations():
     )
 
     assert summary.invalidated_verdicts == 2
-    assert (summary.quote_invalidations, summary.unusable_answers) == (1, 1)
+    assert summary.invalidations_by_kind == {"no_usable_answer": 1, "quote_not_found": 1}
+    assert summary.unusable_answers == 1
     assert summary.unusable_answers_by_case == {"facet-01": 1}
     assert summary.unusable_answers_by_criterion == {first.criterion: 1}
 
@@ -292,7 +301,13 @@ def test_a_pair_is_clean_only_with_identical_settings_and_no_unusable_answers():
     noisy = compare(_payload(ids), _payload(ids, flip={("facet-01", criterion)}))
     assert noisy["clean"]  # differing verdicts are the noise being measured, not a defect
     assert noisy["verdicts_differ"] == [
-        {"case": "facet-01", "criterion": criterion, "a": "met", "b": "insufficient"}
+        {
+            "case": "facet-01",
+            "criterion": criterion,
+            "a": "met",
+            "b": "insufficient",
+            "cause": "other",
+        }
     ]
 
     broken = compare(_payload(ids), _payload(ids, unusable={("facet-02", criterion)}))
@@ -367,3 +382,31 @@ def test_model_only_view_lists_where_rule_and_model_part():
     ]
     assert view["summary_model_only"]["false_approvals"] == 1
     assert summarize([score]).false_approvals == 0
+
+
+def test_a_difference_is_explained_by_its_cause():
+    from precertly.evals.compare import difference_cause
+
+    def verdict(model_outcome="met", invalidated=None, applicable=True):
+        return {
+            "model_outcome": model_outcome,
+            "invalidated": invalidated,
+            "applicable": applicable,
+        }
+
+    assert difference_cause(verdict(), verdict("not_met")) == "model outcome changed"
+    assert difference_cause(verdict(), verdict(invalidated="x")) == (
+        "citation verified in one run only"
+    )
+    assert difference_cause(verdict(), verdict(applicable=False)) == "applicability changed"
+
+
+def test_prompt_version_4_is_opt_in_and_recorded_with_its_verifier():
+    from precertly.evals.run import run_metadata
+    from precertly.judgment.prompt import SYSTEM, SYSTEM_V4
+
+    default, opted = run_metadata(), run_metadata(prompt_version="4")
+    assert (default["prompt_version"], default["judgment"]["verifier_version"]) == ("3", "2")
+    assert (opted["prompt_version"], opted["judgment"]["verifier_version"]) == ("4", "3")
+    assert default["system_prompt_sha256"] == hashlib.sha256(SYSTEM.encode()).hexdigest()
+    assert opted["system_prompt_sha256"] == hashlib.sha256(SYSTEM_V4.encode()).hexdigest()

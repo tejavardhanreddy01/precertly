@@ -32,15 +32,15 @@ from precertly.fhir import chunk_bundle, load_bundle
 from precertly.ingest import estimate_embedding, ingest_bundle
 from precertly.judgment import (
     RULES_VERSION,
-    SYSTEM,
     CaseJudgment,
     ChartEvidence,
     StructuredChart,
+    VerifiedCitation,
     judge_case,
     model_only,
 )
-from precertly.judgment.judge import MAX_TOKENS, TEMPERATURE, VERIFIER_VERSION
-from precertly.judgment.prompt import PROMPT_VERSION
+from precertly.judgment.judge import MAX_TOKENS, TEMPERATURE, VERIFIER_VERSIONS
+from precertly.judgment.prompt import PROMPT_VERSIONS, PromptVersion, system_prompt
 from precertly.judgment.rules import PARTIAL_BRANCHES
 from precertly.llm import BedrockClient, BedrockEmbedder
 from precertly.policies import load_policies
@@ -81,7 +81,10 @@ Result = tuple[CaseScore, CaseJudgment]
 
 
 async def _run(
-    cases: list[EvalCase], save: Callable[[list[Result]], object], rules: bool = False
+    cases: list[EvalCase],
+    save: Callable[[list[Result]], object],
+    rules: bool = False,
+    prompt_version: PromptVersion = "3",
 ) -> list[Result]:
     """Judge and score the cases, calling save after each one so a crash loses one case.
 
@@ -119,6 +122,7 @@ async def _run(
                     evidence,
                     structured=StructuredChart.from_bundle(bundle) if rules else None,
                     shadow=rules,
+                    prompt_version=prompt_version,
                 )
             score = score_case(case, judgment)
             wrong = [c.criterion for c in score.criteria if not c.correct]
@@ -145,17 +149,20 @@ def _git(*args: str) -> str:
         return "unknown"
 
 
-def run_metadata(rules: bool = False) -> dict[str, object]:
+def run_metadata(
+    rules: bool = False, prompt_version: PromptVersion | None = None
+) -> dict[str, object]:
     """What a results file needs for the run to be compared or repeated."""
     settings = get_settings()
+    prompt_version = prompt_version or settings.prompt_version
     return {
         "run_date": date.today().isoformat(),
         "git_sha": _git("rev-parse", "--short", "HEAD"),
         # True if the code that ran differs from that commit
         "git_dirty": bool(_git("status", "--porcelain", "--untracked-files=no")),
         "model_id": settings.bedrock_model_id,
-        "prompt_version": PROMPT_VERSION,
-        "system_prompt_sha256": hashlib.sha256(SYSTEM.encode()).hexdigest(),
+        "prompt_version": prompt_version,
+        "system_prompt_sha256": hashlib.sha256(system_prompt(prompt_version).encode()).hexdigest(),
         "retrieval": {
             "top_k": settings.judgment_top_k,
             "method": "hybrid: Postgres full-text + exact pgvector cosine, reciprocal rank fusion",
@@ -172,7 +179,7 @@ def run_metadata(rules: bool = False) -> dict[str, object]:
             "max_tokens": MAX_TOKENS,
             "temperature": TEMPERATURE,
             "top_k": settings.judgment_top_k,
-            "verifier_version": VERIFIER_VERSION,
+            "verifier_version": VERIFIER_VERSIONS[prompt_version],
         },
         "rules": {"enabled": rules, "version": RULES_VERSION if rules else None, "shadow": rules},
         "policies": {
@@ -218,6 +225,14 @@ def _model_only_view(results: list[Result]) -> dict[str, object]:
     }
 
 
+def _line_handle(item: int, citation: VerifiedCitation) -> str:
+    """E3, E3.2 or E3.2-E3.4, as the citation was given."""
+    first, last = citation.first_line, citation.last_line
+    if first is None:
+        return f"E{item}"
+    return f"E{item}.{first}" if first == last else f"E{item}.{first}-E{item}.{last}"
+
+
 def partial_review(results: list[Result]) -> dict[str, list[dict[str, Any]]]:
     """Partial verdicts whose outcome needed a chart citation under PARTIAL_BRANCHES.
 
@@ -247,7 +262,7 @@ def partial_review(results: list[Result]) -> dict[str, list[dict[str, Any]]]:
                 "c1_cited": computed.cited_by_model,
                 "citations": [
                     {
-                        "handle": f"E{verdict.chunk_ids.index(c.chunk_id) + 1}",
+                        "handle": _line_handle(verdict.chunk_ids.index(c.chunk_id) + 1, c),
                         "chunk_id": c.chunk_id,
                         "quote": c.quote,
                     }
@@ -318,8 +333,8 @@ def _report(summary: Summary, scores: list[CaseScore]) -> str:
         f" ({summary.citations_in_label} of {summary.citations} cited resources are in the label),"
         f" {percent(summary.citation_precision_macro)} macro-averaged over criteria",
         f"Invalidated verdicts: {summary.invalidated_verdicts} of {summary.scored_criteria}"
-        f" ({summary.quote_invalidations} citation or quote, "
-        f"{summary.unusable_answers} unusable model answers)",
+        f" by kind: {summary.invalidations_by_kind}",
+        f"Lines per verified citation: {summary.citation_lines}",
         f"Tokens: {summary.input_tokens:,} in, {summary.output_tokens:,} out"
         f" over {summary.llm_calls} model calls",
         f"Decided by: {summary.decided_by}",
@@ -349,6 +364,11 @@ def main() -> int:
         help="decide or inform criteria with the deterministic rules, with shadow model calls",
     )
     parser.add_argument(
+        "--prompt-version",
+        choices=PROMPT_VERSIONS,
+        help="judgment prompt (default: PRECERTLY_PROMPT_VERSION, else 3); 4 is experimental",
+    )
+    parser.add_argument(
         "--resume",
         type=Path,
         help="add the cases not yet in this results file; refused unless the git sha, "
@@ -367,7 +387,8 @@ def main() -> int:
         _estimate(cases, args.rules)
         return 0
 
-    metadata = run_metadata(args.rules)
+    prompt_version: PromptVersion = args.prompt_version or get_settings().prompt_version
+    metadata = run_metadata(args.rules, prompt_version)
     previous: list[tuple[CaseScore, CaseJudgment]] = []
     seconds_so_far = 0.0
     if args.resume:
@@ -419,7 +440,7 @@ def main() -> int:
         out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         return summary
 
-    new_results = asyncio.run(_run(cases, save, args.rules))
+    new_results = asyncio.run(_run(cases, save, args.rules, prompt_version))
     summary = save(new_results)
     scores = sorted(
         (score for score, _ in previous + new_results), key=lambda s: order.index(s.case_id)

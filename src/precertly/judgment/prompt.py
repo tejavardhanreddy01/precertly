@@ -1,14 +1,26 @@
-"""The prompt for judging one criterion. Kept apart so prompt changes are easy to review."""
+"""The prompt for judging one criterion. Kept apart so prompt changes are easy to review.
+
+Two prompt versions exist. Version 3 (the default) shows each evidence item whole and asks
+the model to copy a quote. Version 4 (experimental, opt-in) shows a handle on every line
+and asks for line handles and the first words of the cited line; it is experiment 2 in
+evals/results/NOTES.md, which failed its pre-registration. Version 3 is kept byte for byte
+as it was, so earlier results files rebuild exactly (prompt_check).
+"""
 
 from __future__ import annotations
 
+from typing import Literal
+
+from precertly.judgment.lines import lines_of
 from precertly.judgment.models import EvidenceChunk, PriorAuthRequest
 from precertly.judgment.rules import PARTIAL_BRANCHES, FinalOutcome, PartialBranch, RuleResult
 from precertly.policies import Criterion
 
-# Bump when SYSTEM or build_prompt changes what the model reads, so results files can be
-# compared across prompt changes.
-PROMPT_VERSION = "3"
+# Add a version when SYSTEM or build_prompt changes what the model reads, so results files
+# can be compared across prompt changes. The version a run uses is a setting.
+PromptVersion = Literal["3", "4"]
+PROMPT_VERSIONS: tuple[PromptVersion, ...] = ("3", "4")
+DEFAULT_PROMPT_VERSION: PromptVersion = "3"
 
 SYSTEM = """You check one Medicare coverage criterion against one patient's record for a prior-authorization request. A human reviewer makes the final decision; you report what the record shows.
 
@@ -32,6 +44,20 @@ Citations:
 - Each evidence item has a handle in square brackets: [E1], [E2] and so on. Cite every item your outcome rests on by its handle (for example E3), with a quote copied character for character from that item. Do not paraphrase, correct or shorten words inside a quote.
 - met and not_met need at least one citation. insufficient should cite the evidence that shows the gap or the contradiction, if there is any.
 - Facts about the requested service come from the items marked "request"."""
+
+# Version 4 differs from SYSTEM only in the citation rules.
+SYSTEM_V4 = (
+    SYSTEM[: SYSTEM.index("Citations:")]
+    + """Citations:
+- Each evidence item has a handle in square brackets, [E1], [E2] and so on, and each of its lines has a line handle: [E1.1], [E1.2] and so on. Cite every line your outcome rests on by its line handle (for example E3.2). Adjacent lines of one item may be cited as one range (for example E3.2-E3.4), at most 3 lines; cite lines further apart separately. An item shown as a single line, such as a coded record or a request field, is cited by that line's handle (for example E5.1).
+- With each citation, put the first three words of the first cited line in first_words, as they appear after its handle (all of its words if it has fewer than three). Do not copy any other text: the cited lines are quoted for you.
+- met and not_met need at least one citation. insufficient should cite the evidence that shows the gap or the contradiction, if there is any.
+- Facts about the requested service come from the items marked "request"."""
+)
+
+
+def system_prompt(version: PromptVersion = DEFAULT_PROMPT_VERSION) -> str:
+    return SYSTEM_V4 if version == "4" else SYSTEM
 
 
 # The handle of a partial rule's computed fact. Only a partial prompt has it.
@@ -74,6 +100,7 @@ def build_prompt(
     request: PriorAuthRequest,
     chunks: list[EvidenceChunk],
     partial: RuleResult | None = None,
+    version: PromptVersion = DEFAULT_PROMPT_VERSION,
 ) -> str:
     """The prompt for one criterion. With a partial rule result, the computed fact is an
     evidence item [C1] the model may cite, and the prompt states which outcomes need a
@@ -95,20 +122,28 @@ def build_prompt(
         lines.append(f"Note: {criterion.note}")
     lines += ["", f"REQUEST DATE: {request.date.isoformat()}", "", "EVIDENCE"]
     for handle, chunk in handles(chunks).items():
-        lines += [f"[{handle}] ({_describe(chunk)})", chunk.text, ""]
+        lines.append(f"[{handle}] ({_describe(chunk)})")
+        if version == "4":
+            lines += [f"[{handle}.{line.number}] {line.text}" for line in lines_of(chunk)]
+        else:
+            lines.append(chunk.text)
+        lines.append("")
     if partial is not None:
         assert partial.kind == "partial" and partial.branch is not None
         branch = PARTIAL_BRANCHES[partial.branch]
         c1 = f"[{COMPUTED_HANDLE}]"
+        if version == "4":
+            cite_c1 = f"Cite it as {COMPUTED_HANDLE}, with the first words of its statement in first_words."
+        else:
+            cite_c1 = f"Cite {c1} like any other item, with a quote copied from it."
         lines += [
             f"{c1} (computed from the coded record)",
-            partial.statement,
+            f"{c1} {partial.statement}" if version == "4" else partial.statement,
             "",
             f"ABOUT {c1}",
             f"{c1} was computed from the coded record and is correct. Do not recompute it, "
             "contradict it, or decide the criterion against it. Judge only what it leaves "
-            f"open, from the evidence above. Cite {c1} like any other item, with a quote "
-            "copied from it.",
+            f"open, from the evidence above. {cite_c1}",
         ]
         if branch.condition_fixed:
             lines.append(f"{c1} establishes that the condition holds; set condition_holds to true.")

@@ -7,6 +7,7 @@ from collections import Counter
 from pydantic import BaseModel
 
 from precertly.evals.cases import EvalCase
+from precertly.judgment.judge import invalidation_kind
 from precertly.judgment.models import CaseJudgment, Outcome
 
 NEGATIVE = (Outcome.NOT_MET, Outcome.INSUFFICIENT)
@@ -27,6 +28,11 @@ class CriterionScore(BaseModel):
     # The model gave no usable answer at all and the verdict was set to insufficient. A
     # subset of invalidated; the rest are citations or quotes that did not verify.
     unusable_answer: bool = False
+    # The kind of invalidation (judgment.models.InvalidationKind); for files written before
+    # verifier version 3 it is inferred from the reason text.
+    invalidation: str | None = None
+    # Lines spanned by each verified line citation (verifier version 3 and later).
+    citation_lines: list[int] = []
     decided_by: str = "model"
     cited: list[str]
     cited_in_label: int
@@ -75,8 +81,8 @@ class Summary(BaseModel):
     # citations does not dominate
     citation_precision_macro: float | None
     citation_precision_by_criterion: dict[str, CitationPrecision]
-    invalidated_verdicts: int  # quote_invalidations + unusable_answers
-    quote_invalidations: int
+    invalidated_verdicts: int  # the sum of invalidations_by_kind
+    invalidations_by_kind: dict[str, int]
     unusable_answers: int
     unusable_answers_by_case: dict[str, int]
     unusable_answers_by_criterion: dict[str, int]
@@ -84,6 +90,8 @@ class Summary(BaseModel):
     output_tokens: int
     llm_calls: int
     decided_by: dict[str, int]
+    # Verified line citations by the number of lines they span, for open issue 1.
+    citation_lines: dict[int, int] = {}
 
 
 def score_case(case: EvalCase, judgment: CaseJudgment) -> CaseScore:
@@ -111,6 +119,12 @@ def score_case(case: EvalCase, judgment: CaseJudgment) -> CaseScore:
                 false_approval=predicted is Outcome.MET and label.outcome in NEGATIVE,
                 invalidated=verdict.invalidated is not None,
                 unusable_answer=verdict.model_outcome == "none",
+                invalidation=verdict.invalidation or invalidation_kind(verdict.invalidated),
+                citation_lines=[
+                    c.last_line - c.first_line + 1
+                    for c in verdict.citations
+                    if c.first_line is not None and c.last_line is not None
+                ],
                 decided_by=verdict.decided_by,
                 cited=cited,
                 cited_in_label=sum(resource in label.evidence for resource in cited),
@@ -173,7 +187,7 @@ def summarize(scores: list[CaseScore]) -> Summary:
         citation_precision_macro=macro,
         citation_precision_by_criterion=by_criterion,
         invalidated_verdicts=sum(c.invalidated for c in criteria),
-        quote_invalidations=sum(c.invalidated and not c.unusable_answer for c in criteria),
+        invalidations_by_kind=dict(Counter(c.invalidation for c in criteria if c.invalidation)),
         unusable_answers=sum(c.unusable_answer for c in criteria),
         unusable_answers_by_case={
             score.case_id: count
@@ -187,4 +201,5 @@ def summarize(scores: list[CaseScore]) -> Summary:
         output_tokens=sum(s.output_tokens for s in scores),
         llm_calls=sum(s.llm_calls for s in scores) or len(criteria),
         decided_by=dict(Counter(c.decided_by for c in criteria)),
+        citation_lines=dict(sorted(Counter(n for c in criteria for n in c.citation_lines).items())),
     )
