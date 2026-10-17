@@ -67,6 +67,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - Commit bodies: explain why when it isn't obvious from the subject.
 - PR titles follow the same style as commit subjects.
 - No day or sprint labels anywhere: not in branches, commits, PR titles, docs or code.
+- Reports: lead with the result and any decision needed, then at most 10 bullets of detail. Put long tables and full analyses in a file in the repo and link it instead of pasting.
 
 ## Status
 
