@@ -5,6 +5,12 @@ the 23 cases that existed before the spinal cord stimulator cases, with every ch
 (the request chunks, then the chart chunks) in front of the model. It was captured from the code
 as it stood before the spinal cord stimulator request fields were added. A request field, a
 chunk change or a prompt edit that moves any of these hashes changes what an earlier run saw.
+
+The facet and PAP hashes have not moved since. The 22 bariatric hashes were re-captured once,
+when the note pairs of 2025-11-22 and 2026-05-02 were removed from the bariatric bundles
+(they list acetaminophen as the only medication while orlistat is active). Each moved only
+because those two notes left the evidence and the handles after them were renumbered;
+the bariatric cases have no recorded results.
 """
 
 import hashlib

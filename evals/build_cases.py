@@ -1406,10 +1406,11 @@ def pap_label_evidence(f: PapFacts) -> dict[str, list[str]]:
 
 # The shared background patient cannot serve the bariatric cases as it is. Its coded weight
 # and BMI (27.97) contradict every BMI of 35 or more, and its ischemic heart disease is a
-# possible co-morbidity that the NCD does not name. A bariatric bundle therefore starts from
-# the template with the cardiac cluster removed and the weights, BMIs and blood pressures
-# rewritten from the case facts. The template file, and the facet and PAP bundles, are not
-# touched (cases/bariatric/PLAN.md lists every change).
+# possible co-morbidity that the NCD does not name, and two of its notes list acetaminophen as
+# the only medication while orlistat is active. A bariatric bundle therefore starts from the
+# template with the cardiac cluster and those two notes removed and the weights, BMIs and
+# blood pressures rewritten from the case facts. The template file, and the facet and PAP
+# bundles, are not touched (cases/bariatric/PLAN.md lists every change).
 HEIGHT_CM = 172.9  # the template's height, unchanged
 HEIGHT_M2 = (HEIGHT_CM / 100) ** 2
 # LOINC 29463-7 "Body weight" and 39156-5 "Body mass index (BMI) [Ratio]": both ACTIVE on the
@@ -1429,7 +1430,8 @@ OBESITY_CONDITION = "Condition/37b75dda-e187-ae40-3667-262f391a4e9a"  # BMI 30+ 
 
 _P = "37b75dda-e187-ae40"
 # Removed from every bariatric bundle: the cardiac cluster, the note pair that mentions it,
-# and the lipid panel. Listed in cases/bariatric/PLAN.md; a test ties the two together.
+# the lipid panel, and the two note pairs dated in the program. Listed in
+# cases/bariatric/PLAN.md; a test ties the two together.
 BARIATRIC_REMOVED: tuple[str, ...] = (
     # ischemic heart disease and the abnormal cardiac imaging finding
     f"Condition/{_P}-4f8f-f53efc54cfc9",
@@ -1467,6 +1469,13 @@ BARIATRIC_REMOVED: tuple[str, ...] = (
     f"Observation/{_P}-8772-5ec7ebe1237e",
     f"Observation/{_P}-6a38-cd02fbcb8a50",
     f"Observation/{_P}-42cc-ce6e2cf7a872",
+    # the strep throat and colonoscopy note pairs (2025-11-22, 2026-05-02): they list
+    # acetaminophen as the only medication while orlistat is active. Removed from all six
+    # bundles, so the bundles keep one background.
+    "DocumentReference/f6ba0ccb-1752-effe-1bd8-851cd71b38a1",
+    "DiagnosticReport/2d959dc6-9c73-5be5-37cd-96cfb0b7ffb4",
+    "DocumentReference/ad8b6791-c5e2-872f-9f9d-901b0d809b9f",
+    "DiagnosticReport/b5a9e535-f29f-fe02-c6d2-d8f8809e4047",
 )
 
 WM_REFERRAL = date(2025, 7, 28)  # primary care refers to the weight management clinic
@@ -1570,7 +1579,7 @@ def bariatric_background(background: list[Resource], f: BariatricFacts) -> list[
     refs = {f"{r['resourceType']}/{r['id']}" for r in background}
     assert removed <= refs, sorted(removed - refs)
     kept = [r for r in background if f"{r['resourceType']}/{r['id']}" not in removed]
-    assert len(kept) == len(background) - len(BARIATRIC_REMOVED) == 139
+    assert len(kept) == len(background) - len(BARIATRIC_REMOVED) == 135
     series = bariatric_series(f)
     rewritten = 0
     for resource in kept:

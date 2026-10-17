@@ -16,10 +16,11 @@ The shared background patient (`evals/template/patient.json`), aged 65 and on Me
 | Care plan of 2023-10-12 for acute bronchitis: "Recommendation to avoid exercise", "Deep breathing and coughing exercises" | similar but irrelevant to `failed-medical-treatment` | Kept, as the decoy in `bariatric-04` |
 | No bariatric or gastric surgery, no weight-loss medication, no diet or weight program | `failed-medical-treatment` | None needed: the case facts decide it |
 | Background notes list a history without diabetes | could read as contradicting a diabetes diagnosis | Type 2 diabetes is diagnosed on 2026-07-28. Every background note dated before it predates it, and the notes dated after it are cardiac and are removed |
+| Every background note says "No complaints." and lists acetaminophen 325 mg as the only medication (the first, 2023-10-12, says "No Active Medications." and prescribes acetaminophen in its plan) | the notes of 2025-11-22 and 2026-05-02 fall inside the program (2025-08-04 to 2026-08-03) and omit the active orlistat | Those two note pairs removed from all six bundles, so the bundles stay uniform. Their encounters, the strep throat Condition and the colonoscopy Procedure stay. Every kept background note is dated 2025-07-15 or earlier, before the program, orlistat and metformin |
 
 ### Removed from every bariatric bundle
 
-29 resources, listed in `BARIATRIC_REMOVED` in `evals/build_cases.py`; a test checks that this list and the constant agree and that none is left in a bariatric bundle. That leaves 139 background resources.
+33 resources, listed in `BARIATRIC_REMOVED` in `evals/build_cases.py`; a test checks that this list and the constant agree and that none is left in a bariatric bundle. That leaves 135 background resources.
 
 Cardiac cluster (22):
 
@@ -37,6 +38,13 @@ The annual-exam note pair that describes the cluster (2):
 The lipid panel (5):
 
 - `DiagnosticReport/37b75dda-e187-ae40-f188-4c73123a16a4` with its results `Observation/37b75dda-e187-ae40-1295-7a60d2d1e589` (total cholesterol), `Observation/37b75dda-e187-ae40-8772-5ec7ebe1237e` (triglycerides), `Observation/37b75dda-e187-ae40-6a38-cd02fbcb8a50` (LDL) and `Observation/37b75dda-e187-ae40-42cc-ce6e2cf7a872` (HDL)
+
+The background note pairs dated inside the program (4):
+
+- 2025-11-22 (strep throat): `DocumentReference/f6ba0ccb-1752-effe-1bd8-851cd71b38a1` and its twin `DiagnosticReport/2d959dc6-9c73-5be5-37cd-96cfb0b7ffb4`
+- 2026-05-02 (colonoscopy): `DocumentReference/ad8b6791-c5e2-872f-9f9d-901b0d809b9f` and its twin `DiagnosticReport/b5a9e535-f29f-fe02-c6d2-d8f8809e4047`
+
+Both list acetaminophen as the only medication while `MedicationRequest/orlistat` is active, in `bariatric-01`, `-02`, `-03` and `-06`; they are removed from `-04` and `-05` as well so that the six bundles share one background. The prompt hashes of the six bariatric cases in `tests/golden/prompt_hashes.json` were re-captured for this change and no other hash moved.
 
 ### Rewritten in every bariatric bundle
 
@@ -113,7 +121,7 @@ The build script asserts, for every case: each coded BMI is the rounded value fo
 
 ## Timelines
 
-Background events common to all six bundles: acute bronchitis visit 2023-10-12; annual exams 2023-10-24, 2024-07-09, 2025-07-15 and 2026-07-21; dental visit 2023-11-07; strep throat 2025-11-22; screening colonoscopy 2026-05-02. None bears on a criterion apart from the rewritten values.
+Background events common to all six bundles: acute bronchitis visit 2023-10-12; annual exams 2023-10-24, 2024-07-09, 2025-07-15 and 2026-07-21; dental visit 2023-11-07; strep throat 2025-11-22; screening colonoscopy 2026-05-02. None bears on a criterion apart from the rewritten values. The strep throat and colonoscopy visits are coded events only: their note pairs are removed.
 
 `bariatric-01`, `-02` and `-03` (`-03` is a sleeve request; the dates are the same):
 
@@ -184,7 +192,7 @@ Background events common to all six bundles: acute bronchitis visit 2023-10-12; 
 - `nationally-covered-procedure` is met in every case. A non-covered procedure has a code that no variant routes (reserve R2).
 - No sleeve case is met, so the sleeve variant's met path is untested (reserve R1).
 - The sleeve variant has no procedure criterion in the policy file, so a non-covered open sleeve gastrectomy cannot be scored.
-- The bariatric bundles differ from the shared background in the 29 removed and 12 rewritten resources listed above, so they no longer share one patient with the facet and PAP cases.
+- The bariatric bundles differ from the shared background in the 33 removed and 12 rewritten resources listed above, so they no longer share one patient with the facet and PAP cases.
 - `bariatric-05` rests on our reading of rule 4 and awaits the second annotator.
 - Single annotator; not clinically validated.
 

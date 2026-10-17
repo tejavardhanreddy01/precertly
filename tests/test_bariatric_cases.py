@@ -108,9 +108,9 @@ def test_the_bariatric_cases_are_the_six_planned():
 
 def test_the_removed_set_is_the_one_in_the_plan_and_in_the_builder():
     listed = set(REF.findall(plan_section("### Removed from every bariatric bundle")))
-    assert listed == set(BUILD.BARIATRIC_REMOVED) and len(listed) == 29
+    assert listed == set(BUILD.BARIATRIC_REMOVED) and len(listed) == 33
     assert listed <= TEMPLATE_IDS
-    assert len(TEMPLATE) - len(listed) == 139
+    assert len(TEMPLATE) - len(listed) == 135
 
 
 @pytest.mark.parametrize("case_id", sorted(CASES))
