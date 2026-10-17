@@ -6,9 +6,13 @@ from datetime import date
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from precertly.judgment.structured import FACET_CODES
 from precertly.llm import Exchange, LLMUsage
+
+# The facet-only request fields. A request for any other procedure leaves them unset.
+FACET_FIELDS = ("technique", "region", "levels", "same_day_blocks")
 
 
 class Outcome(StrEnum):
@@ -40,19 +44,40 @@ class PriorAuthRequest(BaseModel):
     date: date
     service_date: date = Field(description="Planned date of the requested service")
     procedure: str = Field(description="The requested procedure, in plain words")
+    # Facet fields (FACET_FIELDS): required on a facet request, unset on any other.
     # Structured, because the procedure codes are the same for a medial branch block and
     # an intraarticular injection, and one criterion depends on which it is.
-    technique: Literal["medial_branch_block", "intraarticular_injection", "radiofrequency_ablation"]
+    technique: (
+        Literal["medial_branch_block", "intraarticular_injection", "radiofrequency_ablation"] | None
+    ) = None
     codes: list[str] = Field(min_length=1)
-    region: str
-    levels: list[str] = Field(min_length=1)
-    same_day_blocks: list[str] = Field(default_factory=list)
+    region: str | None = None
+    levels: list[str] | None = Field(default=None, min_length=1)
+    # An empty list means the request lists no other blocks; None means it does not say.
+    same_day_blocks: list[str] | None = None
     # CMS place-of-service code for the requested service, used only to draft the PAS
     # request. It is not rendered in chunks(), so the judgment prompt never shows it.
     place_of_service: str | None = Field(default=None, pattern=r"^\d{2}$")
 
+    @model_validator(mode="after")
+    def _facet_fields_complete(self) -> PriorAuthRequest:
+        """A request with a facet code, or with any facet field set, needs all of them.
+
+        Fails closed: the facet rules and criteria read these fields, and an unset one must
+        never pass for "no blocks" or "no levels".
+        """
+        facet_codes = sorted(set(self.codes) & FACET_CODES)
+        given = [f for f in FACET_FIELDS if getattr(self, f) is not None]
+        if not facet_codes and not given:
+            return self
+        missing = [f for f in FACET_FIELDS if getattr(self, f) is None]
+        if missing:
+            why = f"facet codes {facet_codes}" if facet_codes else f"facet fields {given}"
+            raise ValueError(f"a facet request ({why}) must set {', '.join(missing)}")
+        return self
+
     def chunks(self) -> list[EvidenceChunk]:
-        """One citable chunk per field, with id 'request.<field>'."""
+        """One citable chunk per field that is set, with id 'request.<field>'."""
         labels = {
             "date": "Request date",
             "service_date": "Planned date of service",
@@ -66,6 +91,8 @@ class PriorAuthRequest(BaseModel):
         chunks = []
         for field, label in labels.items():
             value = getattr(self, field)
+            if value is None:
+                continue
             if isinstance(value, list):
                 value = ", ".join(value) if value else "none"
             chunks.append(EvidenceChunk(id=f"request.{field}", text=f"{label}: {value}"))

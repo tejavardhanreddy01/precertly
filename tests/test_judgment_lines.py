@@ -38,6 +38,7 @@ REQUEST = PriorAuthRequest(
     codes=["64635", "64636"],
     region="lumbar",
     levels=["L4-5", "L5-S1"],
+    same_day_blocks=[],
 )
 NOTE = EvidenceChunk(
     id="DocumentReference/note-mbb2#0",
