@@ -68,9 +68,34 @@ The overall outcome is computed, never hand-labeled, so it cannot drift from the
 
 ## Review and agreement
 
-- A second annotator labels each case from this guideline, the policy file and the bundle, without seeing the first annotator's labels.
-- Agreement is reported per criterion as Cohen's kappa. Disagreements are adjudicated, and the reason is recorded in the case's `notes`.
-- Until a second annotator has reviewed the set, the published results state: **single annotator; not clinically validated.**
+Status: not started. Every label is by one annotator. This section is the protocol for the second pass.
+
+### Blinded packet
+
+Each case gets one packet, generated from the case file by a script, never assembled by hand. A packet holds the case id, the policy id and versions, the variant, the `request` block, the bundle, the list of chart- and request-stage criteria to label, this guideline and the policy file. It omits `expected` (labels, facts and evidence), `expected_overall`, `changed_labels`, `notes`, the YAML comments and the PLAN.md files, because each of those states or implies the answer.
+
+Resource ids in the bundles are descriptive and give answers away (for example `note-wm-declined` or `Condition/type-2-diabetes`). The packet therefore replaces every resource id, in resource ids, references, `fullUrl` and any text that quotes one, with an opaque id (`DocumentReference/r017`), through one consistent mapping per case. The mapping is kept outside the packet, so a second annotator's evidence lists can be translated back and compared. The packet generator does not exist yet: it must be built and tested before any annotator sees a packet. Its tests must show that no original id appears anywhere in a packet, that references still resolve, and that the chunks and quotes an annotator would cite are unchanged apart from the ids.
+
+### Two kinds of review, reported separately
+
+- **LLM consistency check.** A model labels the packets under this guideline. It tests whether the guideline and the packet are enough to reproduce the labels; it is not clinical review. Record the model, the prompt and the date, and whether the checker is from the same model family as the case designer (Claude has designed these cases, so a Claude checker's errors are correlated with the design and its agreement is weaker evidence). A real run costs money and is asked for first.
+- **Human second annotator.** A person labels the packets without seeing the first annotator's labels or the LLM's.
+
+The two are never pooled, and the LLM check is never a tiebreaker.
+
+### Agreement
+
+- Report pooled Cohen's kappa over every labeled criterion of the compared cases (outcomes `met`, `not_met`, `insufficient`, `not_applicable`), with the number of pairs.
+- Report per criterion the raw agreement (k of n) and each annotator's label counts. Do not report kappa per criterion: a criterion appears only in the cases of its own set, at most 29 cases in all, and is mostly `met`, so its kappa is unstable or undefined.
+- Disagreements are adjudicated, the reason is recorded in the case's `notes`, and a changed label goes through `evals/build_cases.py`.
+
+### Flagged for the second pass
+
+`bariatric-05` (`failed-medical-treatment`) and `scs-05` (`one-permanent-stimulator-per-lifetime`) are `insufficient` under our reading of rule 4, which is not a rule CMS states. Their agreement is reported case by case whatever the pooled result.
+
+### Published wording
+
+Until a human second annotator has labeled every case, the published results state: **single annotator; not clinically validated.** An LLM consistency check does not change this. A second annotator who is not a clinician reduces labeling error but does not make the set clinically validated.
 
 ## Sources
 
