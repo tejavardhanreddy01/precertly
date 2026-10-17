@@ -108,9 +108,9 @@ def test_the_bariatric_cases_are_the_six_planned():
 
 def test_the_removed_set_is_the_one_in_the_plan_and_in_the_builder():
     listed = set(REF.findall(plan_section("### Removed from every bariatric bundle")))
-    assert listed == set(BUILD.BARIATRIC_REMOVED) and len(listed) == 29
+    assert listed == set(BUILD.BARIATRIC_REMOVED) and len(listed) == 33
     assert listed <= TEMPLATE_IDS
-    assert len(TEMPLATE) - len(listed) == 139
+    assert len(TEMPLATE) - len(listed) == 135
 
 
 @pytest.mark.parametrize("case_id", sorted(CASES))
@@ -193,6 +193,105 @@ def test_the_stripped_background_has_no_candidate_comorbidity():
         ("2025-07-15", 114, 76),
         ("2026-07-21", 118, 76),
     ]
+
+
+# --- 4b. no background note omits a medication that is active on its date -------------------
+
+BACKGROUND_NOTE_TYPES = ("DocumentReference", "DiagnosticReport")
+# The removed pairs of 2025-11-22 and 2026-05-02, which the check must flag where orlistat is active
+REMOVED_PAIRS = {
+    "2025-11-22": {
+        "DocumentReference/f6ba0ccb-1752-effe-1bd8-851cd71b38a1",
+        "DiagnosticReport/2d959dc6-9c73-5be5-37cd-96cfb0b7ffb4",
+    },
+    "2026-05-02": {
+        "DocumentReference/ad8b6791-c5e2-872f-9f9d-901b0d809b9f",
+        "DiagnosticReport/b5a9e535-f29f-fe02-c6d2-d8f8809e4047",
+    },
+}
+
+
+def body_of(resource: dict) -> str | None:
+    """The decoded note or report text of a resource, or None if it has none."""
+    attachments = [c.get("attachment", {}) for c in resource.get("content") or []]
+    attachments += resource.get("presentedForm") or []
+    data = next((a["data"] for a in attachments if a.get("data")), None)
+    return base64.b64decode(data).decode("utf-8") if data else None
+
+
+def note_date(resource: dict, body: str) -> str:
+    """The note's own date, which must be the first line of its text (after the blank line
+    the template's notes start with)."""
+    stamp = resource["date"] if resource["resourceType"] == "DocumentReference" else None
+    stamp = stamp or resource["effectiveDateTime"]
+    assert body.strip().split("\n", 1)[0] == stamp[:10], ref(resource)
+    return stamp[:10]
+
+
+def medication_section(body: str) -> list[str]:
+    """The lines under "# Medications", up to the first blank line. "No Active Medications."
+    is an empty list."""
+    section = body.split("# Medications\n", 1)[1].split("\n\n", 1)[0].strip()
+    return (
+        [] if section.lower().startswith("no active medications") else section.lower().split("\n")
+    )
+
+
+def omitted_medications(notes: list[dict], items: list[dict]) -> dict[str, list[str]]:
+    """For each note (by Type/id), the MedicationRequests active on its date that its list
+    leaves out. A request is active from its authoredOn on, whatever its status."""
+    requests = [r for r in items if r["resourceType"] == "MedicationRequest"]
+    omitted = {}
+    for resource in notes:
+        body = body_of(resource)
+        when = note_date(resource, body)
+        listed = medication_section(body)
+        missing = [
+            r["medicationCodeableConcept"]["text"]
+            for r in requests
+            if r["authoredOn"][:10] <= when
+            and not any(
+                r["medicationCodeableConcept"]["text"].split()[0].lower() in x for x in listed
+            )
+        ]
+        if missing:
+            omitted[ref(resource)] = missing
+    return omitted
+
+
+def background_notes(items: list[dict]) -> list[dict]:
+    """The template's notes and twin reports that have a Medications section."""
+    return [
+        r
+        for r in items
+        if r["resourceType"] in BACKGROUND_NOTE_TYPES
+        and ref(r) in TEMPLATE_IDS
+        and "# Medications\n" in (body_of(r) or "")
+    ]
+
+
+@pytest.mark.parametrize("case_id", sorted(CASES))
+def test_no_background_note_omits_a_medication_active_on_its_date(case_id):
+    items = resources(case_id)
+    notes = background_notes(items)
+    # five kept visits (2023-10-12 to 2025-07-15), each a note and its twin report
+    assert len(notes) == 10
+    assert max(note_date(n, body_of(n)) for n in notes) == "2025-07-15"
+    assert omitted_medications(notes, items) == {}
+
+
+@pytest.mark.parametrize("case_id", sorted(CASES))
+def test_the_medication_check_flags_the_removed_note_pairs(case_id):
+    # the same check, run on the four removed template notes against this case's requests
+    removed = [r for r in TEMPLATE if ref(r) in set().union(*REMOVED_PAIRS.values())]
+    assert len(removed) == 4
+    flagged = omitted_medications(removed, resources(case_id))
+    if case_id in ("bariatric-04", "bariatric-05"):  # no orlistat, and metformin starts later
+        assert flagged == {}
+    else:
+        assert flagged == {
+            r: ["Orlistat 120 MG oral capsule"] for p in REMOVED_PAIRS.values() for r in p
+        }
 
 
 # --- 5. bariatric-06 documents no co-morbidity, and no evaluation lists a history -----------
