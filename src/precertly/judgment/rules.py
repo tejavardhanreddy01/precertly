@@ -26,7 +26,7 @@ from typing import Literal
 from dateutil.relativedelta import relativedelta
 from pydantic import BaseModel, Field
 
-from precertly.judgment.models import PriorAuthRequest
+from precertly.judgment.models import FACET_FIELDS, PriorAuthRequest
 from precertly.judgment.structured import (
     FACET_INJECTION,
     FACET_RFA,
@@ -205,8 +205,16 @@ def _sessions(procedures: list[ProcedureFact], before: date) -> dict[date, list[
     return dict(sorted(by_day.items()))
 
 
+def _required[T](request: PriorAuthRequest, field: str, value: T | None) -> T:
+    """A facet field the rule reads. Every rule here is a facet rule, and an unset field
+    is a malformed request: raise rather than read it as empty and decide."""
+    if value is None or value == []:
+        raise ValueError(f"facet rule needs request.{field} (codes {request.codes})")
+    return value
+
+
 def _region(request: PriorAuthRequest) -> str | None:
-    return REGIONS.get(request.region.strip().lower())
+    return REGIONS.get(_required(request, "region", request.region).strip().lower())
 
 
 def _injections(chart: StructuredChart, request: PriorAuthRequest):
@@ -233,12 +241,15 @@ def _refs(sessions: dict[date, list[ProcedureFact]]) -> list[str]:
 def same_day_blocks(
     chart: StructuredChart, request: PriorAuthRequest, criterion: Criterion
 ) -> RuleResult:
-    if not request.same_day_blocks:
+    blocks = request.same_day_blocks
+    if blocks is None:  # [] is "none listed"; None is a malformed request
+        raise ValueError(f"facet rule needs request.same_day_blocks (codes {request.codes})")
+    if not blocks:
         return _not_applicable(
             "The request lists no other blocks for the day of the procedure.",
             ["request.same_day_blocks"],
         )
-    listed = ", ".join(request.same_day_blocks)
+    listed = ", ".join(blocks)
     return _partial(
         "same-day-blocks/listed",
         f"The request lists other blocks for the same day: {listed}.",
@@ -249,9 +260,10 @@ def same_day_blocks(
 def intraarticular_only_if_needed(
     chart: StructuredChart, request: PriorAuthRequest, criterion: Criterion
 ) -> RuleResult:
-    if request.technique != "intraarticular_injection":
+    technique = _required(request, "technique", request.technique)
+    if technique != "intraarticular_injection":
         return _not_applicable(
-            f"The requested technique is {request.technique}, not an intraarticular injection.",
+            f"The requested technique is {technique}, not an intraarticular injection.",
             ["request.technique"],
         )
     return _partial(
@@ -666,7 +678,7 @@ def same_site(
         levels, region = site.levels, site.region
     else:
         return "unclear"
-    requested = [normalize_level(level) for level in request.levels]
+    requested = [normalize_level(level) for level in _required(request, "levels", request.levels)]
     family = _region(request)
     if None in requested or family is None:
         return "unclear"
@@ -803,6 +815,14 @@ def evaluate(
     rule = RULES.get(criterion.id)
     if rule is None:
         return None
+    # Every rule is a facet rule (key this on the policy if that changes). Check the whole
+    # facet request up front, so a malformed one fails even for a rule that reads none of
+    # these fields.
+    missing = [f for f in FACET_FIELDS if getattr(request, f) is None]
+    if missing or not request.levels:
+        raise ValueError(
+            f"{criterion.id}: facet request is missing {', '.join(missing) or 'levels'}"
+        )
     result = rule(chart, request, criterion)
     if result.branch is not None and PARTIAL_BRANCHES[result.branch].criterion != criterion.id:
         raise ValueError(f"{criterion.id}: partial branch {result.branch!r} belongs elsewhere")

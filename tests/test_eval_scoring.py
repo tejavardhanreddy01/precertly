@@ -51,7 +51,7 @@ def _judgment(case, overrides=None, overall=None):
 def test_a_judgment_that_matches_every_label_scores_perfectly():
     scores = [score_case(case, _judgment(case)) for case in CASES.values()]
     summary = summarize(scores)
-    assert summary.cases == summary.cases_correct == 11
+    assert summary.cases == summary.cases_correct == len(CASES)
     assert summary.criterion_accuracy == 1.0
     assert (summary.false_approvals, summary.case_false_approvals) == (0, 0)
     assert summary.citation_precision == 1.0

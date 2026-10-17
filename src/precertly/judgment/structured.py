@@ -24,6 +24,9 @@ FACET_RFA = {
     "cervical_thoracic": frozenset({"64633", "64634"}),
     "lumbar_sacral": frozenset({"64635", "64636"}),
 }
+# Every facet procedure code. PriorAuthRequest uses it to tell a facet request, which must
+# carry technique, region, levels and same_day_blocks, from any other request.
+FACET_CODES = frozenset().union(*FACET_INJECTION.values(), *FACET_RFA.values())
 REGIONS = {
     "cervical": "cervical_thoracic",
     "thoracic": "cervical_thoracic",

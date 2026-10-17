@@ -134,6 +134,7 @@ Kept current and published with results.
 
 - The eval set is single-annotator and not clinically validated until a second annotator reviews it.
 - All facet cases share one background patient.
+- In every PAP case `osa-symptom-or-condition` is `met`, so its not-met path is untested: the shared background patient has a coded active ischemic heart disease Condition, which the criterion names, and the cases keep that background. A chart with neither a listed symptom nor a listed condition cannot be built on this template (see `evals/cases/pap/PLAN.md`).
 - Synthetic charts are cleaner than real ones; routine pain scores and analgesics are left out of the background.
 - Spinal cord stimulator criteria follow one MAC's LCD (Noridian JF); other jurisdictions differ.
 - Policies are encoded at a fixed version; a revised LCD requires re-encoding and re-verification.

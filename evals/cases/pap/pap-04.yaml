@@ -1,0 +1,93 @@
+id: pap-04
+policy: pap-sleep-apnea
+policy_version:
+  LCD L33718: "52"
+  Article A52467: "54"
+variant: initial-bilevel
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: bi-level device without back-up rate (E0470)
+  codes: ["E0470"]
+bundle: bundles/pap-04.json
+expected_overall: insufficient
+tags: [adversarial, contradiction, conditional]
+notes: >-
+  Timeline: in-person evaluation 2025-11-20; home sleep test 2025-12-04 (AHI 26.7); results visit and CPAP order 2025-12-16; sleep-clinic note 2026-03-10 (CPAP set up 2026-01-12, used nightly since); sleep-clinic visit 2026-08-18 (first PAP use 2026-08-04, no previous PAP use, mask refit); telephone encounter 2026-09-25 (failure on CPAP, E0470 ordered, no visit scheduled); request 2026-10-05. The only intended conflict is how long the patient used an E0601: 8 months in the March note, about 7 weeks in the August note. The first-use date of 2026-08-04 falls after the evaluation and the test, so it conflicts with nothing else. The telephone note is silent on duration. Under GUIDELINES rule 4 the unresolved conflict makes new-evaluation-after-3-months-on-cpap insufficient: if the condition holds, the required new in-person evaluation is absent; if not, the criterion is not applicable. The three other E0470 criteria are met on either reading, because the telephone note documents them.
+changed_labels:
+  - criterion: ahi-5-to-14
+    quote: >-
+      is greater than or equal to 5 and less than or equal to 14 events per hour with a minimum of 10 events
+    why: >-
+      The index is 26.7 events per hour, above 14, so the lower range is not the one met.
+  - criterion: new-evaluation-after-3-months-on-cpap
+    quote: >-
+      If an E0601 device has been used for more than 3 months and the beneficiary is switched to an E0470, a new initial in-person clinical evaluation is required
+    why: >-
+      Two sleep-clinic notes disagree on whether the E0601 was used for more than 3 months before the switch (since 2026-01-12, or since 2026-08-04 with no previous PAP use). The record does not settle it, and no visit follows the telephone order.
+expected:
+  - criterion: in-person-evaluation-before-sleep-test
+    outcome: met
+    fact: >-
+      In-person sleep medicine evaluation by the treating physician on 2025-11-20, 14 days before the home sleep apnea test of 2025-12-04.
+    evidence: [Encounter/enc-sleep-eval, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]
+
+  - criterion: ahi-15-plus
+    outcome: met
+    fact: >-
+      AHI 26.7 events per hour (178 events over 6 h 40 min of recording): at least 15 per hour with at least 30 events.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: ahi-5-to-14
+    outcome: not_met
+    fact: >-
+      AHI 26.7 is above the 5 to 14 range, so the lower range does not apply.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: osa-symptom-or-condition
+    outcome: met
+    fact: >-
+      Excessive daytime sleepiness is documented in the evaluation note (dozes off when seated, nearly fell asleep while driving); the chart also codes ischemic heart disease, which the criterion names, diagnosed 2026-07-21 and so in the chart when the request is made.
+    evidence: [DocumentReference/note-sleep-eval, Condition/37b75dda-e187-ae40-4f8f-f53efc54cfc9]
+
+  - criterion: short-study-event-minimum
+    outcome: not_applicable
+    fact: >-
+      The recording time was 6 h 40 min, not less than 2 hours, so the condition does not hold.
+    evidence: []
+
+  - criterion: sleep-test-type
+    outcome: met
+    fact: >-
+      A Type III home sleep apnea test; the criterion accepts a home-based sleep test of Types II, III, IV or Other.
+    evidence: [DiagnosticReport/report-sleep-test]
+
+  - criterion: sleep-test-ordered-by-treating-practitioner
+    outcome: met
+    fact: >-
+      The evaluation note says the treating physician for sleep-disordered breathing ordered the study at the in-person visit; a ServiceRequest records the order.
+    evidence: [ServiceRequest/sr-sleep-test, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]
+
+  - criterion: cpap-tried-and-ineffective
+    outcome: met
+    fact: >-
+      The telephone note of 2026-09-25 documents failure to meet therapeutic goals on CPAP despite optimal therapy (mask properly fit, pressures from 8 to 14 cm H2O tried). Both clinic notes place the CPAP use at home, so the conflict about its duration does not change this label.
+    evidence: [DocumentReference/note-telephone]
+
+  - criterion: interface-fit-addressed
+    outcome: met
+    fact: >-
+      The mask was refit at the visit of 2026-08-18; the telephone note of 2026-09-25 documents that it is properly fit, used without difficulty and will be used with the bi-level device.
+    evidence: [DocumentReference/note-telephone, DocumentReference/note-cpap-followup-august]
+
+  - criterion: cpap-pressure-settings-failed
+    outcome: met
+    fact: >-
+      The telephone note documents that 14 cm H2O prevents the patient from tolerating therapy and that 8, 10 and 12 cm H2O failed to control symptoms, improve sleep quality or reduce the AHI.
+    evidence: [DocumentReference/note-telephone]
+
+  - criterion: new-evaluation-after-3-months-on-cpap
+    outcome: insufficient
+    fact: >-
+      The note of 2026-03-10 says the E0601 was set up on 2026-01-12 and used nightly since (more than 3 months before the switch); the note of 2026-08-18 says first PAP use was 2026-08-04 with no previous PAP use (about 7 weeks before the switch). Nothing resolves the conflict, so the record does not show whether the condition holds. The order was placed by telephone and no visit follows it, so the new evaluation is absent if the condition holds.
+    evidence: [DocumentReference/note-cpap-followup-march, DocumentReference/note-cpap-followup-august, DocumentReference/note-telephone]

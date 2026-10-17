@@ -29,6 +29,7 @@ def request(**overrides):
         "codes": ["64635"],
         "region": "lumbar",
         "levels": ["L4-5", "L5-S1"],
+        "same_day_blocks": [],
     }
     return PriorAuthRequest(**(fields | overrides))
 

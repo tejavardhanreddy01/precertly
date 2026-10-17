@@ -1,0 +1,376 @@
+{
+  "facet-01": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: thermal radiofrequency ablation"
+    ],
+    [
+      "request.technique",
+      "Technique: radiofrequency_ablation"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64635, 64636"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-02": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: thermal radiofrequency ablation"
+    ],
+    [
+      "request.technique",
+      "Technique: radiofrequency_ablation"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64635, 64636"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-03": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-08"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: second diagnostic medial branch block"
+    ],
+    [
+      "request.technique",
+      "Technique: medial_branch_block"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64493, 64494"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-04": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-08"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: second diagnostic medial branch block"
+    ],
+    [
+      "request.technique",
+      "Technique: medial_branch_block"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64493, 64494"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-05": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: thermal radiofrequency ablation"
+    ],
+    [
+      "request.technique",
+      "Technique: radiofrequency_ablation"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64635, 64636"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-06": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: diagnostic medial branch block"
+    ],
+    [
+      "request.technique",
+      "Technique: medial_branch_block"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64493, 64494"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-07": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: diagnostic medial branch block"
+    ],
+    [
+      "request.technique",
+      "Technique: medial_branch_block"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64493, 64494"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-08": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: diagnostic medial branch block"
+    ],
+    [
+      "request.technique",
+      "Technique: medial_branch_block"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64493, 64494, 64495"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L3-4, L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-09": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: repeat thermal radiofrequency ablation"
+    ],
+    [
+      "request.technique",
+      "Technique: radiofrequency_ablation"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64635, 64636"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-10": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: repeat thermal radiofrequency ablation"
+    ],
+    [
+      "request.technique",
+      "Technique: radiofrequency_ablation"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64635, 64636"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ],
+  "facet-11": [
+    [
+      "request.date",
+      "Request date: 2026-10-05"
+    ],
+    [
+      "request.service_date",
+      "Planned date of service: 2026-10-19"
+    ],
+    [
+      "request.procedure",
+      "Requested procedure: diagnostic medial branch block"
+    ],
+    [
+      "request.technique",
+      "Technique: medial_branch_block"
+    ],
+    [
+      "request.codes",
+      "Procedure codes: 64493, 64494"
+    ],
+    [
+      "request.region",
+      "Spinal region: lumbar"
+    ],
+    [
+      "request.levels",
+      "Levels: L4-5, L5-S1"
+    ],
+    [
+      "request.same_day_blocks",
+      "Other blocks planned for the same day: none"
+    ]
+  ]
+}

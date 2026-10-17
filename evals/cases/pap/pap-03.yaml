@@ -1,0 +1,93 @@
+id: pap-03
+policy: pap-sleep-apnea
+policy_version:
+  LCD L33718: "52"
+  Article A52467: "54"
+variant: continued
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: continued coverage of the CPAP device (E0601) beyond the first three months
+  codes: ["E0601"]
+bundle: bundles/pap-03.json
+expected_overall: not_met
+tags: [adversarial, near-miss-threshold, similar-but-irrelevant]
+notes: >-
+  Clean continued-coverage chain, one change. The record: in-person evaluation 2026-05-04, facility polysomnogram 2026-05-19 (AHI 28.4), results 2026-06-02, supplier setup and start of therapy 2026-06-22, in-person re-evaluation 2026-08-22 (day 61, benefit documented, no usage numbers), first three months of therapy end on the night of 2026-09-21, written download report dated 2026-09-23, practitioner review note 2026-09-24, request 2026-10-05. The change: the nightly usage is set so the best consecutive 30-night period has 4 hours or more on 20 nights, one short of the 21 that is exactly 70%. The report also gives an average use of 4.0 hours per night and any use on 86 of 92 nights, which are not the criterion. Nights count only at 4.6 hours or more; the others are 3.4 or less, so no night sits near the 4-hour line. The best window is computed by the build script, which fails unless it is exactly 20.
+changed_labels:
+  - criterion: ahi-5-to-14
+    quote: >-
+      is greater than or equal to 5 and less than or equal to 14 events per hour with a minimum of 10 events
+    why: >-
+      The index is 28.4 events per hour, above 14, so the lower range is not the one met.
+  - criterion: adherence-4h-70pct
+    quote: >-
+      Adherence to therapy is defined as use of PAP ≥4 hours per night on 70% of nights during a consecutive thirty (30) day period anytime during the first three (3) months of initial usage.
+    why: >-
+      20 of 30 nights is 67%, below 70%. The criterion is nights of 4 hours or more in a consecutive 30-night period, not average use and not any use.
+expected:
+  - criterion: in-person-evaluation-before-sleep-test
+    outcome: met
+    fact: >-
+      In-person sleep medicine evaluation by the treating physician on 2026-05-04, 15 days before the polysomnogram of 2026-05-19.
+    evidence: [Encounter/enc-sleep-eval, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]
+
+  - criterion: ahi-15-plus
+    outcome: met
+    fact: >-
+      AHI 28.4 events per hour (196 events over 6 h 54 min of sleep): at least 15 per hour with at least 30 events.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: ahi-5-to-14
+    outcome: not_met
+    fact: >-
+      AHI 28.4 is above the 5 to 14 range, so the lower range does not apply.
+    evidence: [DiagnosticReport/report-sleep-test, Observation/obs-ahi, DocumentReference/note-sleep-results]
+
+  - criterion: osa-symptom-or-condition
+    outcome: met
+    fact: >-
+      Excessive daytime sleepiness is documented in the evaluation note (dozes off when seated, nearly fell asleep while driving); the chart also codes ischemic heart disease, which the criterion names, diagnosed 2026-07-21 and so in the chart when the request is made.
+    evidence: [DocumentReference/note-sleep-eval, Condition/37b75dda-e187-ae40-4f8f-f53efc54cfc9]
+
+  - criterion: short-study-event-minimum
+    outcome: not_applicable
+    fact: >-
+      The total sleep time was 6 h 54 min, not less than 2 hours, so the condition does not hold.
+    evidence: []
+
+  - criterion: sleep-test-type
+    outcome: met
+    fact: >-
+      A polysomnogram performed in a facility-based sleep laboratory, which the criterion names as 'a polysomnogram performed in a facility-based laboratory (Type I study)'.
+    evidence: [DiagnosticReport/report-sleep-test]
+
+  - criterion: sleep-test-ordered-by-treating-practitioner
+    outcome: met
+    fact: >-
+      The evaluation note says the treating physician for sleep-disordered breathing ordered the study at the in-person visit; a ServiceRequest records the order.
+    evidence: [ServiceRequest/sr-sleep-test, DocumentReference/note-sleep-eval, DiagnosticReport/report-sleep-test]
+
+  - criterion: reevaluation-day-31-to-91
+    outcome: met
+    fact: >-
+      Therapy started 2026-06-22; the in-person re-evaluation on 2026-08-22 is day 61, within the 31st to 91st day, and documents that the patient is benefiting.
+    evidence: [Encounter/enc-reeval, DocumentReference/note-reeval, DeviceUseStatement/cpap-use, DocumentReference/note-cpap-setup]
+
+  - criterion: symptoms-improved-in-person
+    outcome: met
+    fact: >-
+      The in-person re-evaluation documents that daytime sleepiness is much improved and that the snoring and pauses in breathing have stopped.
+    evidence: [DocumentReference/note-reeval]
+
+  - criterion: adherence-4h-70pct
+    outcome: not_met
+    fact: >-
+      The download report dated 2026-09-23 covers all 92 nights of the first three months. Its best consecutive 30-night period (nights 24 to 53) has use of 4 hours or more on 20 of 30 nights, 67%, below the 70% (21 nights) the criterion requires. The decoys in the report (average use 4.0 hours per night, use on 86 of 92 nights) are not the criterion.
+    evidence: [DocumentReference/note-pap-download, DocumentReference/note-adherence-review]
+
+  - criterion: adherence-report-in-record
+    outcome: met
+    fact: >-
+      A written download report dated 2026-09-23, after its last covered night (2026-09-21), is in the record, and the practitioner's review note of 2026-09-24 follows it.
+    evidence: [DocumentReference/note-pap-download, DocumentReference/note-adherence-review]
