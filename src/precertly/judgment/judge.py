@@ -1,9 +1,11 @@
 """Judge criteria with an LLM, verify every quote, and combine the verdicts.
 
-The model's answer is never taken on trust. It cites lines by handle and the cited text is
-extracted here (lines.py), so a quote cannot be invented; a handle that was not in the
-prompt, an over-long range, or an echo that does not match the cited line invalidates the
-verdict, and so does a met or not_met answer with no citation. A verdict that a
+The model's answer is never taken on trust. Under prompt version 3 (the default) it copies
+a quote, and a quote that is not found in the item it cites invalidates the verdict. Under
+prompt version 4 (experimental) it cites lines by handle and the cited text is extracted
+here (lines.py); a handle that was not in the prompt, an over-long range, or an echo that
+does not match the cited line invalidates the verdict. Either way, so does a met or not_met
+answer with no citation. A verdict that a
 criterion's condition does not hold must cite the evidence its policy names in
 condition_evidence. An invalidated verdict becomes "insufficient", so an unverifiable
 answer can never read as approval, and records the kind of invalidation.
@@ -21,6 +23,7 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel
 
+from precertly.judgment import v4
 from precertly.judgment.lines import (
     MAX_CITATION_LINES,
     HandleError,
@@ -32,7 +35,6 @@ from precertly.judgment.logic import judged_criteria, overall_outcome
 from precertly.judgment.models import (
     CaseJudgment,
     ChecklistItem,
-    Citation,
     ComputedCitation,
     CriterionVerdict,
     EvidenceChunk,
@@ -43,7 +45,14 @@ from precertly.judgment.models import (
     ShadowVerdict,
     VerifiedCitation,
 )
-from precertly.judgment.prompt import COMPUTED_HANDLE, SYSTEM, build_prompt, handles
+from precertly.judgment.prompt import (
+    COMPUTED_HANDLE,
+    DEFAULT_PROMPT_VERSION,
+    PromptVersion,
+    build_prompt,
+    handles,
+    system_prompt,
+)
 from precertly.judgment.rules import (
     PARTIAL_BRANCHES,
     RULES_VERSION,
@@ -59,10 +68,11 @@ from precertly.policies import Criterion, Policy
 # results file, and a run may only be resumed under the same values.
 MAX_TOKENS = 800
 TEMPERATURE = 0.0
-# Version of the checks that decide whether a model answer stands. 2: a not-applicable
-# verdict must cite its criterion's condition_evidence. 3: line handles; the quote is
-# extracted from the cited lines and the first-words echo must match.
-VERIFIER_VERSION = "3"
+# Version of the checks that decide whether a model answer stands, by prompt version.
+# 2: a not-applicable verdict must cite its criterion's condition_evidence (prompt 3).
+# 3: line handles; the quote is extracted from the cited lines and the first-words echo
+# must match (prompt 4).
+VERIFIER_VERSIONS: dict[PromptVersion, str] = {"3": "2", "4": "3"}
 
 
 class StructuredLLM(Protocol):
@@ -94,10 +104,68 @@ Invalid = tuple[InvalidationKind, str]
 
 
 def verify(
+    judgment: ModelJudgment | v4.ModelJudgment,
+    chunks: list[EvidenceChunk],
+    computed: str | None = None,
+) -> tuple[list[VerifiedCitation], str | None, Invalid | None]:
+    """Verified chunk citations, the verified quote from [C1] if it was cited, and the kind
+    and reason the verdict is invalid if it is. The answer's type says which prompt
+    version it came from."""
+    if isinstance(judgment, v4.ModelJudgment):
+        return verify_lines(judgment, chunks, computed)
+    return verify_quotes(judgment, chunks, computed)
+
+
+def verify_quotes(
     judgment: ModelJudgment, chunks: list[EvidenceChunk], computed: str | None = None
 ) -> tuple[list[VerifiedCitation], str | None, Invalid | None]:
-    """Verified chunk citations, the computed statement if [C1] was cited, and the kind and
-    reason the verdict is invalid if it is.
+    """Prompt version 3: the model cites handles (E1, E2, ...) with a copied quote; they are
+    mapped back to chunk ids here. [C1] is a handle only when computed (a partial rule's
+    statement) was in the prompt. A handle that was not in the prompt, or a quote that is
+    not in the item it cites, is invalid.
+    """
+    by_handle = handles(chunks)
+    verified, computed_quote = [], None
+    for citation in judgment.citations:
+        handle = citation.evidence.strip().strip("[]").upper()
+        if handle == COMPUTED_HANDLE and computed is not None:
+            if find_quote(citation.quote, computed) is None:
+                return (
+                    [],
+                    None,
+                    (
+                        "quote_not_found",
+                        f"quote not found in [C1]: {citation.quote[:80]!r}",
+                    ),
+                )
+            computed_quote = citation.quote
+            continue
+        chunk = by_handle.get(handle)
+        if chunk is None:
+            return [], None, ("unknown_handle", _not_shown(citation.evidence))
+        span = find_quote(citation.quote, chunk.text)
+        if span is None:
+            return (
+                [],
+                None,
+                (
+                    "quote_not_found",
+                    f"quote not found in {chunk.id}: {citation.quote[:80]!r}",
+                ),
+            )
+        verified.append(
+            VerifiedCitation(
+                chunk_id=chunk.id, quote=citation.quote, char_start=span[0], char_end=span[1]
+            )
+        )
+    return verified, computed_quote, None
+
+
+def verify_lines(
+    judgment: v4.ModelJudgment, chunks: list[EvidenceChunk], computed: str | None = None
+) -> tuple[list[VerifiedCitation], str | None, Invalid | None]:
+    """Prompt version 4: verified chunk citations, the computed statement if [C1] was
+    cited, and the kind and reason the verdict is invalid if it is.
 
     The model cites line handles (E3.2, or E3.2-E3.4); the cited lines are extracted here
     as the quote. [C1] is a handle only when computed (a partial rule's statement) was in
@@ -168,7 +236,7 @@ def _not_shown(evidence: str) -> str:
     return f"cited evidence {evidence!r} was not in the prompt"
 
 
-def _mismatch(where: str, citation: Citation, line: str) -> str:
+def _mismatch(where: str, citation: v4.Citation, line: str) -> str:
     return (
         f"first words {citation.first_words[:40]!r} do not match {where}, which starts "
         f"{line[:40]!r}"
@@ -314,6 +382,7 @@ async def judge_criterion(
     *,
     max_tokens: int = MAX_TOKENS,
     partial: RuleResult | None = None,
+    prompt_version: PromptVersion = DEFAULT_PROMPT_VERSION,
 ) -> CriterionVerdict:
     """One verdict for one criterion from the evidence given (request chunks included).
 
@@ -322,9 +391,9 @@ async def judge_criterion(
     computed = [computed_citation(criterion.id, partial)] if partial else []
     try:
         response = await llm.structured(
-            build_prompt(criterion, request, chunks, partial),
-            ModelJudgment,
-            system=SYSTEM,
+            build_prompt(criterion, request, chunks, partial, prompt_version),
+            v4.ModelJudgment if prompt_version == "4" else ModelJudgment,
+            system=system_prompt(prompt_version),
             max_tokens=max_tokens,
             temperature=TEMPERATURE,
         )
@@ -344,7 +413,7 @@ async def judge_criterion(
             exchanges=error.exchanges,
             computed=computed,
         )
-    judgment: ModelJudgment = response.data
+    judgment: ModelJudgment | v4.ModelJudgment = response.data
     citations, computed_quote, invalid = verify(
         judgment, chunks, partial.statement if partial else None
     )
@@ -396,6 +465,7 @@ async def judge_with_rule(
     rule: RuleResult | None,
     *,
     shadow: bool = False,
+    prompt_version: PromptVersion = DEFAULT_PROMPT_VERSION,
 ) -> CriterionVerdict:
     """A verdict that uses the rule's result where there is one.
 
@@ -406,7 +476,9 @@ async def judge_with_rule(
     one run holds both verdicts for comparison. The shadow never affects the outcome.
     """
     if rule is None or rule.kind == "absent":
-        verdict = await judge_criterion(llm, criterion, request, chunks)
+        verdict = await judge_criterion(
+            llm, criterion, request, chunks, prompt_version=prompt_version
+        )
         verdict.rule_kind = rule.kind if rule else None
         return verdict
 
@@ -425,12 +497,16 @@ async def judge_with_rule(
             computed=[computed_citation(criterion.id, rule)],
         )
     else:
-        verdict = await judge_criterion(llm, criterion, request, chunks, partial=rule)
+        verdict = await judge_criterion(
+            llm, criterion, request, chunks, partial=rule, prompt_version=prompt_version
+        )
         verdict.decided_by = "rule+model"
     verdict.rule_kind = rule.kind
 
     if shadow:
-        alone = await judge_criterion(llm, criterion, request, chunks)
+        alone = await judge_criterion(
+            llm, criterion, request, chunks, prompt_version=prompt_version
+        )
         verdict.shadow = ShadowVerdict(
             outcome=alone.outcome,
             applicable=alone.applicable,
@@ -454,6 +530,7 @@ async def judge_case(
     concurrency: int = 4,
     structured: StructuredChart | None = None,
     shadow: bool = False,
+    prompt_version: PromptVersion = DEFAULT_PROMPT_VERSION,
 ) -> CaseJudgment:
     """Judge every chart- and request-stage criterion of a variant and combine them.
 
@@ -478,7 +555,13 @@ async def judge_case(
         rule = evaluate(criterion, structured, request) if structured is not None else None
         async with gate:
             return await judge_with_rule(
-                llm, criterion, request, evidence_by_criterion[criterion_id], rule, shadow=shadow
+                llm,
+                criterion,
+                request,
+                evidence_by_criterion[criterion_id],
+                rule,
+                shadow=shadow,
+                prompt_version=prompt_version,
             )
 
     verdicts = list(await asyncio.gather(*(one(criterion_id) for criterion_id in judged)))

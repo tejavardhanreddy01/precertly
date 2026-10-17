@@ -152,3 +152,35 @@ def test_rebuilt_chunks_match_ingested_chunks_byte_for_byte(db):
         return compared
 
     assert db(work) > 1000
+
+
+# The output schema each prompt version sends as the forced tool, as it was when its
+# recorded runs were made (experiment 1.1 for version 3, experiment 2 for version 4).
+SCHEMA_SHA256 = {
+    "3": "6420d60be72ef52d0400673ee86939da6df8cff14d68adb002926c57cf4cdb9d",
+    "4": "f34034e640cf7236a8746eefbb434c932999c6b4ef4f0ce5659f3fb4494e5fcd",
+}
+
+
+def test_each_prompt_version_still_sends_the_schema_its_runs_used():
+    import hashlib
+
+    from precertly.judgment import ModelJudgment, v4
+
+    for version, schema in (("3", ModelJudgment), ("4", v4.ModelJudgment)):
+        assert schema.__name__ == "ModelJudgment"  # the tool's name
+        text = json.dumps(schema.model_json_schema(), sort_keys=True)
+        assert hashlib.sha256(text.encode()).hexdigest() == SCHEMA_SHA256[version], version
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["2026-10-14-experiment-1.1a.json", "2026-10-16-experiment-2a.json"],
+    ids=["prompt-3", "prompt-4"],
+)
+def test_recorded_runs_of_each_prompt_version_rebuild_exactly(name):
+    from precertly.evals.cases import EVALS_DIR
+
+    payload = json.loads((EVALS_DIR / "results" / name).read_text(encoding="utf-8"))
+    result = check_results(payload)
+    assert result.problems == [] and result.exchanges_checked == 194

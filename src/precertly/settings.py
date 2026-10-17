@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,6 +30,9 @@ class Settings(BaseSettings):
 
     # Judgment: chart chunks retrieved per criterion.
     judgment_top_k: int = 8
+    # Judgment prompt. 3 is the default; 4 (line-level evidence handles) is experimental
+    # and opt-in: experiment 2 in evals/results/NOTES.md, which failed its pre-registration.
+    prompt_version: Literal["3", "4"] = "3"
 
     # Matches docker-compose.yml (host port 5433).
     database_url: str = "postgresql+asyncpg://precertly:precertly@localhost:5433/precertly"

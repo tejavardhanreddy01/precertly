@@ -8,7 +8,7 @@ import pytest
 from precertly.evals import load_cases
 from precertly.evals.cases import EVALS_DIR
 from precertly.evals.prompt_check import case_chunks
-from precertly.judgment import Citation, EvidenceChunk, ModelJudgment, verify
+from precertly.judgment import EvidenceChunk, verify
 from precertly.judgment.judge import invalidation_kind
 from precertly.judgment.lines import (
     MAX_CITATION_LINES,
@@ -20,6 +20,7 @@ from precertly.judgment.lines import (
     segment,
     words,
 )
+from precertly.judgment.v4 import Citation, ModelJudgment
 
 
 def _texts(text, note=True):

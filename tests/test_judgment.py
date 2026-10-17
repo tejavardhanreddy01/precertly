@@ -15,7 +15,6 @@ from precertly.judgment import (
     judge_criterion,
     judged_criteria,
 )
-from precertly.judgment.lines import lines_of
 from precertly.llm import LLMUsage
 from precertly.policies import load_policies
 
@@ -33,7 +32,6 @@ NOTE = EvidenceChunk(
     id="DocumentReference/note-mbb2#0",
     text="Before the block: 7/10.\nAfter the block: 2/10.\nRelief: (7 - 2) / 7 = 71%.",
     effective_date=date(2026, 9, 14),
-    free_text=True,
 )
 CHUNKS = [*REQUEST.chunks(), NOTE]
 
@@ -66,32 +64,13 @@ def _handle(chunk_id):
     return f"E{ids.index(chunk_id) + 1}" if chunk_id in ids else chunk_id
 
 
-def _cite(chunk_id, text):
-    """A citation of the lines of chunk_id that text covers, echoing text's first words.
-
-    If text is not in the chunk, the citation names the chunk's first line and echoes text,
-    which is how a citation of the wrong line looks. An unknown chunk id is passed through.
-    """
-    chunk = next((c for c in CHUNKS if c.id == chunk_id), None)
-    if chunk is None:
-        return Citation(evidence=chunk_id, first_words=text)
-    item, span = _handle(chunk_id), find_quote(text, chunk.text)
-    lines = lines_of(chunk)
-    if span is None:
-        return Citation(evidence=f"{item}.1", first_words=text)
-    touched = [line.number for line in lines if line.start < span[1] and line.end > span[0]]
-    first, last = touched[0], touched[-1]
-    handle = f"{item}.{first}" if first == last else f"{item}.{first}-{item}.{last}"
-    return Citation(evidence=handle, first_words=lines[first - 1].text)
-
-
 def _answer(outcome, citations=(), condition_holds=None):
     return ModelJudgment(
         condition_holds=condition_holds,
         outcome=outcome,
         confidence=0.9,
         rationale="because",
-        citations=[_cite(c, q) for c, q in citations],
+        citations=[Citation(evidence=_handle(c), quote=q) for c, q in citations],
     )
 
 
@@ -114,67 +93,40 @@ def test_verified_citation_keeps_the_verdict_and_records_offsets():
     assert (verdict.outcome, verdict.invalidated, verdict.applicable) == ("not_met", None, True)
     (citation,) = verdict.citations
     assert NOTE.text[citation.char_start : citation.char_end] == "Relief: (7 - 2) / 7 = 71%."
-    assert citation.quote == "Relief: (7 - 2) / 7 = 71%."
-    assert (citation.first_line, citation.last_line) == (3, 3)
     assert citation.resource == "DocumentReference/note-mbb2"
     assert verdict.usage.input_tokens == 100
 
 
-def test_an_echo_that_does_not_match_the_cited_line_invalidates_the_verdict():
+def test_a_quote_that_is_not_in_the_chunk_invalidates_the_verdict():
     answer = _answer("met", [(NOTE.id, "Relief: 86%")])
     verdict, _ = _judge("two-mbbs-80pct-sustained-relief", answer)
     assert verdict.outcome == "insufficient"
     assert verdict.model_outcome == "met"
-    assert verdict.invalidation == "handle_mismatch"
-    assert "do not match" in verdict.invalidated
+    assert "quote not found" in verdict.invalidated
     assert verdict.citations == []
 
 
-@pytest.mark.parametrize(
-    "handle", ["E99.1", "E9.4", "E9", "note-mbb2#0", "DocumentReference/note-mbb2#0"]
-)
-def test_citing_something_that_is_not_a_line_handle_from_the_prompt_invalidates(handle):
+@pytest.mark.parametrize("handle", ["E99", "note-mbb2#0", "DocumentReference/note-mbb2#0"])
+def test_citing_something_that_is_not_a_handle_from_the_prompt_invalidates(handle):
     answer = _answer("met")
-    answer.citations = [Citation(evidence=handle, first_words="Before the block:")]
+    answer.citations = [Citation(evidence=handle, quote="Before the block: 7/10.")]
     verdict, _ = _judge("two-mbbs-80pct-sustained-relief", answer)
     assert verdict.outcome == "insufficient"
-    assert verdict.invalidation == "unknown_handle"
-
-
-def test_a_one_line_item_may_be_cited_by_its_item_handle():
-    answer = _answer("met")
-    answer.citations = [
-        Citation(evidence=_handle("request.levels"), first_words="Levels: L4-5, L5-S1")
-    ]
-    verdict, _ = _judge("levels-1-to-2", answer)
-    assert (verdict.outcome, verdict.invalidated) == ("met", None)
-    assert verdict.citations[0].quote == "Levels: L4-5, L5-S1"
-
-
-def test_a_range_is_extracted_verbatim_with_its_line_numbers():
-    answer = _answer("not_met", [(NOTE.id, "After the block: 2/10.\nRelief:")])
-    assert answer.citations[0].evidence == "E9.2-E9.3"
-    verdict, _ = _judge("two-mbbs-80pct-sustained-relief", answer)
-    (citation,) = verdict.citations
-    assert citation.quote == "After the block: 2/10.\nRelief: (7 - 2) / 7 = 71%."
-    assert (citation.first_line, citation.last_line) == (2, 3)
+    assert "was not in the prompt" in verdict.invalidated
 
 
 def test_handles_map_back_to_chunk_ids_and_tolerate_brackets():
-    answer = _answer("met")
-    answer.citations = [
-        Citation(evidence=f"[{_handle(NOTE.id).lower()}.1]", first_words="before the BLOCK")
-    ]
+    answer = _answer("met", [(f"[{_handle(NOTE.id).lower()}]", "Before the block: 7/10.")])
     verdict, _ = _judge("two-mbbs-80pct-sustained-relief", answer)
     assert verdict.invalidated is None
     assert verdict.citations[0].chunk_id == NOTE.id
 
 
-def test_a_valid_handle_with_the_echo_of_another_item_is_invalid():
-    # the words are real, but they are in a different evidence item than the one cited
+def test_a_verified_handle_with_the_wrong_quote_is_still_invalid():
+    # the quote is real, but it is in a different evidence item than the one cited
     answer = _answer("met", [("request.levels", "Before the block: 7/10.")])
     verdict, _ = _judge("two-mbbs-80pct-sustained-relief", answer)
-    assert verdict.invalidation == "handle_mismatch"
+    assert "quote not found in request.levels" in verdict.invalidated
 
 
 @pytest.mark.parametrize("outcome", ["met", "not_met"])
@@ -182,7 +134,6 @@ def test_a_decision_without_any_citation_is_invalid(outcome):
     verdict, _ = _judge("two-mbbs-80pct-sustained-relief", _answer(outcome))
     assert verdict.outcome == "insufficient"
     assert verdict.invalidated == f"{outcome} with no citation"
-    assert verdict.invalidation == "missing_citation"
 
 
 def test_insufficient_needs_no_citation():
@@ -224,14 +175,14 @@ def test_condition_not_holding_with_no_citation_is_insufficient():
 
 @pytest.mark.parametrize(
     "citation",
-    [("E99.1", "Other blocks planned for the same day: none"), (NOTE.id, "No other blocks.")],
+    [("E99", "Other blocks planned for the same day: none"), (NOTE.id, "No other blocks.")],
     ids=["handle-not-in-prompt", "quote-not-in-chunk"],
 )
 def test_condition_not_holding_with_a_fabricated_citation_is_insufficient(citation):
     answer = _answer("met", [citation], condition_holds=False)
     verdict, _ = _judge("same-day-blocks-justified", answer)
     assert (verdict.outcome, verdict.applicable) == ("insufficient", True)
-    assert verdict.invalidation in {"unknown_handle", "handle_mismatch"}
+    assert "not in the prompt" in verdict.invalidated or "not found" in verdict.invalidated
 
 
 def test_a_request_field_alone_cannot_show_a_chart_condition_does_not_hold():
@@ -281,10 +232,9 @@ def test_prompt_carries_the_policy_text_the_condition_and_the_evidence():
     assert criterion.quote in prompt
     assert criterion.condition in prompt
     assert "REQUEST DATE: 2026-10-05" in prompt
-    assert "[E4] (request)\n[E4.1] Technique: radiofrequency_ablation" in prompt
-    assert "[E8] (request)\n[E8.1] Other blocks planned for the same day: none" in prompt
-    assert "[E9] (chart, DocumentReference, dated 2026-09-14)\n[E9.1] Before the block" in prompt
-    assert "[E9.3] Relief: (7 - 2) / 7 = 71%." in prompt
+    assert "[E4] (request)\nTechnique: radiofrequency_ablation" in prompt
+    assert "[E8] (request)\nOther blocks planned for the same day: none" in prompt
+    assert "[E9] (chart, DocumentReference, dated 2026-09-14)" in prompt
     # long chunk ids are not shown, so there is nothing for the model to abbreviate
     assert NOTE.id not in prompt and "request.levels" not in prompt
 

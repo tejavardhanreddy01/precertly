@@ -70,21 +70,10 @@ class PriorAuthRequest(BaseModel):
 
 
 class Citation(BaseModel):
-    """What the model returns: a line handle from the prompt and the first words of that
-    line. The quoted text is extracted from the chunk by the verifier, never copied."""
+    """What the model returns: a handle from the prompt (E1, E2, ...) and a quote."""
 
-    evidence: str = Field(
-        description=(
-            "Line handle, for example E3.2, or a range of up to 3 adjacent lines of one "
-            "item, for example E3.2-E3.4"
-        )
-    )
-    first_words: str = Field(
-        description=(
-            "The first three words of the first cited line, as they appear after its "
-            "handle (all of its words if it has fewer)"
-        )
-    )
+    evidence: str = Field(description="Handle of the evidence item, for example E3")
+    quote: str = Field(description="Words copied exactly from that evidence item")
 
 
 # Why a verdict was invalidated. Older results files record only the reason text; see

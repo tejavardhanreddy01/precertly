@@ -1,3 +1,5 @@
+import hashlib
+
 import pytest
 
 from precertly.evals import load_cases
@@ -214,12 +216,14 @@ def test_runner_saves_after_every_case_and_can_be_resumed(tmp_path, monkeypatch)
     from precertly.evals import run
 
     metadata = {"run_date": "2026-10-13", "git_sha": "abc"}
-    monkeypatch.setattr(run, "run_metadata", lambda rules=False: dict(metadata))
+    monkeypatch.setattr(
+        run, "run_metadata", lambda rules=False, prompt_version=None: dict(metadata)
+    )
     out = tmp_path / "results.json"
     seen_on_disk = []
 
     def fake_run(crash_after=None):
-        async def _run(cases, save, rules=False):
+        async def _run(cases, save, rules=False, prompt_version="3"):
             results = []
             for number, case in enumerate(cases, start=1):
                 judgment = _judgment(case)
@@ -324,7 +328,7 @@ def test_resume_also_refuses_different_policy_versions_or_judgment_settings():
         "max_tokens": 800,
         "temperature": 0.0,
         "top_k": 8,
-        "verifier_version": "3",
+        "verifier_version": "2",
     }
     assert current["policies"]["facet-joint-interventions"] == {
         "LCD L38773": "32",
@@ -395,3 +399,14 @@ def test_a_difference_is_explained_by_its_cause():
         "citation verified in one run only"
     )
     assert difference_cause(verdict(), verdict(applicable=False)) == "applicability changed"
+
+
+def test_prompt_version_4_is_opt_in_and_recorded_with_its_verifier():
+    from precertly.evals.run import run_metadata
+    from precertly.judgment.prompt import SYSTEM, SYSTEM_V4
+
+    default, opted = run_metadata(), run_metadata(prompt_version="4")
+    assert (default["prompt_version"], default["judgment"]["verifier_version"]) == ("3", "2")
+    assert (opted["prompt_version"], opted["judgment"]["verifier_version"]) == ("4", "3")
+    assert default["system_prompt_sha256"] == hashlib.sha256(SYSTEM.encode()).hexdigest()
+    assert opted["system_prompt_sha256"] == hashlib.sha256(SYSTEM_V4.encode()).hexdigest()

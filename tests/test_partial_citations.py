@@ -94,13 +94,13 @@ def _answer(outcome, *citations):
         outcome="met" if outcome == "not_applicable" else outcome,
         confidence=0.9,
         rationale="because",
-        citations=[Citation(evidence=handle, first_words=words) for handle, words in citations],
+        citations=[Citation(evidence=handle, quote=quote) for handle, quote in citations],
     )
 
 
-C1 = ("C1", "The planned service")
-CHART = (f"{E_NOTE}.1", "Anticoagulation starts on")
-REQUEST_FIELD = (f"{E_SERVICE_DATE}.1", "Planned date of")
+C1 = ("C1", "10 days after the coded injection")
+CHART = (E_NOTE, "Anticoagulation starts on 2026-10-12")
+REQUEST_FIELD = (E_SERVICE_DATE, "Planned date of service: 2026-10-08")
 
 
 def _judge(key, answer):
@@ -131,7 +131,7 @@ def test_c1_alone(key, outcome, need):
     if need == "alone":
         assert (_final(verdict), verdict.invalidated) == (outcome, None)
         (computed,) = verdict.computed
-        assert computed.cited_by_model and computed.quote == STATEMENT
+        assert computed.cited_by_model and computed.quote == C1[1]
     else:
         assert verdict.outcome == "insufficient" and verdict.invalidated
         assert verdict.computed[0].cited_by_model is False
@@ -219,7 +219,7 @@ def test_the_partial_prompt_lists_c1_as_evidence_after_the_e_items():
     )
     evidence = prompt.split("EVIDENCE\n")[1]
     assert evidence.index(f"[{E_NOTE}]") < evidence.index("[C1] (computed from the coded record)")
-    assert f"[C1] (computed from the coded record)\n[C1] {STATEMENT}\n" in prompt
+    assert f"[C1] (computed from the coded record)\n{STATEMENT}\n" in prompt
     assert "COMPUTED FACT" not in prompt and "without a citation" not in prompt
     assert "medical necessity of each block listed in the request" in prompt
 
@@ -228,18 +228,17 @@ def test_the_partial_prompt_lists_c1_as_evidence_after_the_e_items():
 def test_other_handles_still_invalidate(handle):
     verdict, _ = _judge("second-diagnostic/one-session-short", _answer("not_met", (handle, "10")))
     assert verdict.outcome == "insufficient"
-    assert verdict.invalidation == "unknown_handle"
+    assert "was not in the prompt" in verdict.invalidated
 
 
-def test_c1_echo_must_match_the_statement():
-    paraphrase = ("C1", "ten days after")
+def test_c1_quote_must_be_in_the_statement():
+    paraphrase = ("C1", "ten days after the first injection")
     verdict, _ = _judge("second-diagnostic/one-session-short", _answer("not_met", paraphrase))
     assert verdict.outcome == "insufficient"
-    assert verdict.invalidation == "handle_mismatch"
-    assert "[C1]" in verdict.invalidated
+    assert verdict.invalidated.startswith("quote not found in [C1]")
 
 
-@pytest.mark.parametrize("handle", ["C1", "[C1]", "c1", "C1.1"])
+@pytest.mark.parametrize("handle", ["C1", "[C1]", "c1"])
 def test_c1_is_accepted_in_the_usual_handle_spellings(handle):
     verdict, _ = _judge("second-diagnostic/one-session-short", _answer("not_met", (handle, C1[1])))
     assert (verdict.outcome, verdict.invalidated) == ("not_met", None)
@@ -251,7 +250,6 @@ def test_c1_on_a_verdict_without_a_partial_rule_invalidates():
     verdict = asyncio.run(judge_criterion(llm, criterion, REQUEST, CHUNKS))
     assert verdict.outcome == "insufficient"
     assert verdict.invalidated == "cited evidence 'C1' was not in the prompt"
-    assert verdict.invalidation == "unknown_handle"
     assert "[C1]" not in llm.prompts[0]
 
 
@@ -286,7 +284,7 @@ def test_the_computed_citation_records_rule_branch_and_version():
         "rules_version": RULES_VERSION,
         "branch": "rfa-sessions/within-limit",
         "cited_by_model": True,
-        "quote": STATEMENT,
+        "quote": C1[1],
     }
     assert verdict.decided_by == "rule+model"
 
@@ -334,8 +332,6 @@ def test_partial_review_lists_chart_required_met_verdicts_with_their_quotes():
         "met",
         True,
     )
-    assert entry["citations"] == [
-        {"handle": f"{E_NOTE}.1", "chunk_id": NOTE.id, "quote": NOTE.text}
-    ]
+    assert entry["citations"] == [{"handle": E_NOTE, "chunk_id": NOTE.id, "quote": CHART[1]}]
     (violation,) = review["c1_alone_where_chart_required"]
     assert violation["row"] == "2b"
