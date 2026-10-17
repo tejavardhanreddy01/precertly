@@ -13,9 +13,11 @@ Two steps:
        SYNTHEA_REFERENCE_DATE=20261001 SYNTHEA_OUTPUT=<dir> data/synthea/generate.sh 100
 
 2. build: add a case's history to that background from a set of facts, one set per case
-   (facet joint interventions, then PAP devices). A case differs from its variant's clean
-   baseline only in the facts it overrides, so the notes, observations and procedures in a
-   bundle always agree with each other, except where a case is about a disagreement.
+   (facet joint interventions, then PAP devices, then bariatric surgery). A case differs
+   from its variant's clean baseline only in the facts it overrides, so the notes,
+   observations and procedures in a bundle always agree with each other, except where a
+   case is about a disagreement. Bariatric bundles also change the background itself: see
+   cases/bariatric/PLAN.md.
 
 The request itself is not in the bundle. Each case file states it in its `request` block
 (dates, procedure and codes; facet cases also region, levels, same-day blocks and
@@ -1399,22 +1401,511 @@ def pap_label_evidence(f: PapFacts) -> dict[str, list[str]]:
     return evidence
 
 
-CASES: dict[str, Facts | PapFacts] = {**FACET_CASES, **PAP_CASES}
+# --- Bariatric surgery (NCD 100.1): the history, generated from facts ---------------------
+
+# The shared background patient cannot serve the bariatric cases as it is. Its coded weight
+# and BMI (27.97) contradict every BMI of 35 or more, and its ischemic heart disease is a
+# possible co-morbidity that the NCD does not name. A bariatric bundle therefore starts from
+# the template with the cardiac cluster removed and the weights, BMIs and blood pressures
+# rewritten from the case facts. The template file, and the facet and PAP bundles, are not
+# touched (cases/bariatric/PLAN.md lists every change).
+HEIGHT_CM = 172.9  # the template's height, unchanged
+HEIGHT_M2 = (HEIGHT_CM / 100) ** 2
+# LOINC 29463-7 "Body weight" and 39156-5 "Body mass index (BMI) [Ratio]": both ACTIVE on the
+# LOINC terminology server (tx.fhir.org, LOINC 2.82), and already on the template's own
+# observations. The HbA1c in the diagnosis note is text only.
+WEIGHT_LOINC = "29463-7"
+BMI_LOINC = "39156-5"
+BLOOD_PRESSURE_LOINC = "85354-9"
+SYSTOLIC_LOINC, DIASTOLIC_LOINC = "8480-6", "8462-4"
+BASELINE_EXAMS = ("2023-10-24", "2024-07-09", "2025-07-15", "2026-07-21")  # template annual exams
+# Replaces the template's 135/90, 136/84, 139/88 and 137/86, which could be read as
+# hypertension, a possible co-morbidity the NCD does not name.
+BASELINE_BLOOD_PRESSURE = dict(
+    zip(BASELINE_EXAMS, [(118, 76), (116, 74), (114, 76), (118, 76)], strict=True)
+)
+OBESITY_CONDITION = "Condition/37b75dda-e187-ae40-3667-262f391a4e9a"  # BMI 30+ obesity, 1995
+
+_P = "37b75dda-e187-ae40"
+# Removed from every bariatric bundle: the cardiac cluster, the note pair that mentions it,
+# and the lipid panel. Listed in cases/bariatric/PLAN.md; a test ties the two together.
+BARIATRIC_REMOVED: tuple[str, ...] = (
+    # ischemic heart disease and the abnormal cardiac imaging finding
+    f"Condition/{_P}-4f8f-f53efc54cfc9",
+    f"Condition/{_P}-149d-10660d15eefd",
+    # 2026-07-28 encounter: cardiology referral, operative status, note and its twin report
+    f"Encounter/{_P}-919a-852251f5aff3",
+    f"Procedure/{_P}-c852-d61e8e01c819",
+    f"Observation/{_P}-3757-ee628716a210",
+    "DocumentReference/8a804714-d88f-1efa-b374-09a2ded1640b",
+    "DiagnosticReport/842f4763-17a4-7525-d5ef-0fabb9c9939d",
+    # 2026-08-02 encounter: angiography, consultation, anesthesia care, referral, note and report
+    f"Encounter/{_P}-065e-55ee51cb2573",
+    f"Procedure/{_P}-f6e7-8385846bf707",
+    f"Procedure/{_P}-1674-33cf97dc9b5c",
+    f"Procedure/{_P}-5b70-175be4e23f55",
+    f"Procedure/{_P}-63b7-95497c5dd0b4",
+    "DocumentReference/8ce34cbb-7dcb-26e3-5bed-84b486df6b87",
+    "DiagnosticReport/ea559e77-5506-0eef-e976-c0ffe97ff036",
+    # 2026-08-09 encounter: percutaneous coronary intervention, note and report
+    f"Encounter/{_P}-4c99-3aab45f0cd0d",
+    f"Procedure/{_P}-c5ed-5ffe4c89afec",
+    "DocumentReference/771daebe-064d-3403-07ae-f308433dd783",
+    "DiagnosticReport/cf4a10ce-e5a8-9a4e-5891-aee3559aac77",
+    # clopidogrel, simvastatin, metoprolol, nitroglycerin
+    f"MedicationRequest/{_P}-7172-b7842d7a2b47",
+    f"MedicationRequest/{_P}-c0f4-15273b5391f3",
+    f"MedicationRequest/{_P}-acd3-2a7639746de8",
+    f"MedicationRequest/{_P}-d1b7-2b381bed9ed0",
+    # the 2026-07-21 annual-exam note and report, which describe the removed cluster
+    "DocumentReference/98a61531-2b8f-f251-ab35-515a0bf416a2",
+    "DiagnosticReport/703eb6d6-25bc-c714-f55a-b35aafdf18fb",
+    # the lipid panel of 2026-07-21 and its four results
+    f"DiagnosticReport/{_P}-f188-4c73123a16a4",
+    f"Observation/{_P}-1295-7a60d2d1e589",
+    f"Observation/{_P}-8772-5ec7ebe1237e",
+    f"Observation/{_P}-6a38-cd02fbcb8a50",
+    f"Observation/{_P}-42cc-ce6e2cf7a872",
+)
+
+WM_REFERRAL = date(2025, 7, 28)  # primary care refers to the weight management clinic
+WM_INTAKE = date(2025, 8, 4)  # intake: month 0 of the program, or the declined call
+WM_SIX_MONTH = date(2026, 2, 2)
+DIABETES_VISIT = date(2026, 7, 28)
+WM_COMPLETION = date(2026, 8, 3)  # month 12
+SURGERY_REFERRAL = date(2026, 8, 17)  # only when there was no program
+SURGICAL_EVAL = date(2026, 9, 14)
+
+# Offsets from the weight at the surgical evaluation: a slow rise from 2023, a dip of 3.2 kg
+# by month 6 of a program and the regain by month 12 (+0.6 kg over the intake weight).
+WEIGHT_OFFSETS: dict[date, float] = {
+    date(2023, 10, 24): -2.6,
+    date(2024, 7, 9): -1.8,
+    date(2025, 7, 15): -0.9,
+    WM_REFERRAL: -0.9,
+    WM_INTAKE: -1.0,
+    WM_SIX_MONTH: -4.2,
+    date(2026, 7, 21): -0.6,
+    DIABETES_VISIT: -0.5,
+    WM_COMPLETION: -0.4,
+    SURGERY_REFERRAL: -0.3,
+    SURGICAL_EVAL: 0.0,
+}
 
 
-def label_evidence(facts: Facts | PapFacts) -> dict[str, list[str]]:
+@dataclass(frozen=True)
+class BariatricFacts:
+    """What is true in a bariatric case's chart. Defaults are the clean covered-procedure case."""
+
+    variant: str = "bariatric"
+    procedure: str = "laparoscopic Roux-en-Y gastric bypass"
+    weight: float = 122.9  # kg at the surgical evaluation, 2026-09-14
+    # high: every BMI is 37 or more; low: every BMI is below 33; near_miss: the evaluation BMI
+    # is below 35 unrounded and no BMI reaches 34.95
+    bmi_design: str = "high"
+    # completed: 12 months of supervised treatment; declined: a clinic note says the patient
+    # declined enrollment (the evaluation says it was completed); none: no treatment record
+    program: str = "completed"
+    diabetes: bool = True
+
+
+def bmi_of(kg: float) -> float:
+    return round(kg / HEIGHT_M2, 2)
+
+
+def bariatric_weight_dates(f: BariatricFacts) -> list[date]:
+    """The visits at which this case's own chart records a weight, in date order."""
+    dates = []
+    if f.program != "none":
+        dates.append(WM_REFERRAL)
+    if f.program == "completed":
+        dates += [WM_INTAKE, WM_SIX_MONTH]
+    if f.diabetes:
+        dates.append(DIABETES_VISIT)
+    if f.program == "completed":
+        dates.append(WM_COMPLETION)
+    if f.program == "none":
+        dates.append(SURGERY_REFERRAL)
+    return [*dates, SURGICAL_EVAL]
+
+
+def bariatric_series(f: BariatricFacts) -> dict[date, tuple[float, float]]:
+    """(kg, BMI) at every date with a weight: the four baseline exams, then the case's visits.
+
+    Asserts the design of the series, so a change to a number cannot quietly move a label.
+    """
+    dates = sorted({date.fromisoformat(d) for d in BASELINE_EXAMS} | set(bariatric_weight_dates(f)))
+    series = {d: (w := round(f.weight + WEIGHT_OFFSETS[d], 1), bmi_of(w)) for d in dates}
+    bmis = [b for _, b in series.values()]
+    assert min(bmis) >= 30, "the template's BMI 30+ obesity Condition would be contradicted"
+    evaluation = series[SURGICAL_EVAL][1]
+    if f.bmi_design == "high":
+        assert min(bmis) >= 37, bmis
+    elif f.bmi_design == "low":
+        assert max(bmis) < 33, bmis
+    else:
+        assert f.bmi_design == "near_miss"
+        assert 34.8 < evaluation < 35 and max(bmis) < 34.95, bmis
+    ordered = list(series.items())
+    for (before, (kg_before, _)), (after, (kg_after, _)) in zip(ordered, ordered[1:], strict=False):
+        # weights move by at most 1.0 kg between visits, except into and out of the month-6 dip
+        if WM_SIX_MONTH not in (before, after):
+            assert abs(kg_after - kg_before) <= 1.0 + 1e-9, (before, after, kg_before, kg_after)
+    if f.program == "completed":
+        intake, month6, month12 = (series[d][0] for d in (WM_INTAKE, WM_SIX_MONTH, WM_COMPLETION))
+        assert round(intake - month6, 1) == 3.2 and round(month12 - intake, 1) == 0.6
+    return series
+
+
+def _note_bmi(kg: float) -> str:
+    """The BMI as a note states it: one decimal, rounded from the unrounded value."""
+    return f"{kg / HEIGHT_M2:.1f}"
+
+
+def bariatric_background(background: list[Resource], f: BariatricFacts) -> list[Resource]:
+    """The template for a bariatric case: the cardiac cluster and lipid panel removed, and the
+    weights, BMIs and blood pressures of the four annual exams rewritten from the case."""
+    removed = set(BARIATRIC_REMOVED)
+    refs = {f"{r['resourceType']}/{r['id']}" for r in background}
+    assert removed <= refs, sorted(removed - refs)
+    kept = [r for r in background if f"{r['resourceType']}/{r['id']}" not in removed]
+    assert len(kept) == len(background) - len(BARIATRIC_REMOVED) == 139
+    series = bariatric_series(f)
+    rewritten = 0
+    for resource in kept:
+        if resource["resourceType"] != "Observation":
+            continue
+        code = resource["code"]["coding"][0]["code"]
+        when = resource["effectiveDateTime"][:10]
+        if (
+            code not in (WEIGHT_LOINC, BMI_LOINC, BLOOD_PRESSURE_LOINC)
+            or when not in BASELINE_EXAMS
+        ):
+            continue
+        kg, bmi = series[date.fromisoformat(when)]
+        if code == WEIGHT_LOINC:
+            resource["valueQuantity"]["value"] = kg
+        elif code == BMI_LOINC:
+            resource["valueQuantity"]["value"] = bmi
+        else:
+            systolic, diastolic = BASELINE_BLOOD_PRESSURE[when]
+            for part in resource["component"]:
+                part_code = part["code"]["coding"][0]["code"]
+                part["valueQuantity"]["value"] = (
+                    systolic if part_code == SYSTOLIC_LOINC else diastolic
+                )
+        rewritten += 1
+    assert rewritten == 12  # weight, BMI and blood pressure at each of the four exams
+    return kept
+
+
+def _vital(obs_id: str, when: date, loinc: str, name: str, value: float, unit: str, enc: str):
+    return {
+        "resourceType": "Observation",
+        "id": obs_id,
+        "status": "final",
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                        "code": "vital-signs",
+                        "display": "Vital signs",
+                    }
+                ]
+            }
+        ],
+        "code": {
+            "coding": [{"system": "http://loinc.org", "code": loinc, "display": name}],
+            "text": name,
+        },
+        "effectiveDateTime": when.isoformat(),
+        "valueQuantity": {
+            "value": value,
+            "unit": unit,
+            "system": "http://unitsofmeasure.org",
+            "code": unit,
+        },
+        "encounter": {"reference": f"Encounter/{enc}"},
+    }
+
+
+def _surgical_evaluation(f: BariatricFacts, kg: float) -> str:
+    """The evaluation by the surgeon. It carries no history sentence in any case: no past
+    medical or surgical history and no statement about co-morbidities. What it says about
+    co-morbidity is the Assessment line, and only where the chart has type 2 diabetes."""
+    bmi = _note_bmi(kg)
+    if f.program == "none":
+        reason = "evaluation for bariatric surgery. Referred by primary care."
+        treatment = ""
+    elif f.program == "declined":
+        reason = "evaluation for bariatric surgery after a 12-month weight management program."
+        treatment = "Medical weight management: completed a 12-month physician-supervised weight management program (2025-08-04 to 2026-08-03) with a dietitian-led diet, exercise and orlistat, without lasting weight loss.\n"
+    else:
+        reason = "evaluation for bariatric surgery after a 12-month weight management program."
+        treatment = "Medical weight management: completed a 12-month physician-supervised program (2025-08-04 to 2026-08-03: dietitian-led 1,500 kcal/day diet, 150 minutes of walking a week, monthly counseling, orlistat 120 mg three times daily). Weight at completion was 0.6 kg above the weight at intake; no lasting weight loss.\n"
+    diabetes = ", with type 2 diabetes on metformin" if f.diabetes else ""
+    return f"""Reason for visit: {reason}
+Measurements today: weight {kg} kg, height {HEIGHT_CM} cm, BMI {bmi} kg/m2.
+{treatment}Assessment: obesity, BMI {bmi}{diabetes}.
+Plan: {f.procedure}. Request prior authorization.
+"""
+
+
+def bariatric_history(f: BariatricFacts) -> list[Resource]:
+    series = bariatric_series(f)
+    encounters: dict[date, str] = {
+        WM_REFERRAL: "enc-pcp-wm-referral",
+        WM_INTAKE: "enc-wm-intake",
+        WM_SIX_MONTH: "enc-wm-6mo",
+        DIABETES_VISIT: "enc-pcp-diabetes",
+        WM_COMPLETION: "enc-wm-12mo",
+        SURGERY_REFERRAL: "enc-bariatric-referral",
+        SURGICAL_EVAL: "enc-surgical-eval",
+    }
+    resources: list[Resource] = []
+
+    def visit(when: date, kind: str, note_id: str, title: str, text: str, cls: str = "AMB"):
+        resources.extend(
+            [
+                _encounter(encounters[when], when, kind, cls=cls),
+                _note(note_id, when, title, text, encounters[when]),
+            ]
+        )
+
+    def kg(when: date) -> float:
+        return series[when][0]
+
+    if f.program != "none":
+        visit(
+            WM_REFERRAL,
+            "Primary care visit",
+            "note-wm-referral",
+            "Primary care visit, weight",
+            "Chief complaint: weight.\nObesity. Treatment options discussed. Plan: referral to the medical weight management clinic. No medication started at this visit.\n",
+        )
+    if f.program == "completed":
+        visit(
+            WM_INTAKE,
+            "Weight management clinic visit",
+            "note-wm-intake",
+            "Weight management clinic intake",
+            f"Reason for visit: obesity, referred by primary care. First visit with me.\nMeasurements: weight {kg(WM_INTAKE)} kg, height {HEIGHT_CM} cm.\nPlan: 12-month supervised program. Dietitian-led diet of 1,500 kcal/day, 150 minutes of walking a week, monthly behavioral counseling visits. Start orlistat 120 mg three times daily with meals.\n",
+        )
+        resources.append(
+            {
+                "resourceType": "MedicationRequest",
+                "id": "orlistat",
+                "status": "completed",
+                "intent": "order",
+                "medicationCodeableConcept": {"text": "Orlistat 120 MG oral capsule"},
+                "authoredOn": WM_INTAKE.isoformat(),
+                "encounter": {"reference": f"Encounter/{encounters[WM_INTAKE]}"},
+                "dosageInstruction": [{"text": "1 capsule three times daily with meals"}],
+                "reasonReference": [{"reference": OBESITY_CONDITION}],
+            }
+        )
+        visit(
+            WM_SIX_MONTH,
+            "Weight management clinic visit",
+            "note-wm-6mo",
+            "Weight management clinic, month 6",
+            f"Month 6 of the supervised weight management program. 6 of 6 monthly sessions attended.\nWeight {kg(WM_SIX_MONTH)} kg, {kg(WM_INTAKE)} kg at intake: down 3.2 kg.\nPlan: continue the diet, the walking program, monthly counseling and orlistat.\n",
+        )
+    if f.program == "declined":
+        visit(
+            WM_INTAKE,
+            "Weight management clinic telephone intake",
+            "note-wm-declined",
+            "Weight management clinic, telephone intake",
+            f"Referral from primary care, sent {WM_REFERRAL.isoformat()}, received. Intake call with the patient today. The patient declined enrollment in the program and does not wish to schedule a first visit. Referral closed.\n",
+            cls="VR",
+        )
+    if f.diabetes:
+        visit(
+            DIABETES_VISIT,
+            "Primary care visit",
+            "note-diabetes-dx",
+            "Primary care visit",
+            "Chief complaint: increased thirst and fatigue.\nType 2 diabetes mellitus diagnosed on HbA1c 7.4%. Started metformin 500 mg twice daily with meals.\n",
+        )
+        resources += [
+            {
+                "resourceType": "Condition",
+                "id": "type-2-diabetes",
+                "clinicalStatus": {"coding": [{"code": "active"}]},
+                "verificationStatus": {"coding": [{"code": "confirmed"}]},
+                "code": {
+                    "coding": [
+                        {
+                            "system": "http://snomed.info/sct",
+                            "code": "44054006",
+                            "display": "Type 2 diabetes mellitus",
+                        }
+                    ],
+                    "text": "Type 2 diabetes mellitus",
+                },
+                "onsetDateTime": DIABETES_VISIT.isoformat(),
+                "recordedDate": DIABETES_VISIT.isoformat(),
+            },
+            {
+                "resourceType": "MedicationRequest",
+                "id": "metformin",
+                "status": "active",
+                "intent": "order",
+                "medicationCodeableConcept": {"text": "Metformin hydrochloride 500 MG oral tablet"},
+                "authoredOn": DIABETES_VISIT.isoformat(),
+                "encounter": {"reference": f"Encounter/{encounters[DIABETES_VISIT]}"},
+                "dosageInstruction": [{"text": "1 tablet twice daily with meals"}],
+                "reasonReference": [{"reference": "Condition/type-2-diabetes"}],
+            },
+        ]
+    if f.program == "completed":
+        visit(
+            WM_COMPLETION,
+            "Weight management clinic visit",
+            "note-wm-12mo",
+            "Weight management clinic, month 12",
+            f"Month 12, end of the supervised weight management program (2025-08-04 to 2026-08-03). 12 of 12 monthly sessions attended. Diet, walking program and counseling followed throughout; orlistat 120 mg three times daily taken for the 12 months.\nWeight {kg(WM_COMPLETION)} kg, {kg(WM_INTAKE)} kg at intake: 0.6 kg above the intake weight. The early loss of 3.2 kg was regained. No lasting weight loss.\nPlan: program complete. Referral to bariatric surgery.\n",
+        )
+    if f.program == "none":
+        visit(
+            SURGERY_REFERRAL,
+            "Primary care visit",
+            "note-bariatric-referral",
+            "Primary care visit, referral to bariatric surgery",
+            f"Referral to bariatric surgery for obesity. Weight {kg(SURGERY_REFERRAL)} kg, height {HEIGHT_CM} cm, BMI {_note_bmi(kg(SURGERY_REFERRAL))} kg/m2. Type 2 diabetes mellitus on metformin.\n",
+        )
+    visit(
+        SURGICAL_EVAL,
+        "Bariatric surgery evaluation, in person",
+        "note-surgical-eval",
+        "Bariatric surgery evaluation",
+        _surgical_evaluation(f, kg(SURGICAL_EVAL)),
+    )
+
+    for when in bariatric_weight_dates(f):
+        weight, bmi = series[when]
+        enc = encounters[when]
+        resources += [
+            _vital(f"weight-{when}", when, WEIGHT_LOINC, "Body Weight", weight, "kg", enc),
+            _vital(
+                f"bmi-{when}", when, BMI_LOINC, "Body mass index (BMI) [Ratio]", bmi, "kg/m2", enc
+            ),
+        ]
+    return sorted(resources, key=_history_order)
+
+
+def _history_order(resource: Resource) -> tuple[str, str]:
+    """Date, then type, so a bundle reads in order and stays stable."""
+    for key in ("effectiveDateTime", "authoredOn", "onsetDateTime", "date"):
+        if key in resource:
+            return resource[key][:10], resource["resourceType"]
+    return resource["period"]["start"], resource["resourceType"]
+
+
+def bariatric_label_evidence(f: BariatricFacts) -> dict[str, list[str]]:
+    """For each criterion, every resource or request field that states the fact."""
+    template = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    baseline_bmi = [
+        f"Observation/{r['id']}"
+        for r in sorted(template, key=lambda r: r.get("effectiveDateTime", ""))
+        if r["resourceType"] == "Observation"
+        and r["code"]["coding"][0]["code"] == BMI_LOINC
+        and r["effectiveDateTime"][:10] in BASELINE_EXAMS
+    ]
+    own = [d for d in bariatric_weight_dates(f)]
+    note = "DocumentReference/{}".format
+    bmi_notes = [note("note-surgical-eval")]
+    if f.program == "none":
+        bmi_notes.insert(0, note("note-bariatric-referral"))
+    bmi = [*baseline_bmi, *[f"Observation/bmi-{d}" for d in own], *bmi_notes]
+
+    comorbidity = [note("note-surgical-eval")]
+    if f.diabetes:
+        comorbidity = [
+            "Condition/type-2-diabetes",
+            "MedicationRequest/metformin",
+            note("note-diabetes-dx"),
+            *([note("note-bariatric-referral")] if f.program == "none" else []),
+            note("note-surgical-eval"),
+        ]
+    treatment = {
+        "completed": [
+            note("note-wm-intake"),
+            "MedicationRequest/orlistat",
+            note("note-wm-6mo"),
+            note("note-wm-12mo"),
+            note("note-surgical-eval"),
+        ],
+        "declined": [note("note-wm-declined"), note("note-surgical-eval")],
+        "none": [note("note-surgical-eval"), note("note-bariatric-referral")],
+    }[f.program]
+    return {
+        "nationally-covered-procedure": ["request.procedure", "request.codes"],
+        "bmi-35-plus": bmi,
+        "obesity-comorbidity": comorbidity,
+        "failed-medical-treatment": treatment,
+        "lsg-bmi-35-plus": bmi,
+        "lsg-obesity-comorbidity": comorbidity,
+        "lsg-failed-medical-treatment": treatment,
+    }
+
+
+BARIATRIC_CASES: dict[str, BariatricFacts] = {
+    "bariatric-01": BariatricFacts(),
+    "bariatric-02": BariatricFacts(
+        procedure="laparoscopic adjustable gastric banding", weight=95.0, bmi_design="low"
+    ),
+    "bariatric-03": BariatricFacts(
+        variant="sleeve-gastrectomy",
+        procedure="stand-alone laparoscopic sleeve gastrectomy",
+        weight=104.3,
+        bmi_design="near_miss",
+    ),
+    "bariatric-04": BariatricFacts(
+        variant="sleeve-gastrectomy",
+        procedure="stand-alone laparoscopic sleeve gastrectomy",
+        weight=121.6,
+        program="none",
+    ),
+    "bariatric-05": BariatricFacts(
+        procedure="open Roux-en-Y gastric bypass", weight=126.3, program="declined"
+    ),
+    "bariatric-06": BariatricFacts(weight=117.5, diabetes=False),
+}
+
+CASES: dict[str, Facts | PapFacts | BariatricFacts] = {
+    **FACET_CASES,
+    **PAP_CASES,
+    **BARIATRIC_CASES,
+}
+
+
+def label_evidence(facts: Facts | PapFacts | BariatricFacts) -> dict[str, list[str]]:
+    if isinstance(facts, BariatricFacts):
+        return bariatric_label_evidence(facts)
     if isinstance(facts, PapFacts):
         return pap_label_evidence(facts)
     return facet_label_evidence(facts)
 
 
-def history(facts: Facts | PapFacts) -> list[Resource]:
+def history(facts: Facts | PapFacts | BariatricFacts) -> list[Resource]:
+    if isinstance(facts, BariatricFacts):
+        return bariatric_history(facts)
     return pap_history(facts) if isinstance(facts, PapFacts) else facet_history(facts)
 
 
 def case_path(case_id: str) -> Path:
-    """The case file: evals/cases/<facet|pap>/<case id>.yaml."""
-    folder = "pap" if isinstance(CASES[case_id], PapFacts) else "facet"
+    """The case file: evals/cases/<facet|pap|bariatric>/<case id>.yaml."""
+    facts = CASES[case_id]
+    folder = (
+        "bariatric"
+        if isinstance(facts, BariatricFacts)
+        else "pap"
+        if isinstance(facts, PapFacts)
+        else "facet"
+    )
     return EVALS / "cases" / folder / f"{case_id}.yaml"
 
 
@@ -1441,8 +1932,11 @@ def with_generated_evidence(case_id: str) -> str:
 
 def build(case_id: str) -> dict[str, Any]:
     background = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    facts = CASES[case_id]
+    if isinstance(facts, BariatricFacts):
+        background = bariatric_background(background, facts)
     patient_id = next(r["id"] for r in background if r["resourceType"] == "Patient")
-    added = history(CASES[case_id])
+    added = history(facts)
     for resource in added:
         resource["subject"] = {"reference": f"Patient/{patient_id}"}
     resources = background + added

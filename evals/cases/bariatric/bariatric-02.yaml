@@ -1,0 +1,45 @@
+id: bariatric-02
+policy: bariatric-surgery
+policy_version:
+  NCD 100.1: "5"
+variant: bariatric
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: laparoscopic adjustable gastric banding
+  codes: ["43770"]
+bundle: bundles/bariatric-02.json
+expected_overall: not_met
+tags: [clean, fails]
+notes: >-
+  The clean baseline with one change: the patient's weight is 95.0 kg at the surgical evaluation, a BMI of 31.8, and every coded BMI from 2023 on is between 30.4 and 31.8. The procedure is a laparoscopic adjustable gastric banding, which the NCD names. Type 2 diabetes and the failed 12-month program are as in bariatric-01, so only the BMI criterion fails.
+changed_labels:
+  - criterion: bmi-35-plus
+    quote: >-
+      have a body-mass index ≥ 35
+    why: >-
+      The BMI is 31.8 at the surgical evaluation, and below 33 at every measurement, so it is below 35.
+expected:
+  - criterion: nationally-covered-procedure
+    outcome: met
+    fact: >-
+      The request is for a laparoscopic adjustable gastric banding (43770), which the NCD names as a nationally covered procedure.
+    evidence: [request.procedure, request.codes]
+
+  - criterion: bmi-35-plus
+    outcome: not_met
+    fact: >-
+      BMI 31.8 kg/m2 at the surgical evaluation of 2026-09-14 (95.0 kg, 172.9 cm), below 35; every earlier BMI is also below 35.
+    evidence: [Observation/37b75dda-e187-ae40-6e7f-02bcda7c4638, Observation/37b75dda-e187-ae40-ef05-fe4cb44a431a, Observation/37b75dda-e187-ae40-ed66-ed3e7b93f2f4, Observation/37b75dda-e187-ae40-d89f-acacabb1a078, Observation/bmi-2025-07-28, Observation/bmi-2025-08-04, Observation/bmi-2026-02-02, Observation/bmi-2026-07-28, Observation/bmi-2026-08-03, Observation/bmi-2026-09-14, DocumentReference/note-surgical-eval]
+
+  - criterion: obesity-comorbidity
+    outcome: met
+    fact: >-
+      Type 2 diabetes mellitus, diagnosed 2026-07-28 and treated with metformin, which the NCD names as a co-morbidity.
+    evidence: [Condition/type-2-diabetes, MedicationRequest/metformin, DocumentReference/note-diabetes-dx, DocumentReference/note-surgical-eval]
+
+  - criterion: failed-medical-treatment
+    outcome: met
+    fact: >-
+      A 12-month physician-supervised program (diet, walking, monthly counseling and orlistat) from 2025-08-04 to 2026-08-03 ended with the weight 0.6 kg above the intake weight: previously unsuccessful medical treatment for obesity.
+    evidence: [DocumentReference/note-wm-intake, MedicationRequest/orlistat, DocumentReference/note-wm-6mo, DocumentReference/note-wm-12mo, DocumentReference/note-surgical-eval]

@@ -1,0 +1,39 @@
+id: bariatric-03
+policy: bariatric-surgery
+policy_version:
+  NCD 100.1: "5"
+variant: sleeve-gastrectomy
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: stand-alone laparoscopic sleeve gastrectomy
+  codes: ["43775"]
+bundle: bundles/bariatric-03.json
+expected_overall: not_met
+tags: [adversarial, near-miss-threshold]
+notes: >-
+  A sleeve gastrectomy request with the BMI just under the stated threshold. The weight is 104.3 kg at the surgical evaluation: 104.3 / 1.729^2 = 34.89, below 35, and the evaluation note gives 34.9. The build script fails unless the evaluation BMI is below 35 unrounded and no BMI in the bundle reaches 34.95, so no value rounds up to 35.0. The 12-month program and the type 2 diabetes are as in bariatric-01. The local MAC criterion is at payer stage and is not labeled. The co-morbidity label rests on the NCD sentence that type 2 diabetes is a co-morbidity for purposes of this NCD, which the policy file quotes under obesity-comorbidity, not under the sleeve criterion (see PLAN.md).
+changed_labels:
+  - criterion: lsg-bmi-35-plus
+    quote: >-
+      body-mass index (BMI) ≥ 35 kg/m2
+    why: >-
+      The BMI is 34.89 (34.9 in the note), below 35, and below 34.95 at every measurement.
+expected:
+  - criterion: lsg-bmi-35-plus
+    outcome: not_met
+    fact: >-
+      BMI 34.9 kg/m2 at the surgical evaluation of 2026-09-14 (104.3 kg, 172.9 cm), below 35.
+    evidence: [Observation/37b75dda-e187-ae40-6e7f-02bcda7c4638, Observation/37b75dda-e187-ae40-ef05-fe4cb44a431a, Observation/37b75dda-e187-ae40-ed66-ed3e7b93f2f4, Observation/37b75dda-e187-ae40-d89f-acacabb1a078, Observation/bmi-2025-07-28, Observation/bmi-2025-08-04, Observation/bmi-2026-02-02, Observation/bmi-2026-07-28, Observation/bmi-2026-08-03, Observation/bmi-2026-09-14, DocumentReference/note-surgical-eval]
+
+  - criterion: lsg-obesity-comorbidity
+    outcome: met
+    fact: >-
+      Type 2 diabetes mellitus, diagnosed 2026-07-28 and treated with metformin, which the NCD names as a co-morbidity for purposes of this NCD.
+    evidence: [Condition/type-2-diabetes, MedicationRequest/metformin, DocumentReference/note-diabetes-dx, DocumentReference/note-surgical-eval]
+
+  - criterion: lsg-failed-medical-treatment
+    outcome: met
+    fact: >-
+      A 12-month physician-supervised program (diet, walking, monthly counseling and orlistat) from 2025-08-04 to 2026-08-03 ended with the weight 0.6 kg above the intake weight: previously unsuccessful medical treatment for obesity.
+    evidence: [DocumentReference/note-wm-intake, MedicationRequest/orlistat, DocumentReference/note-wm-6mo, DocumentReference/note-wm-12mo, DocumentReference/note-surgical-eval]

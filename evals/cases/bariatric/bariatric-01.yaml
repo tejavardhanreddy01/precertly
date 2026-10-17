@@ -1,0 +1,40 @@
+id: bariatric-01
+policy: bariatric-surgery
+policy_version:
+  NCD 100.1: "5"
+variant: bariatric
+request:
+  date: 2026-10-05
+  service_date: 2026-10-19
+  procedure: laparoscopic Roux-en-Y gastric bypass
+  codes: ["43644"]
+bundle: bundles/bariatric-01.json
+expected_overall: met
+tags: [clean, meets]
+notes: >-
+  The clean baseline for the bariatric variant; no fact is changed. The record: primary care referral to the medical weight management clinic 2025-07-28, a 12-month physician-supervised program from 2025-08-04 (diet, walking, monthly counseling and orlistat throughout) with the weight 0.6 kg above the intake weight at month 12 on 2026-08-03, type 2 diabetes diagnosed 2026-07-28 and treated with metformin, surgical evaluation 2026-09-14 at 122.9 kg and a BMI of 41.1, request 2026-10-05. Every coded BMI from 2023 on is between 40.2 and 41.1.
+changed_labels: []
+expected:
+  - criterion: nationally-covered-procedure
+    outcome: met
+    fact: >-
+      The request is for a laparoscopic Roux-en-Y gastric bypass (43644), which the NCD names as a nationally covered procedure.
+    evidence: [request.procedure, request.codes]
+
+  - criterion: bmi-35-plus
+    outcome: met
+    fact: >-
+      BMI 41.1 kg/m2 at the surgical evaluation of 2026-09-14 (122.9 kg, 172.9 cm), at least 35.
+    evidence: [Observation/37b75dda-e187-ae40-6e7f-02bcda7c4638, Observation/37b75dda-e187-ae40-ef05-fe4cb44a431a, Observation/37b75dda-e187-ae40-ed66-ed3e7b93f2f4, Observation/37b75dda-e187-ae40-d89f-acacabb1a078, Observation/bmi-2025-07-28, Observation/bmi-2025-08-04, Observation/bmi-2026-02-02, Observation/bmi-2026-07-28, Observation/bmi-2026-08-03, Observation/bmi-2026-09-14, DocumentReference/note-surgical-eval]
+
+  - criterion: obesity-comorbidity
+    outcome: met
+    fact: >-
+      Type 2 diabetes mellitus, diagnosed 2026-07-28 and treated with metformin, which the NCD names as a co-morbidity.
+    evidence: [Condition/type-2-diabetes, MedicationRequest/metformin, DocumentReference/note-diabetes-dx, DocumentReference/note-surgical-eval]
+
+  - criterion: failed-medical-treatment
+    outcome: met
+    fact: >-
+      A 12-month physician-supervised program (diet, walking, monthly counseling and orlistat) from 2025-08-04 to 2026-08-03 ended with the weight 0.6 kg above the intake weight: previously unsuccessful medical treatment for obesity.
+    evidence: [DocumentReference/note-wm-intake, MedicationRequest/orlistat, DocumentReference/note-wm-6mo, DocumentReference/note-wm-12mo, DocumentReference/note-surgical-eval]
