@@ -69,6 +69,17 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - No day or sprint labels anywhere: not in branches, commits, PR titles, docs or code.
 - Reports: lead with the result and any decision needed, then at most 10 bullets of detail. Put long tables and full analyses in a file in the repo and link it instead of pasting.
 
+## Working agreement
+
+- Never merge a PR. The owner merges manually with "Create a merge commit" after CI is green.
+- Do not use interactive question popups. Put any decision at the top of the plan or report under "Decisions needed" with a recommendation, then stop.
+- Plans are markdown the owner pastes into the reviewer chat. Write one consistent version, never a header that supersedes old text below it.
+- Branch prefixes: `feat/`, `fix/`, `docs/`, `chore/` (see Conventions).
+- If a task prompt contains an unfilled placeholder such as `<...>`, stop and report it instead of guessing.
+- Update README.md after each push or merge to main in later phases.
+- Never run Bedrock or AWS calls or other paid actions without the owner's explicit go-ahead.
+- Report style stays as in the Reports rule under Conventions.
+
 ## Status
 
 Done:
