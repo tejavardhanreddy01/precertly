@@ -79,6 +79,19 @@ docker ps                                      # STATUS shows (healthy) after th
 
 The image holds the policies, migrations, the eval bundles and `scripts/smoke_llm.py`, and no credentials. With no `PRECERTLY_AWS_PROFILE` set it asks for the named profile `precertly`; set it to an empty string (`PRECERTLY_AWS_PROFILE=`) to use the default credential chain, as a task role would. The base images (`python:3.12-slim` and the uv image) are pinned by multi-arch digest, and Dependabot proposes updates weekly. The CI job `docker-build` builds the image without pushing it, runs it, waits for the health check, requests `/health` and `/policies` and runs `alembic heads`. It is not deployed anywhere: there is no AWS infrastructure yet.
 
+## Infrastructure (CDK scaffold)
+
+`infra/` is an AWS CDK app in Python, a separate project from the API: its own `pyproject.toml` and `uv.lock`, and a `package.json` that pins the CDK CLI to an exact version (Node 24). It defines three empty stacks, `precertly-base`, `precertly-app` and `precertly-data`, with no resources, so no infrastructure is defined yet. The stacks set no account or region, and their availability zones are fixed to `us-east-2a` and `us-east-2b`, so synthesis needs no credentials and no lookups.
+
+```bash
+cd infra
+uv sync --locked && npm ci          # Python deps, then the pinned CDK CLI
+uv run pytest -q                    # assertion tests: the three stacks, no hard-coded account or region
+npx cdk synth --no-lookups          # writes infra/cdk.out; no AWS calls
+```
+
+Nothing is bootstrapped or deployed. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. An empty stack cannot be deployed as it stands; the CDK's own check for that is acknowledged in `infra/app.py` and goes away with the first resource.
+
 ## How a criterion is judged
 
 Every criterion has an `evidence_stage`. Only `chart` and `request` criteria get a verdict; the rest (provider attestations, post-service and payer facts) go to the reviewer as a checklist.
@@ -134,7 +147,7 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 - [x] 29 labeled eval cases for the 4 procedures, built by script and checked in CI
 - [ ] Eval results for every labeled case (only the 11 facet cases have been scored so far)
 - [ ] After launch (target, not built): 10 cases per procedure (40 in all) and a CI gate on the scores
-- [ ] AWS deployment (AgentCore, ECS, RDS, CDK): the container image builds in CI; no infrastructure yet
+- [ ] AWS deployment (AgentCore, ECS, RDS, CDK): the container image builds in CI; the CDK app is a scaffold of three empty stacks; no infrastructure is defined yet
 - [ ] Reviewer UI, MCP server, demo mode
 
 ## License

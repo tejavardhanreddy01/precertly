@@ -1,0 +1,4 @@
+# Per-project artifacts (the repo root .gitignore also lists cdk.out/ and node_modules/).
+cdk.out/
+node_modules/
+.venv/

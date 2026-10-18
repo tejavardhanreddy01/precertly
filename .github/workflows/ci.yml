@@ -34,6 +34,12 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       - run: uv run pyright
+      # infra/ has its own environment and lock.
+      - name: Type-check the CDK app
+        working-directory: infra
+        run: |
+          uv sync --locked
+          uv run pyright
 
   test:
     runs-on: ubuntu-latest
@@ -83,6 +89,12 @@ jobs:
         run: |
           uv export --frozen --all-groups --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
           uv run pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt"
+      - name: Audit the locked dependencies of infra/
+        working-directory: infra
+        run: |
+          uv sync --locked
+          uv export --frozen --all-groups --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/infra-requirements.txt"
+          uv run pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/infra-requirements.txt"
 
   docker-build:
     runs-on: ubuntu-latest
@@ -143,3 +155,35 @@ jobs:
       - run: java -version
       - name: HL7 FHIR Validator on the PAS drafts (offline)
         run: uv run python scripts/validate_pas.py
+
+  # The CDK app defines no resources yet. Nothing here has credentials, and the AWS SDK is
+  # pointed at a closed local port, so any AWS call from synthesis would fail the job.
+  infra-synth:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+      # The Node release is read from engines.node in infra/package.json.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: infra/package.json
+      - run: uv sync --locked
+      - run: npm ci
+      - run: uv run pytest -q
+      - name: Synthesize without credentials or lookups
+        env:
+          AWS_ENDPOINT_URL: http://127.0.0.1:9
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          npx --no-install cdk synth --no-lookups
+          npx --no-install cdk ls | tee stacks.txt
+          [ "$(sort stacks.txt | tr '\n' ' ')" = "precertly-app precertly-base precertly-data " ]
