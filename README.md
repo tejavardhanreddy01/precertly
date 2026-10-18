@@ -97,7 +97,17 @@ npx cdk synth --no-lookups -c budgetEmail=you@example.invalid   # writes infra/c
 
 Names shared by the stacks and the tests are in `infra/names.py`.
 
-Nothing is bootstrapped or deployed. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. Deploys run from the owner's Mac (`aws login --profile precertly`, build and push the image there, then `cdk deploy` by stack name), never from GitHub Actions: this AWS account's managed organization policy denies `iam:*Provider*`, so no OIDC provider can exist and a workflow cannot assume an AWS role, and long-lived keys in GitHub are not used. Name the stack (`precertly-base`), never `--all`: an empty stack cannot be deployed, and the CDK's own check for that is acknowledged for `precertly-app` and `precertly-data` in `infra/app.py` until each gets a resource.
+Nothing is bootstrapped or deployed. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. Deploys run from the owner's Mac with `scripts/deploy.sh` (below), never from GitHub Actions: this AWS account's managed organization policy denies `iam:*Provider*`, so no OIDC provider can exist and a workflow cannot assume an AWS role, and long-lived keys in GitHub are not used. The script takes one stack name and refuses `--all`: an empty stack cannot be deployed, and the CDK's own check for that is acknowledged for `precertly-app` and `precertly-data` in `infra/app.py` until each gets a resource.
+
+### Deploying (from the owner's Mac)
+
+```bash
+aws login --profile precertly
+scripts/deploy.sh image [--yes] [--dry-run]            # build linux/arm64, push as sha-<12 hex of HEAD> to ECR
+BUDGET_EMAIL=<address> scripts/deploy.sh stack precertly-base [--dry-run]   # one stack by name; --all is refused
+```
+
+`image` refuses a dirty working tree or an unpushed `HEAD`, asks for confirmation, and skips a tag that already exists because the repository's tags are immutable. `--dry-run` prints the commands with the account id and email redacted and touches neither AWS nor Docker; the CI `test` job runs it. The budget address is read from `BUDGET_EMAIL` and is never written to a file. Prerequisites, the order and the wording rule (say "deployable" until the service runs and a smoke check passes) are in [docs/deployment.md](docs/deployment.md).
 
 ## How a criterion is judged
 
