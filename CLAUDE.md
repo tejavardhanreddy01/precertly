@@ -30,6 +30,9 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 cd infra && uv sync --locked && npm ci          # CDK app: own Python env and lock, CLI pinned in package.json (Node 24)
 cd infra && uv run pytest -q                    # CDK assertion tests
 cd infra && npx cdk synth --no-lookups -c budgetEmail=ci@example.invalid  # no AWS calls (the budget email is required context and never committed); never bootstrap, deploy or look up context without the owner's go-ahead; deploys are by stack name from the owner's Mac, never --all
+scripts/deploy.sh image [--yes] [--dry-run]        # owner's Mac only: build linux/arm64 and push sha-<12 hex> to ECR (touches AWS; ask first)
+BUDGET_EMAIL=<address> scripts/deploy.sh stack <name> [--dry-run]  # one stack by name, never --all (touches AWS; ask first); --dry-run is safe
+shellcheck scripts/*.sh                         # CI lint job
 ```
 
 ## Layout
@@ -117,6 +120,8 @@ Done:
 - CDK scaffold (`infra/`, checked 2026-10-17): three empty, environment-agnostic stacks with fixed availability zones `us-east-2a` and `us-east-2b`, assertion tests, and the CI job `infra-synth` (tests and `cdk synth --no-lookups`, no credentials). `infra/` has its own environment and lock, checked by the `typecheck` and `security` jobs and by Dependabot. The stacks were empty at that point; nothing was bootstrapped or deployed, and no AWS call was made for it.
 
 - Base stack defined and synthesised in CI; nothing deployed (`infra/`, checked 2026-10-18): `precertly-base` defines the annual budget alarms and the `precertly-api` ECR repository (two resources, no IAM), with assertion tests, including a guard that it has no OIDC provider, role or policy. This account's managed organization policy denies `iam:*Provider*`, so GitHub Actions cannot assume an AWS role; deploys run from the owner's Mac. `precertly-app` and `precertly-data` are still empty. Nothing is bootstrapped or deployed, and no AWS call has been made for it.
+
+- Deploy script (`scripts/deploy.sh`, checked 2026-10-18): `image` and `stack <name>`, each with `--dry-run`; the dry run is tested in the `test` job and the script is shellchecked in `lint`. CI never runs a real deploy. Say "deployable", not "deployed", until the service runs and a smoke check passes (`docs/deployment.md`).
 
 Next: the AWS deployment, in steps; the container image, the CDK scaffold and the base stack definition are done.
 
