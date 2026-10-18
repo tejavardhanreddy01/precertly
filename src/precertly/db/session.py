@@ -16,7 +16,7 @@ from precertly.settings import get_settings
 
 @lru_cache
 def get_engine() -> AsyncEngine:
-    return create_async_engine(get_settings().database_url, pool_pre_ping=True)
+    return create_async_engine(get_settings().sqlalchemy_url(), pool_pre_ping=True)
 
 
 def session_factory(engine: AsyncEngine | None = None) -> async_sessionmaker[AsyncSession]:
