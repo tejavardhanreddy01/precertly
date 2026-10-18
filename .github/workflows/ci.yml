@@ -84,6 +84,16 @@ jobs:
           uv export --frozen --all-groups --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
           uv run pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/requirements.txt"
 
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Build only: nothing is pushed and no registry login is made.
+      - name: Build the API image
+        run: docker build --tag precertly-api:ci .
+
   pas-validate:
     runs-on: ubuntu-latest
     steps:
