@@ -65,7 +65,7 @@ Out of scope, stated openly: a chart that is falsified at the source (for exampl
 | Authentication | Cognito with MFA; demo mode is read-only on seeded cases | Planned |
 | Authorization | Role checks on every endpoint; deny by default | Planned |
 | Input validation | Pydantic models on every request; size limits on bundles and notes | Partial |
-| Secrets | None in the repo; Secrets Manager in AWS; GitHub Actions via OIDC, no stored keys | Repo done; AWS planned |
+| Secrets | None in the repo; Secrets Manager in AWS (planned); no AWS keys in GitHub, and deploys run from the owner's machine with short-lived console-login credentials | Repo done; AWS planned |
 | Transport and storage | TLS everywhere; RDS and S3 encrypted with KMS; database not public | Planned |
 | Audit | Every case read, verdict and export written to `audit_log` with the actor | Table done; writes planned |
 | Least privilege | One IAM role per service, scoped to what it calls | Planned |
