@@ -120,9 +120,33 @@ def test_task_definition_shape() -> None:
     assert task["Memory"] == "512"
     (container,) = task["ContainerDefinitions"]
     assert container["PortMappings"] == [{"ContainerPort": 8000, "Protocol": "tcp"}]
-    # The image's own CMD and HEALTHCHECK apply.
-    for key in ("Command", "EntryPoint", "HealthCheck"):
+    # The image's own CMD applies; ECS ignores the Dockerfile HEALTHCHECK, so the health check
+    # is set on the container (see test_health_check_targets_health).
+    for key in ("Command", "EntryPoint"):
         assert key not in container
+
+
+def test_health_check_targets_health() -> None:
+    (container,) = _only(_template(), "AWS::ECS::TaskDefinition")["ContainerDefinitions"]
+    check = container["HealthCheck"]
+    assert check["Command"][0] == "CMD-SHELL"
+    assert len(check["Command"]) == 2
+    command = check["Command"][1]
+    # Python, not curl: the image has no curl.
+    assert command.startswith("python -c ")
+    assert "curl" not in command
+    assert "urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)" in command
+    assert (check["Interval"], check["Timeout"], check["Retries"], check["StartPeriod"]) == (
+        30,
+        5,
+        3,
+        20,
+    )
+    # The probe is the same Python as the Dockerfile's, so the two cannot drift apart.
+    dockerfile = (Path(__file__).resolve().parents[2] / "Dockerfile").read_text()
+    assert "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health'" in (
+        dockerfile
+    )
 
 
 def test_image_comes_from_the_ecr_repo_at_the_context_tag() -> None:

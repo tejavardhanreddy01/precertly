@@ -25,6 +25,11 @@ IMAGE_TAG_PREFIX = "sha-"
 BEDROCK_PROFILE_ID = "us.amazon.nova-2-lite-v1:0"
 EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0"
 API_PORT = 8000
+# The same Python as the Dockerfile HEALTHCHECK (the image has no curl), run through the shell.
+HEALTH_CHECK_COMMAND = (
+    'python -c "import urllib.request; '
+    f"urllib.request.urlopen('http://127.0.0.1:{API_PORT}/health', timeout=3)\""
+)
 
 
 def validate_image_tag(tag: object) -> str:
@@ -154,8 +159,9 @@ class AppStack(PrecertlyStack):
             task_role=self.task_role,
             execution_role=self.execution_role,
         )
-        # No command, entrypoint or health check: the image's own CMD and HEALTHCHECK apply.
-        # No secrets and no database settings.
+        # No command or entrypoint: the image's own CMD applies. ECS ignores the Dockerfile
+        # HEALTHCHECK, so the container health check is set below. No secrets and no database
+        # settings.
         task_definition.add_container(
             "api",
             image=aws_ecs.ContainerImage.from_ecr_repository(repository, image_tag),
@@ -168,5 +174,12 @@ class AppStack(PrecertlyStack):
                 "PRECERTLY_EMBEDDING_MODEL_ID": EMBEDDING_MODEL_ID,
             },
             logging=aws_ecs.LogDrivers.aws_logs(stream_prefix="api", log_group=self.log_group),
+            health_check=aws_ecs.HealthCheck(
+                command=["CMD-SHELL", HEALTH_CHECK_COMMAND],
+                interval=cdk.Duration.seconds(30),
+                timeout=cdk.Duration.seconds(5),
+                retries=3,
+                start_period=cdk.Duration.seconds(20),
+            ),
         )
         return task_definition
