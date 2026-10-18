@@ -90,16 +90,14 @@ uv run pytest -q                    # assertion tests: the stacks, the base stac
 npx cdk synth --no-lookups -c budgetEmail=you@example.invalid   # writes infra/cdk.out; no AWS calls
 ```
 
-`precertly-base` defines, as code only:
+`precertly-base` defines, as code only, the budget and the ECR repository:
 
 - an annual cost budget of 60 USD for the whole account, with email alerts at 20, 40 and 55 USD actual spend and at 100 percent forecast; the address comes from the CDK context key `budgetEmail` (`-c budgetEmail=...`), is required, and is never committed;
 - the ECR repository `precertly-api`: scan on push, immutable tags, AES256, deleted with the stack along with its images; it keeps the last 5 `sha-` images and expires untagged ones after a day;
-- the GitHub OIDC provider (native IAM resource, no custom-resource Lambda);
-- the role `precertly-github-deploy`, assumable only by the `production` environment of `tejavardhanreddy01/precertly` (exact `aud` and `sub` match), for one hour at most. Its policy allows pushing to that repository, registering task definitions, updating the `precertly-api` service, running and stopping tasks of the `precertly-tools` family in the `precertly` cluster, and passing the two task roles to ECS; nothing else.
 
-Names shared by the stacks and the tests are in `infra/names.py`. The deploy role's policy names the cluster, service and task roles that `precertly-app` will create; until then it grants access to resources that do not exist.
+Names shared by the stacks and the tests are in `infra/names.py`.
 
-Nothing is bootstrapped or deployed. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. When deploying later, name the stack (`precertly-base`), never `--all`: an empty stack cannot be deployed, and the CDK's own check for that is acknowledged for `precertly-app` and `precertly-data` in `infra/app.py` until each gets a resource.
+Nothing is bootstrapped or deployed. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. Deploys run from the owner's Mac (`aws login --profile precertly`, build and push the image there, then `cdk deploy` by stack name), never from GitHub Actions: this AWS account's managed organization policy denies `iam:*Provider*`, so no OIDC provider can exist and a workflow cannot assume an AWS role, and long-lived keys in GitHub are not used. Name the stack (`precertly-base`), never `--all`: an empty stack cannot be deployed, and the CDK's own check for that is acknowledged for `precertly-app` and `precertly-data` in `infra/app.py` until each gets a resource.
 
 ## How a criterion is judged
 
@@ -156,7 +154,7 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 - [x] 29 labeled eval cases for the 4 procedures, built by script and checked in CI
 - [ ] Eval results for every labeled case (only the 11 facet cases have been scored so far)
 - [ ] After launch (target, not built): 10 cases per procedure (40 in all) and a CI gate on the scores
-- [ ] AWS deployment (AgentCore, ECS, RDS, CDK): the container image builds in CI; the `precertly-base` stack (budget, ECR, GitHub OIDC, deploy role) is defined and synthesised in CI; `precertly-app` and `precertly-data` are empty; nothing is deployed
+- [ ] AWS deployment (AgentCore, ECS, RDS, CDK): the container image builds in CI; the `precertly-base` stack (budget and ECR repository) is defined and synthesised in CI; `precertly-app` and `precertly-data` are empty; nothing is deployed
 - [ ] Reviewer UI, MCP server, demo mode
 
 ## License
