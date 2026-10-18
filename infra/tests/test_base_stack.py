@@ -10,7 +10,6 @@ import names
 from app import build_app
 
 EMAIL = "ci@example.invalid"
-OIDC_HOST = "token.actions.githubusercontent.com"
 
 
 def _template() -> Template:
