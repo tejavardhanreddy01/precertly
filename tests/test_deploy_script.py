@@ -532,7 +532,9 @@ def test_smoke_passes_and_scales_back_to_zero(stub_bin: Path) -> None:
     assert result.returncode == 0, _output(result)
     out = result.stdout
     assert _desired_counts(stub_bin) == ["1", "0"]
-    assert "lastStatus RUNNING, healthStatus UNKNOWN" in out
+    assert "lastStatus RUNNING, healthStatus HEALTHY" in out
+    assert re.search(r"PASS\s+ECS Exec agent running", out)
+    assert re.search(r"PASS\s+ECS health check HEALTHY", out)
     assert re.search(r"PASS\s+GET /health returned 200", out)
     assert re.search(r"PASS\s+GET /policies returned 200", out)
     assert re.search(r"PASS\s+scaled back to 0", out)
@@ -655,3 +657,124 @@ def test_smoke_scales_to_zero_when_interrupted(
     assert re.search(r"PASS\s+scaled back to 0", stdout)
     assert "result: FAIL" in stdout
     assert "final counts: desired 0, running 0" in stdout
+
+
+# ---------------------------------------------------------------------------------------------
+# smoke: ECS Exec readiness, retries and the health check
+# ---------------------------------------------------------------------------------------------
+
+
+def _exec_calls(stub_bin: Path, needle: str) -> list[str]:
+    return [c for c in _calls(stub_bin) if "execute-command" in c and needle in c]
+
+
+def test_smoke_dry_run_lists_the_agent_and_health_queries(stub_bin: Path) -> None:
+    out = _deploy(stub_bin, "smoke", "--dry-run").stdout
+    assert "ExecuteCommandAgent" in out
+    assert out.count("describe-tasks") == 3  # task state, agent status, health (after the exec)
+    assert out.rindex("describe-tasks") > out.rindex("execute-command")
+
+
+def test_smoke_waits_for_the_exec_agent(stub_bin: Path) -> None:
+    _configure(stub_bin, agent_polls=3)
+    result = _deploy(stub_bin, "smoke")
+    assert result.returncode == 0, _output(result)
+    assert re.search(r"PASS\s+ECS Exec agent running", result.stdout)
+    agent_polls = [c for c in _calls(stub_bin) if "ExecuteCommandAgent" in c]
+    assert len(agent_polls) == 4
+    # The agent is checked before the first exec call.
+    calls = _calls(stub_bin)
+    first_exec = next(i for i, c in enumerate(calls) if "execute-command" in c)
+    assert all(calls.index(c) < first_exec for c in agent_polls[:1])
+    assert _desired_counts(stub_bin) == ["1", "0"]
+
+
+def test_smoke_fails_when_the_exec_agent_never_runs_and_still_scales_to_zero(
+    stub_bin: Path,
+) -> None:
+    _configure(stub_bin, agent_never_running=True)
+    result = _deploy(stub_bin, "smoke")
+    assert result.returncode != 0
+    assert re.search(
+        r"FAIL\s+ECS Exec agent not RUNNING within 2s \(last status: PENDING\)", result.stdout
+    )
+    assert not any("execute-command" in c for c in _calls(stub_bin))
+    assert _desired_counts(stub_bin) == ["1", "0"]
+    assert re.search(r"PASS\s+scaled back to 0", result.stdout)
+    assert "result: FAIL" in result.stdout
+
+
+def test_smoke_retries_an_exec_that_is_not_ready_yet(stub_bin: Path) -> None:
+    _configure(stub_bin, exec_errors={"/health": 2})
+    result = _deploy(stub_bin, "smoke")
+    assert result.returncode == 0, _output(result)
+    assert len(_exec_calls(stub_bin, "/health")) == 3
+    assert len(_exec_calls(stub_bin, "/policies")) == 1
+    assert re.search(r"PASS\s+GET /health returned 200", result.stdout)
+    assert "ECS Exec not ready (attempt 1 of 3)" in result.stdout
+    assert "ECS Exec not ready (attempt 2 of 3)" in result.stdout
+    # No output tail for attempts that were retried.
+    assert "agent isn't running" not in result.stderr
+
+
+def test_smoke_gives_up_after_three_not_ready_attempts_and_shows_the_last_tail(
+    stub_bin: Path,
+) -> None:
+    _configure(stub_bin, exec_errors={"/health": 5})
+    result = _deploy(stub_bin, "smoke")
+    assert result.returncode != 0
+    assert len(_exec_calls(stub_bin, "/health")) == 3
+    assert re.search(r"FAIL\s+GET /health returned 200", result.stdout)
+    assert result.stderr.count("agent isn't running") == 1  # the final attempt only
+    assert _desired_counts(stub_bin) == ["1", "0"]
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "urllib.error.HTTPError: HTTP Error 500: Internal Server Error",
+        "Traceback (most recent call last):\nValueError: boom",
+        "SMOKE_HTTP /health 204",
+    ],
+)
+def test_smoke_does_not_retry_other_failures(stub_bin: Path, output: str) -> None:
+    _configure(stub_bin, exec={"/health": output})
+    result = _deploy(stub_bin, "smoke")
+    assert result.returncode != 0
+    assert len(_exec_calls(stub_bin, "/health")) == 1
+    assert "retrying" not in result.stdout
+    assert _desired_counts(stub_bin) == ["1", "0"]
+
+
+def test_smoke_waits_for_the_ecs_health_check(stub_bin: Path) -> None:
+    _configure(stub_bin, health_after_polls=3)
+    result = _deploy(stub_bin, "smoke")
+    assert result.returncode == 0, _output(result)
+    assert re.search(r"PASS\s+ECS health check HEALTHY", result.stdout)
+    assert "healthStatus UNKNOWN" in result.stdout  # as first seen, before it settled
+
+
+@pytest.mark.parametrize("status", ["UNKNOWN", "UNHEALTHY"])
+def test_smoke_fails_when_the_health_check_never_passes_and_still_scales_to_zero(
+    stub_bin: Path, status: str
+) -> None:
+    _configure(stub_bin, health=status)
+    result = _deploy(stub_bin, "smoke")
+    assert result.returncode != 0
+    out = result.stdout
+    # The application checks passed first; the health check is judged after them.
+    assert re.search(r"PASS\s+GET /policies returned 200", out)
+    assert re.search(rf"FAIL\s+ECS health check HEALTHY within 2s \(last status: {status}\)", out)
+    assert out.index("GET /policies") < out.index("ECS health check")
+    assert _desired_counts(stub_bin) == ["1", "0"]
+    assert re.search(r"PASS\s+scaled back to 0", out)
+    assert "final counts: desired 0, running 0" in out
+    assert "result: FAIL" in out
+
+
+def test_smoke_health_check_does_not_hide_an_application_failure(stub_bin: Path) -> None:
+    _configure(stub_bin, health="UNKNOWN", exec={"/health": "urllib.error.URLError: refused"})
+    result = _deploy(stub_bin, "smoke")
+    assert result.returncode != 0
+    assert re.search(r"FAIL\s+GET /health returned 200", result.stdout)
+    assert "ECS health check" not in result.stdout  # never reached, and no 2 minute wait
