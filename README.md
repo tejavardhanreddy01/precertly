@@ -77,7 +77,7 @@ docker run --rm -p 8000:8000 precertly-api     # then http://localhost:8000/docs
 docker ps                                      # STATUS shows (healthy) after the first check
 ```
 
-The image holds the policies, migrations, the eval bundles and `scripts/smoke_llm.py`, and no credentials. With no `PRECERTLY_AWS_PROFILE` set it asks for the named profile `precertly`; set it to an empty string (`PRECERTLY_AWS_PROFILE=`) to use the default credential chain, as a task role would. The base images (`python:3.12-slim` and the uv image) are pinned by multi-arch digest, and Dependabot proposes updates weekly. The CI job `docker-build` builds the image without pushing it, runs it, waits for the health check, requests `/health` and `/policies` and runs `alembic heads`. It is not deployed anywhere: there is no AWS infrastructure yet.
+The image holds the policies, migrations, the eval bundles and `scripts/smoke_llm.py`, and no credentials. With no `PRECERTLY_AWS_PROFILE` set it asks for the named profile `precertly`; set it to an empty string (`PRECERTLY_AWS_PROFILE=`) to use the default credential chain, as a task role would. The base images (`python:3.12-slim` and the uv image) are pinned by multi-arch digest, and Dependabot proposes updates weekly. The CI job `docker-build` builds the image without pushing it, runs it, waits for the health check, requests `/health` and `/policies` and runs `alembic heads`. One image, `sha-951a31b14a9a`, has been pushed to ECR from the owner's Mac; it is not running anywhere (see Infrastructure).
 
 ## Infrastructure (CDK)
 
@@ -97,7 +97,7 @@ npx cdk synth --no-lookups -c budgetEmail=you@example.invalid   # writes infra/c
 
 Names shared by the stacks and the tests are in `infra/names.py`.
 
-Nothing is bootstrapped or deployed. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. Deploys run from the owner's Mac with `scripts/deploy.sh` (below), never from GitHub Actions: this AWS account's managed organization policy denies `iam:*Provider*`, so no OIDC provider can exist and a workflow cannot assume an AWS role, and long-lived keys in GitHub are not used. The script takes one stack name and refuses `--all`: an empty stack cannot be deployed, and the CDK's own check for that is acknowledged for `precertly-app` and `precertly-data` in `infra/app.py` until each gets a resource.
+On 2026-10-18 the owner confirmed from AWS CLI checks: the CDK is bootstrapped (toolkit stack, us-east-2) and `precertly-base` was deployed from the owner's Mac (stack `CREATE_COMPLETE`). The ECR repository `precertly-api` is immutable with scan on push and both lifecycle rules; the annual 60 USD budget has 3 actual alerts (20, 40, 55) and 1 forecast alert at 100 percent. Two older monthly budgets made in the console, `precertly-25` and `precertly-50`, exist outside the stack. `scripts/deploy.sh image` pushed `sha-951a31b14a9a` (88 MB, arm64), and a second run skipped it as already pushed. Nothing runs: `precertly-app` and `precertly-data` are still empty, and there is no service and no database. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. Deploys run from the owner's Mac with `scripts/deploy.sh` (below), never from GitHub Actions: this AWS account's managed organization policy denies `iam:*Provider*`, so no OIDC provider can exist and a workflow cannot assume an AWS role, and long-lived keys in GitHub are not used. The script takes one stack name and refuses `--all`: an empty stack cannot be deployed, and the CDK's own check for that is acknowledged for `precertly-app` and `precertly-data` in `infra/app.py` until each gets a resource.
 
 ### Deploying (from the owner's Mac)
 
@@ -164,7 +164,8 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 - [x] 29 labeled eval cases for the 4 procedures, built by script and checked in CI
 - [ ] Eval results for every labeled case (only the 11 facet cases have been scored so far)
 - [ ] After launch (target, not built): 10 cases per procedure (40 in all) and a CI gate on the scores
-- [ ] AWS deployment (AgentCore, ECS, RDS, CDK): the container image builds in CI; the `precertly-base` stack (budget and ECR repository) is defined and synthesised in CI; `precertly-app` and `precertly-data` are empty; nothing is deployed
+- [x] CDK bootstrapped and `precertly-base` (annual budget and the immutable ECR repository) deployed from the owner's Mac; image `sha-951a31b14a9a` pushed (checked 2026-10-18)
+- [ ] AWS deployment (AgentCore, ECS, RDS): `precertly-app` and `precertly-data` are empty; there is no service and no database, so nothing runs and the API is not reachable
 - [ ] Reviewer UI, MCP server, demo mode
 
 ## License
