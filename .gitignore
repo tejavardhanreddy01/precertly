@@ -10,6 +10,8 @@ build/
 .env
 .env.*
 !.env.example
+# Optional local file read by scripts/deploy.sh (BUDGET_EMAIL=address); never committed
+.env.local
 .DS_Store
 
 # Synthea tool and its generated output (large; regenerate with data/synthea/generate.sh)
