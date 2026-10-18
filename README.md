@@ -66,7 +66,7 @@ docker run --rm -p 8000:8000 precertly-api     # then http://localhost:8000/docs
 docker ps                                      # STATUS shows (healthy) after the first check
 ```
 
-The image holds the policies, migrations, the eval bundles and `scripts/smoke_llm.py`, and no credentials. With no `PRECERTLY_AWS_PROFILE` set it asks for the named profile `precertly`; set it to an empty string (`PRECERTLY_AWS_PROFILE=`) to use the default credential chain, as a task role would. The image builds in CI (job `docker-build`, no push). It is not deployed anywhere: there is no AWS infrastructure yet.
+The image holds the policies, migrations, the eval bundles and `scripts/smoke_llm.py`, and no credentials. With no `PRECERTLY_AWS_PROFILE` set it asks for the named profile `precertly`; set it to an empty string (`PRECERTLY_AWS_PROFILE=`) to use the default credential chain, as a task role would. The base images (`python:3.12-slim` and the uv image) are pinned by multi-arch digest, and Dependabot proposes updates weekly. The CI job `docker-build` builds the image without pushing it, runs it, waits for the health check, requests `/health` and `/policies` and runs `alembic heads`. It is not deployed anywhere: there is no AWS infrastructure yet.
 
 ## How a criterion is judged
 

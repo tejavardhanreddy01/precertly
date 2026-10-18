@@ -45,7 +45,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
 - `data/synthea/` – patient generator (output is git-ignored)
 - `evals/` – labeled cases and scorers (see evals/README.md)
-- `Dockerfile`, `.dockerignore` – the API image: editable `src/` layout (policies and bundles are found relative to the package file), non-root, port 8000, urllib health check; holds no credentials
+- `Dockerfile`, `.dockerignore` – the API image (bases pinned by multi-arch digest): editable `src/` layout (policies and bundles are found relative to the package file), non-root, port 8000, urllib health check; holds no credentials
 
 ## Rules
 
@@ -80,6 +80,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - If a task prompt contains an unfilled placeholder such as `<...>`, stop and report it instead of guessing.
 - Update README.md after each push or merge to main in later phases.
 - Never run Bedrock or AWS calls or other paid actions without the owner's explicit go-ahead.
+- Edit PR bodies with `gh api -X PATCH repos/<owner>/<repo>/pulls/<n> -f body=...`: `gh pr edit` fails on the deprecated Projects (classic) GraphQL.
 - Every PR in the AWS deployment sequence updates README.md and the Status section of this file in the same PR. Status states only what is true at that merge, with the date it was checked: nothing counts as deployed or running while the service is at zero tasks or the database is destroyed.
 - Report style stays as in the Reports rule under Conventions.
 
@@ -104,7 +105,7 @@ Done:
 
 - Draft PAS 2.2.1 request bundles for the 11 facet cases (`evals/pas/`), validated with zero errors by the pinned HL7 FHIR Validator (CI job `pas-validate`); not ready to send (no covered diagnosis code, placeholder participants; open issue 5).
 
-- Builds as a container image: the `docker-build` CI job builds the API image without pushing it; run and health check verified locally on 2026-10-17. Not deployed: no AWS infrastructure exists yet.
+- Container image: the `docker-build` CI job builds the API image without pushing it, runs it, waits for the health check, requests `/health` and `/policies` and runs `alembic heads`. Base images are pinned by multi-arch digest; Dependabot covers the Docker ecosystem (the uv `COPY --from` line is not confirmed covered; bump it by hand if it is not). Verified locally on arm64 and in CI on 2026-10-17. Not deployed: no AWS infrastructure exists yet.
 
 Next: the AWS deployment, in steps; the container image is the first.
 
