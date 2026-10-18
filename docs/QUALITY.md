@@ -69,7 +69,8 @@ Out of scope, stated openly: a chart that is falsified at the source (for exampl
 | Transport and storage | TLS everywhere; RDS and S3 encrypted with KMS; database not public | Planned |
 | Audit | Every case read, verdict and export written to `audit_log` with the actor | Table done; writes planned |
 | Least privilege | One IAM role per service, scoped to what it calls | Planned |
-| Dependencies | `pip-audit` on every locked dependency in the CI `security` job, failing on any known vulnerability; Dependabot weekly, grouped, for uv and GitHub Actions; actions pinned to full commit SHAs; CodeQL, GitHub default setup, extended query suite, blocking merges on high or critical alerts; container image scanning | Done, except image scanning (planned, no images yet) |
+| Dependencies | `pip-audit` on every locked dependency in the CI `security` job, failing on any known vulnerability; Dependabot weekly, grouped, for uv and GitHub Actions; actions pinned to full commit SHAs; CodeQL, GitHub default setup, extended query suite, blocking merges on high or critical alerts; container image scanning | Done, except image scanning: ECR scans on push, one image scanned so far (next row); no scan in CI |
+| Known image scan findings | ECR scan on push of `sha-951a31b14a9a` (2026-10-18): 3 HIGH, 9 MEDIUM, 3 LOW. The 3 HIGH are Debian 13 (trixie) base packages, none fixed in trixie as of 2026-10-18: glibc 2.41-12+deb13u4 (CVE-2026-19499 and CVE-2026-5435, both "no-dsa, minor" per the Debian security tracker; fixed only in forky/sid, 2.43) and zlib 1.3.dfsg+really1.3.1-1 (CVE-2026-85091, unfixed, Debian bug 1146895). Not claimed to be unreachable: not yet checked against our code. Image pushed 2026-10-18, 88 MB, arm64, plain manifest (no attestations) | Open; rescan after Dependabot base-digest bumps |
 
 ## Test strategy
 
