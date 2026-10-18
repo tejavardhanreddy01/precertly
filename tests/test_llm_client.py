@@ -1,4 +1,7 @@
 import asyncio
+import importlib.util
+import sys
+from pathlib import Path
 from typing import Any, Literal
 
 import pytest
@@ -6,6 +9,7 @@ from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
 from precertly.llm import BedrockClient, StructuredOutputError
+from precertly.llm import client as llm_client
 from precertly.settings import Settings
 
 SETTINGS = Settings(_env_file=None, llm_requests_per_minute=None)
@@ -60,6 +64,57 @@ def test_settings_defaults_and_env_override(monkeypatch):
     overridden = Settings(_env_file=None)
     assert overridden.bedrock_model_id == "some.other-model-v1:0"
     assert not overridden.aws_profile
+
+
+class FakeSession:
+    """Stands in for boto3.Session: records its arguments and never touches the network."""
+
+    created: list[dict[str, Any]] = []
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.created.append(kwargs)
+
+    def client(self, service: str, **kwargs: Any) -> FakeBedrock:
+        error = ClientError({"Error": {"Code": "AccessDeniedException", "Message": "offline"}}, "x")
+        return FakeBedrock(error)
+
+
+@pytest.fixture
+def fake_session(monkeypatch):
+    FakeSession.created = []
+    monkeypatch.setattr(llm_client.boto3, "Session", FakeSession)
+    return FakeSession
+
+
+def test_runtime_client_uses_named_profile_by_default(fake_session):
+    llm_client.runtime_client(SETTINGS)
+    assert fake_session.created == [{"profile_name": "precertly", "region_name": "us-east-2"}]
+
+
+def test_empty_profile_means_default_credential_chain(fake_session, monkeypatch):
+    # A task role (ECS) has no named profile: PRECERTLY_AWS_PROFILE="" must reach boto3 as None.
+    monkeypatch.setenv("PRECERTLY_AWS_PROFILE", "")
+    llm_client.runtime_client(Settings(_env_file=None))
+    assert fake_session.created == [{"profile_name": None, "region_name": "us-east-2"}]
+
+
+def test_smoke_script_honours_empty_profile(fake_session, monkeypatch, capsys):
+    path = Path(__file__).resolve().parents[1] / "scripts" / "smoke_llm.py"
+    spec = importlib.util.spec_from_file_location("smoke_llm", path)
+    assert spec and spec.loader
+    smoke = importlib.util.module_from_spec(spec)
+    # Pydantic resolves the script's string annotations through sys.modules.
+    monkeypatch.setitem(sys.modules, "smoke_llm", smoke)
+    spec.loader.exec_module(smoke)
+
+    monkeypatch.setenv("PRECERTLY_AWS_PROFILE", "")
+    monkeypatch.setattr(
+        smoke, "get_settings", lambda: Settings(_env_file=None, llm_requests_per_minute=None)
+    )
+    # The fake client rejects the call, so main() returns 1 without any network access.
+    assert asyncio.run(smoke.main()) == 1
+    assert fake_session.created == [{"profile_name": None, "region_name": "us-east-2"}]
+    assert "profile=(default chain)" in capsys.readouterr().out
 
 
 def test_converse_builds_request_and_records_usage():

@@ -56,6 +56,18 @@ The LLM runs on Amazon Bedrock. Model, region and AWS profile come from `PRECERT
 
 Try `GET /requirements/64635` to see what a lumbar facet ablation request must show.
 
+## Container image
+
+The API builds as a container image. It stays an editable install under `/app`, because policies and eval bundles are found relative to the package file. It runs as a non-root user on port 8000, and its health check calls `/health`.
+
+```bash
+docker build -t precertly-api .
+docker run --rm -p 8000:8000 precertly-api     # then http://localhost:8000/docs
+docker ps                                      # STATUS shows (healthy) after the first check
+```
+
+The image holds the policies, migrations, the eval bundles and `scripts/smoke_llm.py`, and no credentials. With no `PRECERTLY_AWS_PROFILE` set it asks for the named profile `precertly`; set it to an empty string (`PRECERTLY_AWS_PROFILE=`) to use the default credential chain, as a task role would. The image builds in CI (job `docker-build`, no push). It is not deployed anywhere: there is no AWS infrastructure yet.
+
 ## How a criterion is judged
 
 Every criterion has an `evidence_stage`. Only `chart` and `request` criteria get a verdict; the rest (provider attestations, post-service and payer facts) go to the reviewer as a checklist.
@@ -111,7 +123,7 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 - [x] 29 labeled eval cases for the 4 procedures, built by script and checked in CI
 - [ ] Eval results for every labeled case (only the 11 facet cases have been scored so far)
 - [ ] After launch (target, not built): 10 cases per procedure (40 in all) and a CI gate on the scores
-- [ ] AWS deployment (AgentCore, ECS, RDS, CDK)
+- [ ] AWS deployment (AgentCore, ECS, RDS, CDK): the container image builds in CI; no infrastructure yet
 - [ ] Reviewer UI, MCP server, demo mode
 
 ## License
