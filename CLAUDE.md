@@ -24,7 +24,7 @@ uv run python -m precertly.pas [--check]         # draft PAS request bundles + r
 uv run python scripts/validate_pas.py [--tx]     # HL7 FHIR Validator on the drafts (offline; CI job pas-validate)
 uv run python -m precertly.fhir <bundle-or-dir>  # chunk summary for FHIR bundles
 docker compose up -d db                         # Postgres 16 + pgvector on localhost:5433
-uv run alembic upgrade head                     # apply migrations (URL from PRECERTLY_DATABASE_URL)
+uv run alembic upgrade head                     # apply migrations (PRECERTLY_DATABASE_URL, or PRECERTLY_DB_HOST/_NAME/_USER/_PASSWORD[/_PORT])
 uv run python -m precertly.ingest <path> [--estimate | --embed]  # --embed costs money; ask first
 uv run python scripts/smoke_llm.py              # one real Bedrock call (costs money; ask first)
 ```
@@ -41,7 +41,7 @@ uv run python scripts/smoke_llm.py              # one real Bedrock call (costs m
 - `src/precertly/judgment/` – per-criterion verdicts with verified citations, combined by the variant logic; only `chart` and `request` stage criteria are judged; `lines.py` splits evidence into line handles for the experimental prompt version 4 (`v4.py` holds its output schema); prompt version 3 is the default
 - `src/precertly/evals/` – eval case schema, scorer, the runner (`python -m precertly.evals.run`), `compare`, `rules_check`, `prompt_check` and `rescore`
 - `src/precertly/pas/` – draft Da Vinci PAS 2.2.1 request bundles and review envelopes from recorded verdicts; reviewed diagnosis map (`diagnosis_map.yaml`); never submitted, no verdicts in the bundle
-- `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile)
+- `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile); `sqlalchemy_url()` builds the database URL from `PRECERTLY_DATABASE_URL` or the `PRECERTLY_DB_*` parts
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
 - `data/synthea/` – patient generator (output is git-ignored)
 - `evals/` – labeled cases and scorers (see evals/README.md)
@@ -106,6 +106,8 @@ Done:
 - Draft PAS 2.2.1 request bundles for the 11 facet cases (`evals/pas/`), validated with zero errors by the pinned HL7 FHIR Validator (CI job `pas-validate`); not ready to send (no covered diagnosis code, placeholder participants; open issue 5).
 
 - Container image: the `docker-build` CI job builds the API image without pushing it, runs it, waits for the health check, requests `/health` and `/policies` and runs `alembic heads`. Base images are pinned by multi-arch digest; uv has its own `FROM` stage so Dependabot's Docker ecosystem follows it; Python minor and major image updates are ignored there and made by hand. Verified locally on arm64 and in CI on 2026-10-17. Not deployed: no AWS infrastructure exists yet.
+
+- Database connection from separate settings: `PRECERTLY_DATABASE_URL` wins; otherwise `PRECERTLY_DB_HOST`, `_NAME`, `_USER` and `_PASSWORD` are all required once any `PRECERTLY_DB_*` is set (`_PORT` defaults to 5432); with none set the local default is unchanged. The password is a secret in settings and stays out of repr and errors. Checked locally on 2026-10-17 against the compose database; nothing is deployed.
 
 Next: the AWS deployment, in steps; the container image is the first.
 

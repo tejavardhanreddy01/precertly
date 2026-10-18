@@ -7,6 +7,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import Connection, pool
+from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from precertly.db.models import Base
@@ -19,8 +20,8 @@ if config.config_file_name is not None and config.attributes.get("configure_logg
 target_metadata = Base.metadata
 
 
-def _url() -> str:
-    return config.get_main_option("sqlalchemy.url") or get_settings().database_url
+def _url() -> str | URL:
+    return config.get_main_option("sqlalchemy.url") or get_settings().sqlalchemy_url()
 
 
 def run_migrations_offline() -> None:

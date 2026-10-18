@@ -48,6 +48,17 @@ uv run python -m precertly.ingest data/synthea/output/fhir              # one ca
 uv run python -m precertly.ingest data/synthea/output/fhir --embed      # also embed new text (real Bedrock calls)
 ```
 
+The database connection comes from one of these, first match wins:
+
+| Variable | Meaning |
+| --- | --- |
+| `PRECERTLY_DATABASE_URL` | Full SQLAlchemy URL. If set, everything below is ignored. |
+| `PRECERTLY_DB_HOST`, `PRECERTLY_DB_NAME`, `PRECERTLY_DB_USER`, `PRECERTLY_DB_PASSWORD` | Separate parts. If any `PRECERTLY_DB_*` variable is set, these four are all required (the error names the missing ones). Special characters in the password are escaped for you. |
+| `PRECERTLY_DB_PORT` | Part of the same group; defaults to `5432`. |
+| none of the above | `localhost:5433`, the compose database. |
+
+The URL and the password are never shown in repr, logs or error messages. Blank values count as unset.
+
 Only notes, conditions, procedures and medication requests are embedded (Titan Text Embeddings V2, 1024 dimensions). Labs and vitals are found by code and date instead. Vectors are cached by a hash of the embedded text, so re-ingesting a chart does not pay for the same text twice. Ingest is idempotent per patient: running it again replaces that patient's chunks instead of creating a second case. Search is hybrid: Postgres full-text plus pgvector, merged with reciprocal rank fusion.
 
 First measured numbers (tokens, cost, time, latency and a hand-judged search) are in [docs/benchmarks/ingest-and-retrieval.md](docs/benchmarks/ingest-and-retrieval.md).
