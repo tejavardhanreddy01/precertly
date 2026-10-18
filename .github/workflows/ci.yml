@@ -93,6 +93,32 @@ jobs:
       # Build only: nothing is pushed and no registry login is made.
       - name: Build the API image
         run: docker build --tag precertly-api:ci .
+      # Runs the image detached with a short health interval, so the Dockerfile HEALTHCHECK
+      # itself is what is waited on. Nothing here needs a database or AWS.
+      - name: Smoke-test the image
+        run: |
+          docker run --detach --name precertly-api --publish 8000:8000 \
+            --health-interval 5s precertly-api:ci
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' precertly-api)
+            [ "$status" = healthy ] && break
+            sleep 2
+          done
+          echo "health status: $status"
+          [ "$status" = healthy ]
+          for path in /health /policies; do
+            code=$(curl --silent --output /dev/null --write-out '%{http_code}' "http://localhost:8000$path")
+            echo "GET $path -> $code"
+            [ "$code" = 200 ]
+          done
+          docker exec precertly-api alembic heads | tee heads.txt
+          grep -q '(head)' heads.txt
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs precertly-api
+      - name: Stop the container
+        if: always()
+        run: docker rm --force precertly-api
 
   pas-validate:
     runs-on: ubuntu-latest

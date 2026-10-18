@@ -4,8 +4,13 @@
 #   docker build -t precertly-api .
 #   docker run --rm -p 8000:8000 precertly-api
 
-FROM python:3.12-slim AS build
-COPY --from=ghcr.io/astral-sh/uv:0.8.15 /uv /bin/uv
+# Bases are pinned to multi-arch index digests (linux/amd64 and linux/arm64), with the tag kept
+# in the reference. Dependabot follows FROM lines, so uv has its own stage and both bases get
+# updates; a Python minor or major change is ignored there and is made by hand.
+FROM ghcr.io/astral-sh/uv:0.8.15@sha256:a5727064a0de127bdb7c9d3c1383f3a9ac307d9f2d8a391edc7896c54289ced0 AS uv
+
+FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS build
+COPY --from=uv /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
@@ -18,7 +23,7 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY src ./src
 RUN uv sync --locked --no-dev
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app --no-create-home app
 WORKDIR /app
