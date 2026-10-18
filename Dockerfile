@@ -7,7 +7,7 @@
 # Bases are pinned to multi-arch index digests (linux/amd64 and linux/arm64), with the tag kept
 # in the reference. Dependabot follows FROM lines, so uv has its own stage and both bases get
 # updates; a Python minor or major change is ignored there and is made by hand.
-FROM ghcr.io/astral-sh/uv:0.8.15@sha256:a5727064a0de127bdb7c9d3c1383f3a9ac307d9f2d8a391edc7896c54289ced0 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
 
 FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS build
 COPY --from=uv /uv /bin/uv
