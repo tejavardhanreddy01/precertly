@@ -81,13 +81,13 @@ The image holds the policies, migrations, the eval bundles and `scripts/smoke_ll
 
 ## Infrastructure (CDK)
 
-`infra/` is an AWS CDK app in Python, a separate project from the API: its own `pyproject.toml` and `uv.lock`, and a `package.json` that pins the CDK CLI to an exact version (Node 24). It defines three stacks, `precertly-base`, `precertly-app` and `precertly-data`; only `precertly-base` has resources so far, and `precertly-app` and `precertly-data` are still empty. The stacks set no account or region, and their availability zones are fixed to `us-east-2a` and `us-east-2b`, so synthesis needs no credentials and no lookups.
+`infra/` is an AWS CDK app in Python, a separate project from the API: its own `pyproject.toml` and `uv.lock`, and a `package.json` that pins the CDK CLI to an exact version (Node 24). It defines three stacks, `precertly-base`, `precertly-app` and `precertly-data`; `precertly-base` and `precertly-app` have resources in code, and `precertly-data` is still empty. The stacks set no account or region, and their availability zones are fixed to `us-east-2a` and `us-east-2b`, so synthesis needs no credentials and no lookups.
 
 ```bash
 cd infra
 uv sync --locked && npm ci          # Python deps, then the pinned CDK CLI
 uv run pytest -q                    # assertion tests: the stacks, the base stack's resources and policies, no hard-coded account or region
-npx cdk synth --no-lookups -c budgetEmail=you@example.invalid   # writes infra/cdk.out; no AWS calls
+npx cdk synth --no-lookups -c budgetEmail=you@example.invalid -c imageTag=sha-000000000000   # writes infra/cdk.out; no AWS calls
 ```
 
 `precertly-base` defines, as code only, the budget and the ECR repository:
@@ -95,9 +95,18 @@ npx cdk synth --no-lookups -c budgetEmail=you@example.invalid   # writes infra/c
 - an annual cost budget of 60 USD for the whole account, with email alerts at 20, 40 and 55 USD actual spend and at 100 percent forecast; the address comes from the CDK context key `budgetEmail` (`-c budgetEmail=...`), is required, and is never committed;
 - the ECR repository `precertly-api`: scan on push, immutable tags, AES256, deleted with the stack along with its images; it keeps the last 5 `sha-` images and expires untagged ones after a day;
 
+`precertly-app` is defined in code and **not deployed**: the network and the API service at **desired count 0**, so deploying it would start no task.
+
+- A VPC with two public subnets (`us-east-2a`, `us-east-2b`) and an internet gateway: no private subnets, no NAT gateway, no interface endpoints, no load balancer.
+- A task security group with no inbound rules and all outbound; the task is reached with ECS Exec, not over the network.
+- The ECS cluster `precertly` and the Fargate service `precertly-api` (ARM64, 256 CPU, 512 MiB, public IP, circuit breaker with rollback), with ECS Exec on. The task definition runs the image from the ECR repository at the tag in the required CDK context `imageTag` (`sha-...`), with the image's own command and health check.
+- The task has no database and no secrets, only the Bedrock region, model and embedding model settings, and an empty `PRECERTLY_AWS_PROFILE` so it uses its task role.
+- Roles `precertly-ecs-task` (ECS Exec; Bedrock `InvokeModel` and `InvokeModelWithResponseStream` on the configured inference profile, its foundation model and the Titan v2 embedding model only) and `precertly-ecs-execution` (pull from the repository, write the log group `/precertly/api`, kept 7 days). The cross-region Bedrock permissions are unverified until a real call.
+- Outputs: the cluster name, the service name and the log group name.
+
 Names shared by the stacks and the tests are in `infra/names.py`.
 
-On 2026-10-18 the owner confirmed from AWS CLI checks: the CDK is bootstrapped (toolkit stack, us-east-2) and `precertly-base` was deployed from the owner's Mac (stack `CREATE_COMPLETE`). The ECR repository `precertly-api` is immutable with scan on push and both lifecycle rules; the annual 60 USD budget has 3 actual alerts (20, 40, 55) and 1 forecast alert at 100 percent. Two older monthly budgets made in the console, `precertly-25` and `precertly-50`, exist outside the stack. `scripts/deploy.sh image` pushed `sha-951a31b14a9a` (88 MB, arm64), and a second run skipped it as already pushed. Nothing runs: `precertly-app` and `precertly-data` are still empty, and there is no service and no database. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. Deploys run from the owner's Mac with `scripts/deploy.sh` (below), never from GitHub Actions: this AWS account's managed organization policy denies `iam:*Provider*`, so no OIDC provider can exist and a workflow cannot assume an AWS role, and long-lived keys in GitHub are not used. The script takes one stack name and refuses `--all`: an empty stack cannot be deployed, and the CDK's own check for that is acknowledged for `precertly-app` and `precertly-data` in `infra/app.py` until each gets a resource.
+On 2026-10-18 the owner confirmed from AWS CLI checks: the CDK is bootstrapped (toolkit stack, us-east-2) and `precertly-base` was deployed from the owner's Mac (stack `CREATE_COMPLETE`). The ECR repository `precertly-api` is immutable with scan on push and both lifecycle rules; the annual 60 USD budget has 3 actual alerts (20, 40, 55) and 1 forecast alert at 100 percent. Two older monthly budgets made in the console, `precertly-25` and `precertly-50`, exist outside the stack. `scripts/deploy.sh image` pushed `sha-951a31b14a9a` (88 MB, arm64), and a second run skipped it as already pushed. Nothing runs: `precertly-app` and `precertly-data` have not been deployed, and there is no service and no database. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. Deploys run from the owner's Mac with `scripts/deploy.sh` (below), never from GitHub Actions: this AWS account's managed organization policy denies `iam:*Provider*`, so no OIDC provider can exist and a workflow cannot assume an AWS role, and long-lived keys in GitHub are not used. The script takes one stack name and refuses `--all`: an empty stack cannot be deployed, and the CDK's own check for that is acknowledged for `precertly-data` in `infra/app.py` until it gets a resource. For `precertly-app` the script passes `-c imageTag=<tag of HEAD>` and first checks that the image is in ECR.
 
 ### Deploying (from the owner's Mac)
 
@@ -165,7 +174,7 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 - [ ] Eval results for every labeled case (only the 11 facet cases have been scored so far)
 - [ ] After launch (target, not built): 10 cases per procedure (40 in all) and a CI gate on the scores
 - [x] CDK bootstrapped and `precertly-base` (annual budget and the immutable ECR repository) deployed from the owner's Mac; image `sha-951a31b14a9a` pushed (checked 2026-10-18)
-- [ ] AWS deployment (AgentCore, ECS, RDS): `precertly-app` and `precertly-data` are empty; there is no service and no database, so nothing runs and the API is not reachable
+- [ ] AWS deployment (AgentCore, ECS, RDS): `precertly-app` (network and the API service at desired count 0) is defined in code and synthesised in CI but not deployed, and `precertly-data` is empty; there is no service running and no database, so the API is not reachable
 - [ ] Reviewer UI, MCP server, demo mode
 
 ## License
