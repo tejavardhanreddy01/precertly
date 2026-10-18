@@ -15,6 +15,10 @@ updates:
     groups:
       docker:
         patterns: ["*"]
+    # Python is 3.12 in requires-python and CI; a new minor or major is a deliberate change.
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
