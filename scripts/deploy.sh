@@ -49,11 +49,13 @@ Commands:
   status       Read-only. Stack status, service counts and rollout, task definition revision,
                image tag and health check, available NAT gateways, RDS instances and ECR images.
                A missing resource prints "not deployed".
-  smoke        Refuses unless the service has no task. Scales to 1, waits (10 min), runs /health
-               and /policies inside the task with ECS Exec, then ALWAYS scales back to 0 and
-               waits until no task runs, even after a failure or Ctrl-C. Needs the AWS
-               session-manager-plugin. --bedrock also runs scripts/smoke_llm.py (one real
-               Bedrock call; asks first, and --yes does not skip that question).
+  smoke        Refuses unless the service has no task. Scales to 1, waits (10 min), waits for the
+               ECS Exec agent (2 min), runs /health and /policies inside the task with ECS Exec
+               (retrying only "not ready" errors), waits for the ECS health check to be HEALTHY
+               (2 min), then ALWAYS scales back to 0 and waits until no task runs, even after
+               a failure or Ctrl-C. Needs the AWS session-manager-plugin. --bedrock also runs
+               scripts/smoke_llm.py (one real Bedrock call; asks first, and --yes does not
+               skip that question).
   down         Set the service to 0 and wait until no task runs.
 
 Options:
@@ -380,6 +382,12 @@ q_describe_task() {
     --query 'tasks[0].[lastStatus,healthStatus]' --output text
 }
 
+q_exec_agent_status() {
+  run aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$1" \
+    --query "tasks[0].containers[0].managedAgents[?name=='ExecuteCommandAgent'].lastStatus | [0]" \
+    --output text
+}
+
 q_exec() {
   run aws ecs execute-command --cluster "$CLUSTER" --task "$1" --container "$CONTAINER" \
     --interactive --command "$2"
@@ -438,9 +446,10 @@ service_is_down() {
   fetch_service && [[ "$SVC_RUNNING" == "0" && "$SVC_PENDING" == "0" ]]
 }
 
-# Poll a predicate until it holds or WAIT_TIMEOUT seconds pass.
-wait_for() {
-  local deadline=$((SECONDS + WAIT_TIMEOUT))
+# Poll a predicate until it holds or the given number of seconds pass.
+wait_for_seconds() {
+  local deadline=$((SECONDS + $1))
+  shift
   while :; do
     if "$@"; then
       return 0
@@ -450,6 +459,10 @@ wait_for() {
     fi
     sleep "$POLL_SECONDS"
   done
+}
+
+wait_for() {
+  wait_for_seconds "$WAIT_TIMEOUT" "$@"
 }
 
 # Set desired count 0 and wait until nothing runs. Retries the update: the console-login
@@ -576,21 +589,56 @@ show_tail() {
   printf '%s\n' "$1" | tail -n 8 | sed 's/^/    | /' >&2
 }
 
-# Run one command in the task; pass if the output has the expected line.
+# Run one command in the task; pass if the output has the expected line. Only the errors that
+# mean "ECS Exec is not ready yet" are retried (up to 3 attempts, a few seconds apart); any
+# other failure, such as a non-200 or a Python error, fails at once. The output tail is shown
+# for the final attempt only.
+readonly EXEC_NOT_READY_RE="InvalidParameterException|TargetNotConnectedException|agent isn't running"
+readonly EXEC_ATTEMPTS=3
+
 smoke_exec_check() {
-  local label="$1" arn="$2" command="$3" pattern="$4" out=""
-  out="$(q_exec "$arn" "$command" 2>&1)" || true
-  if grep -Eq "$pattern" <<<"$out"; then
-    record PASS "$label"
-    return 0
-  fi
+  local label="$1" arn="$2" command="$3" pattern="$4" out="" attempt
+  local retry_seconds=$((POLL_SECONDS < 5 ? POLL_SECONDS : 5))
+  for ((attempt = 1; attempt <= EXEC_ATTEMPTS; attempt++)); do
+    out="$(q_exec "$arn" "$command" 2>&1)" || true
+    if grep -Eq "$pattern" <<<"$out"; then
+      record PASS "$label"
+      return 0
+    fi
+    if ((attempt < EXEC_ATTEMPTS)) && grep -Eq "$EXEC_NOT_READY_RE" <<<"$out"; then
+      echo "ECS Exec not ready (attempt ${attempt} of ${EXEC_ATTEMPTS}), retrying in ${retry_seconds}s"
+      sleep "$retry_seconds"
+      continue
+    fi
+    break
+  done
   record FAIL "$label"
   show_tail "$out"
   return 1
 }
 
+# Predicates for the task being checked (SMOKE_TASK), polled with wait_for_seconds.
+SMOKE_TASK=""
+EXEC_AGENT_STATUS="unknown"
+TASK_HEALTH="unknown"
+
+exec_agent_is_running() {
+  probe q_exec_agent_status "$SMOKE_TASK" || true
+  EXEC_AGENT_STATUS="${AWS_OUT:-unknown}"
+  [[ "$EXEC_AGENT_STATUS" == "RUNNING" ]]
+}
+
+task_is_healthy() {
+  probe q_describe_task "$SMOKE_TASK" || true
+  IFS=$'\t' read -r _ TASK_HEALTH <<<"$AWS_OUT"
+  TASK_HEALTH="${TASK_HEALTH:-unknown}"
+  [[ "$TASK_HEALTH" == "HEALTHY" ]]
+}
+
 smoke_steps() {
-  local arn out last health path
+  local arn last health path wait_cap
+  # The agent and health waits are capped at 120 s (less if WAIT_TIMEOUT is shorter).
+  wait_cap=$((WAIT_TIMEOUT < 120 ? WAIT_TIMEOUT : 120))
 
   echo "scaling ${SERVICE} to 1"
   if ! q_set_desired 1 >/dev/null; then
@@ -609,6 +657,7 @@ smoke_steps() {
     record FAIL "no running task found"
     return 1
   fi
+  SMOKE_TASK="$arn"
   probe q_describe_task "$arn" || true
   IFS=$'\t' read -r last health <<<"$AWS_OUT"
   echo "task ${arn##*/}: lastStatus ${last:-unknown}, healthStatus ${health:-unknown}"
@@ -617,6 +666,13 @@ smoke_steps() {
     return 1
   fi
   record PASS "task RUNNING (healthStatus ${health:-unknown})"
+
+  # A RUNNING task is not yet an ECS Exec-ready task: its agent starts a little later.
+  if ! wait_for_seconds "$wait_cap" exec_agent_is_running; then
+    record FAIL "ECS Exec agent not RUNNING within ${wait_cap}s (last status: ${EXEC_AGENT_STATUS})"
+    return 1
+  fi
+  record PASS "ECS Exec agent running"
 
   for path in /health /policies; do
     smoke_exec_check "GET ${path} returned 200 (ECS Exec, urllib)" "$arn" \
@@ -627,6 +683,13 @@ smoke_steps() {
     smoke_exec_check "one real Bedrock call (scripts/smoke_llm.py)" "$arn" \
       "$BEDROCK_COMMAND" '^tokens in/out: [0-9]+/[0-9]+' || return 1
   fi
+
+  # Last, so a slow health-check start period cannot hide an application failure above.
+  if ! wait_for_seconds "$wait_cap" task_is_healthy; then
+    record FAIL "ECS health check HEALTHY within ${wait_cap}s (last status: ${TASK_HEALTH})"
+    return 1
+  fi
+  record PASS "ECS health check HEALTHY"
 }
 
 # EXIT trap of `smoke`. Runs after success, a failed check, a die or Ctrl-C/TERM, and always
@@ -670,12 +733,14 @@ cmd_smoke() {
     q_service
     q_list_tasks
     q_describe_task "TASK_ARN"
+    q_exec_agent_status "TASK_ARN"
     q_exec "TASK_ARN" "$(http_command /health)"
     q_exec "TASK_ARN" "$(http_command /policies)"
     if $BEDROCK; then
       echo "dry-run: would ask 'One real Bedrock call, costs a fraction of a cent. Continue? [y/N]'"
       q_exec "TASK_ARN" "$BEDROCK_COMMAND"
     fi
+    q_describe_task "TASK_ARN"
     echo "dry-run: on exit, interrupt or failure, always:"
     q_set_desired 0
     q_service

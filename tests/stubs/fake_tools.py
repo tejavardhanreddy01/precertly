@@ -17,6 +17,13 @@ stub.json keys (all optional):
   fail_all          every aws call fails with this stderr (status 255)
   exec              {"/health" | "/policies" | "smoke_llm": text}: output of execute-command
   exec_sleep        seconds execute-command takes
+  exec_errors       {"/health" | "/policies" | "smoke_llm": N}: the first N calls fail with
+                    "agent isn't running" (InvalidParameterException)
+  agent_polls       the ExecuteCommandAgent reports PENDING for the first N status queries
+  agent_never_running  it never reports RUNNING
+  health            healthStatus of the task (default HEALTHY)
+  health_after_polls   healthStatus is UNKNOWN for the first N describe-tasks health queries,
+                    then HEALTHY
   diff_text         what `cdk diff` prints; {email} is replaced by the budgetEmail context value
   diff_fail         `cdk diff` prints this to stderr and fails
 """
@@ -66,6 +73,15 @@ def npx(args: list[str], config: dict) -> int:
     return 0
 
 
+def bump(name: str) -> int:
+    """Count a call by name across stub invocations; returns the new count."""
+    path = BASE / "counters.json"
+    counters = json.loads(path.read_text()) if path.exists() else {}
+    counters[name] = counters.get(name, 0) + 1
+    path.write_text(json.dumps(counters))
+    return counters[name]
+
+
 def read_state(config: dict) -> dict:
     path = BASE / "state.json"
     if path.exists():
@@ -111,7 +127,16 @@ def aws(args: list[str], config: dict) -> int:
     elif operation == "list-tasks":
         print(TASK_ARN if state["running"] else "None")
     elif operation == "describe-tasks":
-        print("RUNNING\tUNKNOWN")
+        if "managedAgents" in " ".join(args):
+            polls = bump("agent")
+            pending = config.get("agent_never_running") or polls <= config.get("agent_polls", 0)
+            print("PENDING" if pending else "RUNNING")
+        else:
+            polls = bump("health")
+            health = config.get("health", "HEALTHY")
+            if polls <= config.get("health_after_polls", 0):
+                health = "UNKNOWN"
+            print(f"RUNNING\t{health}")
     elif operation == "execute-command":
         return execute_command(args, config)
     elif service in ("ec2", "rds"):
@@ -128,6 +153,13 @@ def aws(args: list[str], config: dict) -> int:
 def execute_command(args: list[str], config: dict) -> int:
     command = args[args.index("--command") + 1]
     time.sleep(config.get("exec_sleep", 0))
+    for key, count in config.get("exec_errors", {}).items():
+        if key in command and bump(f"exec:{key}") <= count:
+            return fail(
+                "An error occurred (InvalidParameterException) when calling the ExecuteCommand "
+                "operation: The execute command failed because execute command agent isn't "
+                "running. Wait and try again or run describe-tasks to check the status."
+            )
     print(
         "The Session Manager plugin was installed successfully. Use the AWS CLI to start a session."
     )
