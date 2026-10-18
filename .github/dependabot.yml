@@ -8,6 +8,23 @@ updates:
       python:
         patterns: ["*"]
 
+  # infra/ is a separate Python project and a separate npm project.
+  - package-ecosystem: uv
+    directory: /infra
+    schedule:
+      interval: weekly
+    groups:
+      infra-python:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /infra
+    schedule:
+      interval: weekly
+    groups:
+      infra-npm:
+        patterns: ["*"]
+
   - package-ecosystem: docker
     directory: /
     schedule:

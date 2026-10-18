@@ -21,6 +21,7 @@ tests
 docs
 docker
 docker-compose.yml
+infra
 .pre-commit-config.yaml
 
 data/synthea

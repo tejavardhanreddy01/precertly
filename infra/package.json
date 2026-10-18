@@ -1,0 +1,12 @@
+{
+  "name": "precertly-infra",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pins the AWS CDK CLI used to synthesize the Python app in this directory.",
+  "engines": {
+    "node": "24.x"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.1145.0"
+  }
+}

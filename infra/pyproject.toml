@@ -1,0 +1,36 @@
+[project]
+name = "precertly-infra"
+version = "0.1.0"
+description = "AWS CDK app for Precertly. Not part of the API package; has its own environment and lock."
+requires-python = ">=3.12"
+dependencies = [
+    "aws-cdk-lib>=2.273.0",
+    "constructs>=10.4.2,<11",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pyright[nodejs]>=1.1.414",
+    "pip-audit>=2.10.1",
+]
+
+[tool.uv]
+# An app, not a package: nothing here is built or installed.
+package = false
+
+[tool.ruff]
+# Same rules as the main project; `src` makes `app` first-party for import sorting.
+extend = "../pyproject.toml"
+src = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.pyright]
+include = ["app.py", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
