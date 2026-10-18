@@ -112,11 +112,13 @@ On 2026-10-18 the owner confirmed from AWS CLI checks: the CDK is bootstrapped (
 
 ```bash
 aws login --profile precertly
-scripts/deploy.sh image [--yes] [--dry-run]            # build linux/arm64, push as sha-<12 hex of HEAD> to ECR
-BUDGET_EMAIL=<address> scripts/deploy.sh stack precertly-base [--dry-run]   # one stack by name; --all is refused
+scripts/deploy.sh up precertly-app [--yes] [--dry-run]   # push the image, show cdk diff, ask "Deploy? [y/N]", deploy one stack
+scripts/deploy.sh status                                  # read-only: stacks, service counts, task definition, NAT, RDS, ECR
+scripts/deploy.sh smoke [--bedrock]                       # one task: /health and /policies via ECS Exec, always back to zero
+scripts/deploy.sh down                                    # desired count 0, confirmed
 ```
 
-`image` refuses a dirty working tree or an unpushed `HEAD`, asks for confirmation, and skips a tag that already exists because the repository's tags are immutable. `--dry-run` prints the commands with the account id and email redacted and touches neither AWS nor Docker; the CI `test` job runs it. The budget address is read from `BUDGET_EMAIL` and is never written to a file. Prerequisites, the order and the wording rule (say "deployable" until the service runs and a smoke check passes) are in [docs/deployment.md](docs/deployment.md).
+The budget address comes from `BUDGET_EMAIL` or, if that is unset, from a gitignored `.env.local` at the repo root (`BUDGET_EMAIL=<address>`, parsed and never sourced); it is never printed. `up` shows the CDK diff with the address redacted and always asks before deploying: `--yes` only skips the image build confirmation. `smoke` refuses unless the service has no task, and ends by setting the desired count back to 0 and waiting until no task runs, even after a failure or Ctrl-C; `--bedrock` adds one real Bedrock call after an explicit question. The lower-level `image` and `stack <name>` commands remain; `image` refuses a dirty working tree or an unpushed `HEAD`, asks for confirmation, and skips a tag that already exists because the repository's tags are immutable. Every command takes `--dry-run`, which prints the commands with the account id and email redacted and touches neither AWS nor Docker; the CI `test` job runs the script against stub tools. The new commands (`up`, `status`, `smoke`, `down`) have been tested with stubs and `--dry-run` only, not yet run against real AWS. Prerequisites, the runbook, the manual fallback and the wording rule (say "deployable" until the service runs and a smoke check passes) are in [docs/deployment.md](docs/deployment.md).
 
 ## How a criterion is judged
 
