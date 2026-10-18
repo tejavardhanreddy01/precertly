@@ -29,7 +29,7 @@ uv run python -m precertly.ingest <path> [--estimate | --embed]  # --embed costs
 uv run python scripts/smoke_llm.py              # one real Bedrock call (costs money; ask first)
 cd infra && uv sync --locked && npm ci          # CDK app: own Python env and lock, CLI pinned in package.json (Node 24)
 cd infra && uv run pytest -q                    # CDK assertion tests
-cd infra && npx cdk synth --no-lookups          # no AWS calls; never bootstrap, deploy or look up context without the owner's go-ahead
+cd infra && npx cdk synth --no-lookups -c budgetEmail=ci@example.invalid  # no AWS calls (the budget email is required context and never committed); never bootstrap, deploy or look up context without the owner's go-ahead
 ```
 
 ## Layout
@@ -45,7 +45,7 @@ cd infra && npx cdk synth --no-lookups          # no AWS calls; never bootstrap,
 - `src/precertly/evals/` – eval case schema, scorer, the runner (`python -m precertly.evals.run`), `compare`, `rules_check`, `prompt_check` and `rescore`
 - `src/precertly/pas/` – draft Da Vinci PAS 2.2.1 request bundles and review envelopes from recorded verdicts; reviewed diagnosis map (`diagnosis_map.yaml`); never submitted, no verdicts in the bundle
 - `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile); `sqlalchemy_url()` builds the database URL from `PRECERTLY_DATABASE_URL` or the `PRECERTLY_DB_*` parts
-- `infra/` – AWS CDK app in Python, separate project (own `pyproject.toml`, `uv.lock`, `package.json` for the pinned CDK CLI); three environment-agnostic stacks (`precertly-base`, `precertly-app`, `precertly-data`) with no resources yet
+- `infra/` – AWS CDK app in Python, separate project (own `pyproject.toml`, `uv.lock`, `package.json` for the pinned CDK CLI); three environment-agnostic stacks (`precertly-base`, `precertly-app`, `precertly-data`); `precertly-base` (`base_stack.py`) holds the budget, ECR repository, GitHub OIDC provider and deploy role, the other two are empty; shared names in `names.py`
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
 - `data/synthea/` – patient generator (output is git-ignored)
 - `evals/` – labeled cases and scorers (see evals/README.md)
@@ -113,8 +113,10 @@ Done:
 
 - Database connection from separate settings: `PRECERTLY_DATABASE_URL` wins; otherwise `PRECERTLY_DB_HOST`, `_NAME`, `_USER` and `_PASSWORD` are all required once any `PRECERTLY_DB_*` is set (`_PORT` defaults to 5432); with none set the local default is unchanged. The password is a secret in settings and stays out of repr and errors. Checked locally on 2026-10-17 against the compose database; nothing is deployed.
 
-- CDK scaffold, no resources yet (`infra/`, checked 2026-10-17): three empty, environment-agnostic stacks with fixed availability zones `us-east-2a` and `us-east-2b`, assertion tests, and the CI job `infra-synth` (tests and `cdk synth --no-lookups`, no credentials). `infra/` has its own environment and lock, checked by the `typecheck` and `security` jobs and by Dependabot. No infrastructure is defined, nothing is bootstrapped or deployed, and no AWS call has been made for it.
+- CDK scaffold (`infra/`, checked 2026-10-17): three empty, environment-agnostic stacks with fixed availability zones `us-east-2a` and `us-east-2b`, assertion tests, and the CI job `infra-synth` (tests and `cdk synth --no-lookups`, no credentials). `infra/` has its own environment and lock, checked by the `typecheck` and `security` jobs and by Dependabot. The stacks were empty at that point; nothing was bootstrapped or deployed, and no AWS call was made for it.
 
-Next: the AWS deployment, in steps; the container image and the CDK scaffold are done.
+- Base stack defined and synthesised in CI; nothing deployed (`infra/`, checked 2026-10-18): `precertly-base` defines the annual budget alarms, the `precertly-api` ECR repository, the GitHub OIDC provider and the least-privilege deploy role, with assertion tests. `precertly-app` and `precertly-data` are still empty. Nothing is bootstrapped or deployed, and no AWS call has been made for it.
+
+Next: the AWS deployment, in steps; the container image, the CDK scaffold and the base stack definition are done.
 
 Experiments after launch, each pre-registered in `evals/results/NOTES.md` before running: experiment 2b (the model copies the quote, which must fall within the cited lines; 3-line cap), then experiment 3, retrieval by evidence type (the facet-11 retrieval miss). Do not loosen a verification check to recover verdicts.

@@ -79,18 +79,27 @@ docker ps                                      # STATUS shows (healthy) after th
 
 The image holds the policies, migrations, the eval bundles and `scripts/smoke_llm.py`, and no credentials. With no `PRECERTLY_AWS_PROFILE` set it asks for the named profile `precertly`; set it to an empty string (`PRECERTLY_AWS_PROFILE=`) to use the default credential chain, as a task role would. The base images (`python:3.12-slim` and the uv image) are pinned by multi-arch digest, and Dependabot proposes updates weekly. The CI job `docker-build` builds the image without pushing it, runs it, waits for the health check, requests `/health` and `/policies` and runs `alembic heads`. It is not deployed anywhere: there is no AWS infrastructure yet.
 
-## Infrastructure (CDK scaffold)
+## Infrastructure (CDK)
 
-`infra/` is an AWS CDK app in Python, a separate project from the API: its own `pyproject.toml` and `uv.lock`, and a `package.json` that pins the CDK CLI to an exact version (Node 24). It defines three empty stacks, `precertly-base`, `precertly-app` and `precertly-data`, with no resources, so no infrastructure is defined yet. The stacks set no account or region, and their availability zones are fixed to `us-east-2a` and `us-east-2b`, so synthesis needs no credentials and no lookups.
+`infra/` is an AWS CDK app in Python, a separate project from the API: its own `pyproject.toml` and `uv.lock`, and a `package.json` that pins the CDK CLI to an exact version (Node 24). It defines three stacks, `precertly-base`, `precertly-app` and `precertly-data`; only `precertly-base` has resources so far, and `precertly-app` and `precertly-data` are still empty. The stacks set no account or region, and their availability zones are fixed to `us-east-2a` and `us-east-2b`, so synthesis needs no credentials and no lookups.
 
 ```bash
 cd infra
 uv sync --locked && npm ci          # Python deps, then the pinned CDK CLI
-uv run pytest -q                    # assertion tests: the three stacks, no hard-coded account or region
-npx cdk synth --no-lookups          # writes infra/cdk.out; no AWS calls
+uv run pytest -q                    # assertion tests: the stacks, the base stack's resources and policies, no hard-coded account or region
+npx cdk synth --no-lookups -c budgetEmail=you@example.invalid   # writes infra/cdk.out; no AWS calls
 ```
 
-Nothing is bootstrapped or deployed. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. An empty stack cannot be deployed as it stands; the CDK's own check for that is acknowledged in `infra/app.py` and goes away with the first resource.
+`precertly-base` defines, as code only:
+
+- an annual cost budget of 60 USD for the whole account, with email alerts at 20, 40 and 55 USD actual spend and at 100 percent forecast; the address comes from the CDK context key `budgetEmail` (`-c budgetEmail=...`), is required, and is never committed;
+- the ECR repository `precertly-api`: scan on push, immutable tags, AES256, deleted with the stack along with its images; it keeps the last 5 `sha-` images and expires untagged ones after a day;
+- the GitHub OIDC provider (native IAM resource, no custom-resource Lambda);
+- the role `precertly-github-deploy`, assumable only by the `production` environment of `tejavardhanreddy01/precertly` (exact `aud` and `sub` match), for one hour at most. Its policy allows pushing to that repository, registering task definitions, updating the `precertly-api` service, running and stopping tasks of the `precertly-tools` family in the `precertly` cluster, and passing the two task roles to ECS; nothing else.
+
+Names shared by the stacks and the tests are in `infra/names.py`. The deploy role's policy names the cluster, service and task roles that `precertly-app` will create; until then it grants access to resources that do not exist.
+
+Nothing is bootstrapped or deployed. The CI job `infra-synth` runs the tests and `cdk synth` with no credentials. When deploying later, name the stack (`precertly-base`), never `--all`: an empty stack cannot be deployed, and the CDK's own check for that is acknowledged for `precertly-app` and `precertly-data` in `infra/app.py` until each gets a resource.
 
 ## How a criterion is judged
 
@@ -147,7 +156,7 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 - [x] 29 labeled eval cases for the 4 procedures, built by script and checked in CI
 - [ ] Eval results for every labeled case (only the 11 facet cases have been scored so far)
 - [ ] After launch (target, not built): 10 cases per procedure (40 in all) and a CI gate on the scores
-- [ ] AWS deployment (AgentCore, ECS, RDS, CDK): the container image builds in CI; the CDK app is a scaffold of three empty stacks; no infrastructure is defined yet
+- [ ] AWS deployment (AgentCore, ECS, RDS, CDK): the container image builds in CI; the `precertly-base` stack (budget, ECR, GitHub OIDC, deploy role) is defined and synthesised in CI; `precertly-app` and `precertly-data` are empty; nothing is deployed
 - [ ] Reviewer UI, MCP server, demo mode
 
 ## License
