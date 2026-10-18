@@ -29,7 +29,7 @@ uv run python -m precertly.ingest <path> [--estimate | --embed]  # --embed costs
 uv run python scripts/smoke_llm.py              # one real Bedrock call (costs money; ask first)
 cd infra && uv sync --locked && npm ci          # CDK app: own Python env and lock, CLI pinned in package.json (Node 24)
 cd infra && uv run pytest -q                    # CDK assertion tests
-cd infra && npx cdk synth --no-lookups -c budgetEmail=ci@example.invalid  # no AWS calls (the budget email is required context and never committed); never bootstrap, deploy or look up context without the owner's go-ahead
+cd infra && npx cdk synth --no-lookups -c budgetEmail=ci@example.invalid  # no AWS calls (the budget email is required context and never committed); never bootstrap, deploy or look up context without the owner's go-ahead; deploys are by stack name from the owner's Mac, never --all
 ```
 
 ## Layout
@@ -45,7 +45,7 @@ cd infra && npx cdk synth --no-lookups -c budgetEmail=ci@example.invalid  # no A
 - `src/precertly/evals/` – eval case schema, scorer, the runner (`python -m precertly.evals.run`), `compare`, `rules_check`, `prompt_check` and `rescore`
 - `src/precertly/pas/` – draft Da Vinci PAS 2.2.1 request bundles and review envelopes from recorded verdicts; reviewed diagnosis map (`diagnosis_map.yaml`); never submitted, no verdicts in the bundle
 - `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile); `sqlalchemy_url()` builds the database URL from `PRECERTLY_DATABASE_URL` or the `PRECERTLY_DB_*` parts
-- `infra/` – AWS CDK app in Python, separate project (own `pyproject.toml`, `uv.lock`, `package.json` for the pinned CDK CLI); three environment-agnostic stacks (`precertly-base`, `precertly-app`, `precertly-data`); `precertly-base` (`base_stack.py`) holds the budget, ECR repository, GitHub OIDC provider and deploy role, the other two are empty; shared names in `names.py`
+- `infra/` – AWS CDK app in Python, separate project (own `pyproject.toml`, `uv.lock`, `package.json` for the pinned CDK CLI); three environment-agnostic stacks (`precertly-base`, `precertly-app`, `precertly-data`); `precertly-base` (`base_stack.py`) holds the budget and the ECR repository (no IAM: the account denies `iam:*Provider*`), the other two are empty; shared names in `names.py`
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
 - `data/synthea/` – patient generator (output is git-ignored)
 - `evals/` – labeled cases and scorers (see evals/README.md)
@@ -77,6 +77,7 @@ cd infra && npx cdk synth --no-lookups -c budgetEmail=ci@example.invalid  # no A
 
 ## Working agreement
 
+- Deploys run from the owner's Mac. No GitHub Actions job may assume an AWS role or hold AWS keys.
 - Never merge a PR. The owner merges manually with "Create a merge commit" after CI is green.
 - Do not use interactive question popups. Put any decision at the top of the plan or report under "Decisions needed" with a recommendation, then stop.
 - Plans are markdown the owner pastes into the reviewer chat. Write one consistent version, never a header that supersedes old text below it.
@@ -115,7 +116,7 @@ Done:
 
 - CDK scaffold (`infra/`, checked 2026-10-17): three empty, environment-agnostic stacks with fixed availability zones `us-east-2a` and `us-east-2b`, assertion tests, and the CI job `infra-synth` (tests and `cdk synth --no-lookups`, no credentials). `infra/` has its own environment and lock, checked by the `typecheck` and `security` jobs and by Dependabot. The stacks were empty at that point; nothing was bootstrapped or deployed, and no AWS call was made for it.
 
-- Base stack defined and synthesised in CI; nothing deployed (`infra/`, checked 2026-10-18): `precertly-base` defines the annual budget alarms, the `precertly-api` ECR repository, the GitHub OIDC provider and the least-privilege deploy role, with assertion tests. `precertly-app` and `precertly-data` are still empty. Nothing is bootstrapped or deployed, and no AWS call has been made for it.
+- Base stack defined and synthesised in CI; nothing deployed (`infra/`, checked 2026-10-18): `precertly-base` defines the annual budget alarms and the `precertly-api` ECR repository (two resources, no IAM), with assertion tests, including a guard that it has no OIDC provider, role or policy. This account's managed organization policy denies `iam:*Provider*`, so GitHub Actions cannot assume an AWS role; deploys run from the owner's Mac. `precertly-app` and `precertly-data` are still empty. Nothing is bootstrapped or deployed, and no AWS call has been made for it.
 
 Next: the AWS deployment, in steps; the container image, the CDK scaffold and the base stack definition are done.
 
