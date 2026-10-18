@@ -83,11 +83,35 @@ def test_image_dry_run(stub_bin: Path) -> None:
     _assert_no_calls(stub_bin)
 
 
+def _head_tag() -> str:
+    head = subprocess.run(
+        ["git", "rev-parse", "--short=12", "HEAD"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return f"sha-{head}"
+
+
 def test_stack_dry_run(stub_bin: Path) -> None:
     result = _deploy(stub_bin, "stack", "precertly-base", "--dry-run")
     assert result.returncode == 0, _output(result)
-    assert "cdk deploy precertly-base -c budgetEmail=REDACTED" in result.stdout
+    tag = _head_tag()
+    assert f"cdk deploy precertly-base -c budgetEmail=REDACTED -c imageTag={tag}" in result.stdout
+    assert "is in ECR" not in result.stdout
     assert "--require-approval" not in result.stdout
+    assert FAKE_EMAIL not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+def test_app_stack_dry_run_passes_the_image_tag(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "stack", "precertly-app", "--dry-run")
+    assert result.returncode == 0, _output(result)
+    tag = _head_tag()
+    assert re.fullmatch(r"sha-[0-9a-f]{12}", tag)
+    assert f"cdk deploy precertly-app -c budgetEmail=REDACTED -c imageTag={tag}" in result.stdout
+    assert f"skipping the check that {tag} is in ECR" in result.stdout
     assert FAKE_EMAIL not in _output(result)
     _assert_no_calls(stub_bin)
 

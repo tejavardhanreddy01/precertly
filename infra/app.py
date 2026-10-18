@@ -1,4 +1,4 @@
-"""CDK app for Precertly: three stacks, only precertly-base defines resources so far.
+"""CDK app for Precertly: three stacks; precertly-base and precertly-app define resources.
 
 The stacks are environment-agnostic: no account or region is set, so synthesis needs no
 credentials and makes no lookups. Availability zones are fixed for the same reason.
@@ -8,18 +8,25 @@ from typing import Any
 
 import aws_cdk as cdk
 
+from app_stack import IMAGE_TAG_CONTEXT_KEY, AppStack, validate_image_tag
 from base_stack import BUDGET_EMAIL_CONTEXT_KEY, BaseStack
 from precertly_stack import AVAILABILITY_ZONES, PrecertlyStack
 
 __all__ = ["AVAILABILITY_ZONES", "STACK_NAMES", "PrecertlyStack", "build_app"]
 
 STACK_NAMES = ("precertly-base", "precertly-app", "precertly-data")
-# The CDK's built-in template validation rejects a stack with no resources. precertly-app and
-# precertly-data are still empty, so the rule is acknowledged on them; delete this (and the
-# acknowledgement below) when each gets its first resource.
+# The CDK's built-in template validation rejects a stack with no resources. precertly-data is
+# still empty, so the rule is acknowledged on it; delete this (and the acknowledgement below)
+# when it gets its first resource.
 EMPTY_STACK_RULE = cdk.Acknowledgment(
     id="CloudFormation-Validate::F0001",
     reason="Scaffold: the stack defines no resources yet.",
+)
+# Availability zones are fixed on purpose (see the module docstring), so the CDK's advice to
+# avoid hard-coded zones does not apply.
+FIXED_AZ_RULE = cdk.Acknowledgment(
+    id="CloudFormation-Validate::W3010",
+    reason="Fixed zones keep the stacks environment-agnostic, so synthesis needs no lookup.",
 )
 
 
@@ -33,10 +40,13 @@ def build_app(context: dict[str, Any] | None = None) -> cdk.App:
             f"CDK context '{BUDGET_EMAIL_CONTEXT_KEY}' is required: pass "
             f"`-c {BUDGET_EMAIL_CONTEXT_KEY}=<address>` to cdk synth or cdk deploy."
         )
+    # Required for every stack, because one `cdk deploy <name>` still runs the whole app.
+    image_tag = validate_image_tag(app.node.try_get_context(IMAGE_TAG_CONTEXT_KEY))
     BaseStack(app, "precertly-base", budget_email=email.strip())
-    for name in STACK_NAMES[1:]:
-        stack = PrecertlyStack(app, name)
-        cdk.Validations.of(stack).acknowledge(EMPTY_STACK_RULE)
+    app_stack = AppStack(app, "precertly-app", image_tag=image_tag)
+    cdk.Validations.of(app_stack).acknowledge(FIXED_AZ_RULE)
+    data = PrecertlyStack(app, "precertly-data")
+    cdk.Validations.of(data).acknowledge(EMPTY_STACK_RULE)
     return app
 
 

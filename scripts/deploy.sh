@@ -24,6 +24,8 @@ Commands:
                so a tag that already exists is skipped.
   stack <name> Deploy one CDK stack: precertly-base, precertly-app or precertly-data.
                Needs BUDGET_EMAIL in the environment (never written to a file or printed).
+               Passes -c imageTag=sha-<12 hex of HEAD>; precertly-app first checks that
+               image is in ECR and refuses if it is not.
                --all is refused; the CDK approval prompt for IAM and security changes stays on.
 
 Options:
@@ -76,6 +78,18 @@ require_clean_and_pushed() {
   fi
 }
 
+# Exit status 0 if the image tag is in the repository, 1 if it is not. Any other failure
+# (no credentials, no repository, no permission) stops the script rather than reading as "not there".
+ecr_has_tag() {
+  local tag="$1" err
+  if err="$(aws ecr describe-images --repository-name "$REPO_NAME" \
+    --image-ids "imageTag=${tag}" 2>&1 >/dev/null)"; then
+    return 0
+  fi
+  [[ "$err" == *ImageNotFoundException* ]] || die "could not check for ${tag}: ${err}"
+  return 1
+}
+
 ecr_login() {
   local host="$1"
   if $DRY_RUN; then
@@ -120,13 +134,10 @@ cmd_image() {
   if $DRY_RUN; then
     run aws ecr describe-images --repository-name "$REPO_NAME" --image-ids "imageTag=${tag}"
   else
-    local err
-    if err="$(aws ecr describe-images --repository-name "$REPO_NAME" \
-      --image-ids "imageTag=${tag}" 2>&1 >/dev/null)"; then
+    if ecr_has_tag "$tag"; then
       echo "${tag} already pushed, skipping"
       return 0
     fi
-    [[ "$err" == *ImageNotFoundException* ]] || die "could not check for ${tag}: ${err}"
   fi
 
   ecr_login "$registry_host"
@@ -147,14 +158,24 @@ cmd_stack() {
   $known || die "unknown stack '${name}'; expected one of: ${STACKS[*]}"
   [[ -n "${BUDGET_EMAIL:-}" ]] || die "BUDGET_EMAIL is not set (the address for the budget alerts)"
 
+  # The tag of HEAD is passed to every stack because one `cdk deploy <name>` runs the whole app,
+  # which requires it. Only precertly-app uses it, so only that stack checks the image exists.
+  local tag
+  tag="$(image_tag)"
   local email_arg="budgetEmail=${BUDGET_EMAIL}"
   if $DRY_RUN; then
     echo "dry-run: no AWS call is made"
     email_arg="budgetEmail=REDACTED"
+    if [[ "$name" == "precertly-app" ]]; then
+      echo "dry-run: skipping the check that ${tag} is in ECR"
+    fi
+  elif [[ "$name" == "precertly-app" ]]; then
+    ecr_has_tag "$tag" ||
+      die "image ${tag} is not in ECR; push it first: scripts/deploy.sh image"
   fi
   cd "$(repo_root)/infra"
   # --require-approval is left at the CDK default on purpose.
-  run npx --no-install cdk deploy "$name" -c "$email_arg"
+  run npx --no-install cdk deploy "$name" -c "$email_arg" -c "imageTag=${tag}"
 }
 
 main() {

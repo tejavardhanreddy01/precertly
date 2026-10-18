@@ -13,7 +13,7 @@ Deploys run from the owner's Mac with `scripts/deploy.sh`. GitHub Actions never 
 ## Order
 
 1. `scripts/deploy.sh image`: build and push the API image, tagged `sha-<12 hex of HEAD>`.
-2. `scripts/deploy.sh stack <name>` for one stack at a time, in dependency order: `precertly-base` (budget, ECR repository), then `precertly-data`, then `precertly-app`, once the last two define resources. Never `--all`; the script refuses it. The CDK's approval prompt for IAM and security-group changes stays on.
+2. `scripts/deploy.sh stack <name>` for one stack at a time, in dependency order: `precertly-base` (budget, ECR repository), then `precertly-data`, then `precertly-app`, once the last two are defined. `precertly-app` needs the image from step 1: the script passes `-c imageTag=<tag of HEAD>` and refuses if that tag is not in ECR. It deploys the service at desired count 0, so nothing starts until the count is raised. Never `--all`; the script refuses it. The CDK's approval prompt for IAM and security-group changes stays on.
 
 Both subcommands take `--dry-run`, which prints the commands with the account id and email redacted and does not touch AWS or Docker. Run it first.
 
@@ -22,6 +22,12 @@ Both subcommands take `--dry-run`, which prints the commands with the account id
 The ECR repository `precertly-api` has immutable tags. A `sha-` tag names one commit and one image, so what runs is what was reviewed, a rollback is a task definition pointing at an older tag, and nothing can overwrite a tag after the fact. The consequence is that `image` never re-pushes: if the tag exists it prints "already pushed, skipping" and exits 0. To change an image, commit and push, which gives a new tag.
 
 The repository keeps the last 5 `sha-` images and expires untagged images after one day. The script builds with `--provenance=false --sbom=false` so BuildKit adds no attestation manifests, which would appear as untagged images and be deleted.
+
+## Cost
+
+- The VPC has no NAT gateway, no interface endpoints and no load balancer, which are the parts of a network that bill by the hour, so the network costs nothing.
+- The service is at desired count 0 and costs nothing. A running task costs Fargate vCPU and memory time plus the hourly charge for its public IPv4 address. Scale back to 0 after smoke checks.
+- The log group keeps logs for 7 days.
 
 ## What to call it
 

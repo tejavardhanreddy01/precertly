@@ -5,6 +5,7 @@ from typing import Any
 import aws_cdk as cdk
 import pytest
 from aws_cdk.assertions import Match, Template
+from support import context
 
 import names
 from app import build_app
@@ -13,7 +14,7 @@ EMAIL = "ci@example.invalid"
 
 
 def _template() -> Template:
-    app = build_app({"budgetEmail": EMAIL})
+    app = build_app(context())
     stack = next(c for c in app.node.children if c.node.id == "precertly-base")
     assert isinstance(stack, cdk.Stack)
     return Template.from_stack(stack)
@@ -121,7 +122,7 @@ def test_budget_notifications() -> None:
 
 
 def test_budget_email_comes_from_context() -> None:
-    app = build_app({"budgetEmail": "someone@example.invalid"})
+    app = build_app(context(budgetEmail="someone@example.invalid"))
     stack = next(c for c in app.node.children if c.node.id == "precertly-base")
     assert isinstance(stack, cdk.Stack)
     text = json.dumps(Template.from_stack(stack).to_json())
