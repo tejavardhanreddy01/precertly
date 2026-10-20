@@ -53,11 +53,20 @@ The database connection comes from one of these, first match wins:
 | Variable | Meaning |
 | --- | --- |
 | `PRECERTLY_DATABASE_URL` | Full SQLAlchemy URL. If set, everything below is ignored. |
-| `PRECERTLY_DB_HOST`, `PRECERTLY_DB_NAME`, `PRECERTLY_DB_USER`, `PRECERTLY_DB_PASSWORD` | Separate parts. If any `PRECERTLY_DB_*` variable is set, these four are all required (the error names the missing ones). Special characters in the password are escaped for you. |
+| `PRECERTLY_DB_HOST`, `PRECERTLY_DB_NAME`, `PRECERTLY_DB_USER`, `PRECERTLY_DB_PASSWORD` | Separate parts. If any of `PRECERTLY_DB_HOST`, `_NAME`, `_USER`, `_PASSWORD` or `_PORT` is set, the first four are all required (the error names the missing ones). Special characters in the password are escaped for you. |
 | `PRECERTLY_DB_PORT` | Part of the same group; defaults to `5432`. |
 | none of the above | `localhost:5433`, the compose database. |
 
 The URL and the password are never shown in repr, logs or error messages. Blank values count as unset.
+
+How the connection behaves is set separately and works with any of the above:
+
+| Variable | Meaning |
+| --- | --- |
+| `PRECERTLY_DB_POOL` | `queue` (default, SQLAlchemy's pool, as before) or `null` (a connection per use, closed afterwards, so nothing idle stays open). Anything else fails settings validation. |
+| `PRECERTLY_DB_CONNECT_TIMEOUT` | Seconds each connect may take, default `60`, passed to asyncpg. Must be a positive number. |
+
+Both are for a database that scales to zero (Aurora Serverless v2 pauses only while no client connection is open, and resuming takes about 15 s, or 30 s or more after a long pause). Migrations, ingest and the eval runner share one engine setup (`src/precertly/db/connect.py`) and probe the database once at the start, up to 3 attempts with a 2 s then 5 s wait, only for transient failures (connect timeout, connection refused or reset, "database system is starting up", connection does not exist). Authentication, permission and missing-database errors fail at once, and the migration or ingest itself never re-runs. `/health` makes no database call. This was added on 2026-10-20 and is checked only against the local compose database and unit tests; no database in AWS exists, and this change deploys nothing and changes nothing in AWS.
 
 Only notes, conditions, procedures and medication requests are embedded (Titan Text Embeddings V2, 1024 dimensions). Labs and vitals are found by code and date instead. Vectors are cached by a hash of the embedded text, so re-ingesting a chart does not pay for the same text twice. Ingest is idempotent per patient: running it again replaces that patient's chunks instead of creating a second case. Search is hybrid: Postgres full-text plus pgvector, merged with reciprocal rank fusion.
 

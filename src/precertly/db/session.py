@@ -11,12 +11,14 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from precertly.db.connect import engine_kwargs
 from precertly.settings import get_settings
 
 
 @lru_cache
 def get_engine() -> AsyncEngine:
-    return create_async_engine(get_settings().sqlalchemy_url(), pool_pre_ping=True)
+    settings = get_settings()
+    return create_async_engine(settings.sqlalchemy_url(), **engine_kwargs(settings))
 
 
 def session_factory(engine: AsyncEngine | None = None) -> async_sessionmaker[AsyncSession]:
