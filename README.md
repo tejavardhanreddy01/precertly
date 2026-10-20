@@ -203,7 +203,21 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 
 ## Recorded-mode export
 
-As of 2026-10-20, `uv run python -m precertly.export` writes the data a static recorded-mode site will read, to `web/public/data` (git-ignored): `index.json`, one file per policy and per case (the chart chunks as the model saw them, the labels and, for the 11 facet cases, the recorded verdicts with their verified citations) and `schema.json` for generating UI types. It uses no database, network or model call, and the output is byte-identical between runs. The 18 other cases are exported as labels with `scored: false` and no verdicts. `--check` runs the invariants (citations located at their recorded offsets, counts, flags equal to the recorded run, no email addresses or keys, file sizes). This is the export only: there is no UI yet, and nothing is deployed or served anywhere.
+As of 2026-10-20, `uv run python -m precertly.export` writes the data a static recorded-mode site will read, to `web/public/data` (git-ignored): `index.json`, one file per policy and per case (the chart chunks as the model saw them, the labels and, for the 11 facet cases, the recorded verdicts with their verified citations) and `schema.json` for generating UI types. It uses no database, network or model call, and the output is byte-identical between runs. The 18 other cases are exported as labels with `scored: false` and no verdicts. `--check` runs the invariants (citations located at their recorded offsets, counts, flags equal to the recorded run, no email addresses or keys, file sizes). The site that reads it is described next.
+
+## Recorded-mode site (`web/`)
+
+As of 2026-10-20, `web/` holds a static single-page site (Vite, React, TypeScript, Tailwind) that reads only the files the export writes and shows recorded runs. Nothing runs when it is open: no server, no model call, no login, no analytics. It shows a cases list, a case view (criteria with outcome badges beside the chart, with each cited quote marked; the recorded verdict with who decided it, its rationale, computed facts and citations; a verdict whose quote failed verification is shown as insufficient), a policy view with the verbatim CMS quotes, an about and method page with the release gates (including the one that fails) and a four-step tour. The 18 cases without a recorded run show their labels only. It is not deployed or served anywhere and has no URL yet.
+
+```bash
+uv sync
+cd web
+npm ci                  # Node 24
+npm run prepare-data    # writes web/public/data and src/generated (both git-ignored)
+npm run dev
+```
+
+`npm test` fails, never skips, if `web/public/data` is missing. CI runs it as the job `web`, which also builds the site and scans the output for URL hosts outside a short allowlist.
 
 ## Roadmap
 
@@ -220,7 +234,8 @@ As of 2026-10-20, `uv run python -m precertly.export` writes the data a static r
 - [x] `precertly-data` deployed (Aurora Serverless v2 at minimum capacity 0, secret, tools task); migrations applied, all 29 bundles ingested with 237 Titan calls; the database holds only the last bundle (owner-confirmed 2026-10-20)
 - [ ] AWS deployment, rest (a path to reach the API, a database-enabled API service, AgentCore): the API task has no database and there is no inbound path, so the API is not reachable and nothing is live
 - [x] Recorded-mode static export script and tests (files only; not served anywhere; checked 2026-10-20)
-- [ ] Reviewer UI, MCP server, demo mode
+- [x] Recorded-mode site in `web/` (static; reads the export; not deployed or served anywhere; checked 2026-10-20)
+- [ ] Hosting for the recorded-mode site, a live reviewer UI, MCP server, demo mode
 
 ## License
 
