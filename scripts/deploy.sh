@@ -12,13 +12,16 @@ export AWS_DEFAULT_REGION="$AWS_REGION"
 export AWS_PAGER=""
 readonly REPO_NAME="precertly-api"
 readonly STACKS=(precertly-base precertly-app precertly-data)
-# Stacks whose deploy needs the image of HEAD in ECR; `up` pushes it first. (precertly-data has
-# no service yet; add it here when it does.)
-readonly IMAGE_STACKS=(precertly-app)
+# Stacks whose deploy needs the image of HEAD in ECR; `up` pushes it first. precertly-data holds
+# the tools task definition, which pins the same image tag.
+readonly IMAGE_STACKS=(precertly-app precertly-data)
+readonly DATA_STACK="precertly-data"
 # Must match infra/names.py (tests/test_deploy_script.py compares them).
 readonly CLUSTER="precertly"
 readonly SERVICE="precertly-api"
 readonly CONTAINER="api"
+readonly TOOLS_FAMILY="precertly-tools"
+readonly TOOLS_CONTAINER="tools"
 readonly API_PORT=8000
 # Polling for `smoke` and `down`; overridable so the tests do not sleep.
 POLL_SECONDS="${DEPLOY_POLL_SECONDS:-10}"
@@ -33,6 +36,7 @@ Usage:
   scripts/deploy.sh status [--dry-run]
   scripts/deploy.sh smoke [--bedrock] [--dry-run]
   scripts/deploy.sh down [--dry-run]
+  scripts/deploy.sh tools migrate|load|check [--yes] [--dry-run]
 
 Commands:
   image        Build the API image for linux/arm64 and push it to ECR as sha-<12 hex of HEAD>.
@@ -40,14 +44,19 @@ Commands:
                so a tag that already exists is skipped.
   stack <name> Deploy one CDK stack: precertly-base, precertly-app or precertly-data.
                Needs BUDGET_EMAIL (environment or .env.local; never printed).
-               Passes -c imageTag=sha-<12 hex of HEAD>; precertly-app first checks that
-               image is in ECR and refuses if it is not.
+               Passes --exclusively, so a stack's dependencies are never deployed with it
+               (deploy precertly-app before precertly-data yourself).
+               Passes -c imageTag=sha-<12 hex of HEAD>; precertly-app and precertly-data first
+               check that image is in ECR and refuse if it is not.
                --all is refused; the CDK approval prompt for IAM and security changes stays on.
-  up <name>    The usual path: for precertly-app run `image` first, then show `cdk diff`
+  up <name>    The usual path: for precertly-app and precertly-data run `image` first, then show
+               `cdk diff --exclusively`
                (email redacted), ask "Deploy? [y/N]", then run `stack`. --yes only skips the
                image confirmation: it never skips the diff or the Deploy? question.
   status       Read-only. Stack status, service counts and rollout, task definition revision,
-               image tag and health check, available NAT gateways, RDS instances and ECR images.
+               image tag and health check, the Aurora cluster (status, engine version, minimum
+               and maximum ACU; a paused instance still reports available), available NAT
+               gateways, RDS instances and ECR images.
                A missing resource prints "not deployed".
   smoke        Refuses unless the service has no task. Scales to 1, waits (10 min), waits for the
                ECS Exec agent (2 min), runs /health and /policies inside the task with ECS Exec
@@ -57,9 +66,20 @@ Commands:
                scripts/smoke_llm.py (one real Bedrock call; asks first, and --yes does not
                skip that question).
   down         Set the service to 0 and wait until no task runs.
+  tools <verb> Run one precertly-tools task (the API image with a command) in the public subnets
+               with the tools security group, all read from the precertly-data stack outputs:
+                 migrate  alembic upgrade head                       (10 min limit)
+                 load     python -m precertly.ingest evals/bundles --embed   (30 min limit)
+                          real Bedrock embedding calls and writes to the database: asks
+                          "Continue? [y/N]" first, and --yes does NOT skip that question
+                 check    python -m precertly.db.check, read-only    (5 min limit)
+               Refuses if a precertly-tools task is already running. On any exit, failure,
+               timeout or Ctrl-C it stops every precertly-tools task still running and waits
+               until none does, then prints the container exit code and the log tail. The exit
+               status is non-zero unless the container exited 0.
 
 Options:
-  --yes        Skip the image build confirmation (image, up).
+  --yes        Skip the image build confirmation (image, up). tools load ignores it.
   --bedrock    smoke only: add the real Bedrock call.
   --dry-run    Print the commands, with the email and account id redacted, and run nothing
                that touches AWS or Docker. The git working-tree and push checks are skipped.
@@ -271,24 +291,25 @@ cmd_stack() {
   validate_stack "$name"
   require_budget_email
 
-  # The tag of HEAD is passed to every stack because one `cdk deploy <name>` runs the whole app,
-  # which requires it. Only precertly-app uses it, so only that stack checks the image exists.
+  # The tag of HEAD is passed to every stack because the CDK app is built whole, which requires
+  # it. Only precertly-app and precertly-data use it, so only they check the image exists.
   local tag
   tag="$(image_tag)"
   local email_arg="budgetEmail=${BUDGET_EMAIL}"
   if $DRY_RUN; then
     echo "dry-run: no AWS call is made"
     email_arg="budgetEmail=REDACTED"
-    if [[ "$name" == "precertly-app" ]]; then
+    if needs_image "$name"; then
       echo "dry-run: skipping the check that ${tag} is in ECR"
     fi
-  elif [[ "$name" == "precertly-app" ]]; then
+  elif needs_image "$name"; then
     ecr_has_tag "$tag" ||
       die "image ${tag} is not in ECR; push it first: scripts/deploy.sh image"
   fi
   cd "$(repo_root)/infra"
-  # --require-approval is left at the CDK default on purpose.
-  run npx --no-install cdk deploy "$name" -c "$email_arg" -c "imageTag=${tag}"
+  # --require-approval is left at the CDK default on purpose. --exclusively: deploying one stack
+  # must not also deploy the stacks it depends on (precertly-data depends on precertly-app).
+  run npx --no-install cdk deploy --exclusively "$name" -c "$email_arg" -c "imageTag=${tag}"
 }
 
 # image (where the stack needs it), then the diff, then a question that --yes never skips,
@@ -310,12 +331,12 @@ cmd_up() {
   fi
   cd "$(repo_root)/infra"
   if $DRY_RUN; then
-    run npx --no-install cdk diff "$name" -c "$email_arg" -c "imageTag=${tag}"
+    run npx --no-install cdk diff --exclusively "$name" -c "$email_arg" -c "imageTag=${tag}"
     echo "dry-run: the diff above is always shown, then it asks 'Deploy? [y/N]' (--yes does not skip either)"
   else
     echo "--- cdk diff ${name} (email redacted) ---"
     local out
-    if ! out="$(npx --no-install cdk diff "$name" -c "$email_arg" -c "imageTag=${tag}" 2>&1)"; then
+    if ! out="$(npx --no-install cdk diff --exclusively "$name" -c "$email_arg" -c "imageTag=${tag}" 2>&1)"; then
       redact "$out" >&2
       die "cdk diff failed; nothing deployed"
     fi
@@ -355,6 +376,17 @@ q_nat_gateways() {
 
 q_rds_instances() {
   run aws rds describe-db-instances --query 'length(DBInstances)' --output text
+}
+
+q_stack_output() {
+  run aws cloudformation describe-stacks --stack-name "$1" \
+    --query "Stacks[0].Outputs[?OutputKey=='$2'].OutputValue | [0]" --output text
+}
+
+q_aurora_cluster() {
+  run aws rds describe-db-clusters --db-cluster-identifier "$1" \
+    --query 'DBClusters[0].[Status,EngineVersion,ServerlessV2ScalingConfiguration.MinCapacity,ServerlessV2ScalingConfiguration.MaxCapacity]' \
+    --output text
 }
 
 q_ecr_image_count() {
@@ -411,7 +443,7 @@ probe() {
     return 0
   fi
   case "$AWS_ERR" in
-    *"does not exist"* | *NotFoundException* | *ServiceNotActiveException*) return 3 ;;
+    *"does not exist"* | *NotFoundException* | *NotFoundFault* | *ServiceNotActiveException*) return 3 ;;
   esac
   if $PROBE_FATAL; then
     die "aws call failed (${1}): ${AWS_ERR}"
@@ -489,6 +521,8 @@ cmd_status() {
     for s in "${STACKS[@]}"; do q_stack_status "$s"; done
     q_service
     q_task_definition "TASK_DEFINITION"
+    q_stack_output "$DATA_STACK" ClusterIdentifier
+    q_aurora_cluster "CLUSTER_ID"
     q_nat_gateways
     q_rds_instances
     q_ecr_image_count
@@ -528,6 +562,25 @@ cmd_status() {
         "$revision" "${image##*:}" "$health_text"
     else
       echo "  task definition: not found"
+    fi
+  fi
+
+  echo "aurora cluster"
+  rc=0
+  probe q_stack_output "$DATA_STACK" ClusterIdentifier || rc=$?
+  local cluster_id="$AWS_OUT"
+  if [[ $rc -ne 0 || -z "$cluster_id" || "$cluster_id" == "None" ]]; then
+    echo "  not deployed"
+  else
+    rc=0
+    probe q_aurora_cluster "$cluster_id" || rc=$?
+    if [[ $rc -ne 0 ]]; then
+      echo "  not deployed"
+    else
+      local db_status db_version db_min db_max
+      IFS=$'\t' read -r db_status db_version db_min db_max <<<"$AWS_OUT"
+      printf '  status %s, engine version %s, capacity %s to %s ACU\n' \
+        "$db_status" "$db_version" "$db_min" "$db_max"
     fi
   fi
 
@@ -774,6 +827,258 @@ cmd_smoke() {
   smoke_steps || true
 }
 
+# ---------------------------------------------------------------------------------------------
+# tools: one precertly-tools task (the API image with a command), run and always cleaned up
+# ---------------------------------------------------------------------------------------------
+
+q_tools_running() {
+  run aws ecs list-tasks --cluster "$CLUSTER" --family "$TOOLS_FAMILY" \
+    --desired-status RUNNING --query 'taskArns[]' --output text
+}
+
+# $1 verb, $2 subnets (comma separated), $3 security group, $4 overrides JSON.
+q_tools_run() {
+  run aws ecs run-task --cluster "$CLUSTER" --task-definition "$TOOLS_FAMILY" \
+    --launch-type FARGATE --count 1 --started-by "deploy.sh-tools-$1" \
+    --network-configuration "awsvpcConfiguration={subnets=[$2],securityGroups=[$3],assignPublicIp=ENABLED}" \
+    --overrides "$4" --query '[tasks[0].taskArn,failures[0].reason]' --output text
+}
+
+q_tools_describe() {
+  run aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$1" \
+    --query 'tasks[0].[lastStatus,containers[0].exitCode,stoppedReason]' --output text
+}
+
+q_tools_stop() {
+  run aws ecs stop-task --cluster "$CLUSTER" --task "$1" \
+    --reason "deploy.sh tools cleanup" --query 'task.lastStatus' --output text
+}
+
+q_tools_logs() {
+  run aws logs get-log-events --log-group-name "$1" --log-stream-name "$2" --limit 40 \
+    --query 'events[].message' --output text
+}
+
+TOOLS_COMMAND_JSON="" TOOLS_DEFAULT_TIMEOUT=0
+TOOLS_STARTED=false TOOLS_TASK="" TOOLS_LOG_GROUP_NAME="" TOOLS_VERB=""
+TOOLS_LAST="" TOOLS_EXIT="" TOOLS_REASON=""
+
+# The command (a JSON array) and the time limit in seconds for each verb.
+tools_settings() {
+  case "$1" in
+    migrate)
+      TOOLS_COMMAND_JSON='["alembic","upgrade","head"]'
+      TOOLS_DEFAULT_TIMEOUT=600
+      ;;
+    load)
+      TOOLS_COMMAND_JSON='["python","-m","precertly.ingest","evals/bundles","--embed"]'
+      TOOLS_DEFAULT_TIMEOUT=1800
+      ;;
+    check)
+      TOOLS_COMMAND_JSON='["python","-m","precertly.db.check"]'
+      TOOLS_DEFAULT_TIMEOUT=300
+      ;;
+    *) die "usage: deploy.sh tools migrate|load|check" ;;
+  esac
+}
+
+tools_overrides() {
+  printf '{"containerOverrides":[{"name":"%s","command":%s}]}' "$TOOLS_CONTAINER" "$TOOLS_COMMAND_JSON"
+}
+
+# Predicate: the task is STOPPED. Also reads its exit code and stop reason.
+tools_task_stopped() {
+  probe q_tools_describe "$TOOLS_TASK" || return 1
+  IFS=$'\t' read -r TOOLS_LAST TOOLS_EXIT TOOLS_REASON <<<"$AWS_OUT"
+  [[ "$TOOLS_LAST" == "STOPPED" ]]
+}
+
+# Predicate: no precertly-tools task is running.
+tools_none_running() {
+  probe q_tools_running || return 1
+  [[ -z "$AWS_OUT" || "$AWS_OUT" == "None" ]]
+}
+
+# Stop every precertly-tools task that still runs and wait until none does. `tools` refuses to
+# start while one runs, so any that runs now is ours, including one whose run-task call returned
+# just as a signal arrived. If the listing fails, fall back to the task we know. Returns 1 if
+# it could not be confirmed.
+tools_stop_all() {
+  local arns="" arn attempt
+  local -a arn_list=()
+  if probe q_tools_running; then
+    arns="$AWS_OUT"
+  else
+    arns="$TOOLS_TASK"
+  fi
+  if [[ "$arns" != "None" && -n "$arns" ]]; then
+    read -r -a arn_list <<<"$arns"
+  fi
+  # ${arr[@]+...}: bash 3.2 (macOS) treats an empty array as unset under set -u.
+  for arn in ${arn_list[@]+"${arn_list[@]}"}; do
+    for attempt in 1 2 3; do
+      if probe q_tools_stop "$arn"; then
+        break
+      fi
+      ((attempt == 3)) || sleep "$POLL_SECONDS"
+    done
+  done
+  wait_for_seconds "$(tools_wait_cap)" tools_none_running
+}
+
+tools_wait_cap() {
+  printf '%s' "$((WAIT_TIMEOUT < 120 ? WAIT_TIMEOUT : 120))"
+}
+
+# The last lines the task logged, to see why it failed or what a check found.
+tools_log_tail() {
+  local stream="tools/${TOOLS_CONTAINER}/${TOOLS_TASK##*/}" attempt text=""
+  for attempt in 1 2; do
+    if probe q_tools_logs "$TOOLS_LOG_GROUP_NAME" "$stream" && [[ -n "$AWS_OUT" && "$AWS_OUT" != "None" ]]; then
+      text="$AWS_OUT"
+      break
+    fi
+    # CloudWatch Logs can lag a few seconds behind the task.
+    ((attempt == 2)) || sleep "$((POLL_SECONDS < 5 ? POLL_SECONDS : 5))"
+  done
+  if [[ -z "$text" ]]; then
+    echo "  (no log output found in ${TOOLS_LOG_GROUP_NAME})"
+  else
+    printf '%s\n' "$text" | tr '\t' '\n' | tail -n 40 | sed 's/^/  | /'
+  fi
+}
+
+# EXIT trap of `tools`: after success, a failed task, a timeout, a die or Ctrl-C/TERM, it stops
+# whatever still runs, waits for it, then prints the summary, the exit code and the log tail.
+tools_finish() {
+  local rc=$?
+  trap - EXIT
+  trap '' INT TERM
+  set +e
+  PROBE_FATAL=false
+
+  if $TOOLS_STARTED; then
+    echo "stopping any running ${TOOLS_FAMILY} task"
+    if tools_stop_all; then
+      record PASS "no ${TOOLS_FAMILY} task running"
+    else
+      record FAIL "stop not confirmed: run aws ecs list-tasks --cluster ${CLUSTER} --family ${TOOLS_FAMILY} and stop it NOW (a task bills while it runs)"
+    fi
+    if [[ -n "$TOOLS_TASK" ]]; then
+      tools_task_stopped
+    fi
+  fi
+
+  echo
+  echo "tools ${TOOLS_VERB} summary"
+  printf '%s' "$SMOKE_SUMMARY"
+  if [[ -n "$TOOLS_TASK" ]]; then
+    echo "task ${TOOLS_TASK##*/}: ${TOOLS_LAST:-unknown}, container exit code ${TOOLS_EXIT:-unknown}"
+    [[ "$TOOLS_REASON" != "None" && -n "$TOOLS_REASON" ]] && echo "stopped reason: ${TOOLS_REASON}"
+    echo "--- log tail (${TOOLS_LOG_GROUP_NAME}) ---"
+    tools_log_tail
+    echo "--- end of log tail ---"
+  fi
+  if [[ -z "$TOOLS_TASK" || "$TOOLS_LAST" != "STOPPED" || "$TOOLS_EXIT" != "0" ]]; then
+    SMOKE_FAILED=true
+  fi
+  if [[ $rc -ne 0 || "$SMOKE_FAILED" == "true" ]]; then
+    echo "result: FAIL"
+    exit "$((rc != 0 ? rc : 1))"
+  fi
+  echo "result: PASS"
+  exit 0
+}
+
+tools_steps() {
+  local timeout="$1" overrides="$2" subnets="$3" group="$4" arn failure
+
+  # Before run-task returns, a signal would leave nothing to stop; the cleanup lists the family
+  # anyway, so it is armed first.
+  TOOLS_STARTED=true
+  probe q_tools_run "$TOOLS_VERB" "$subnets" "$group" "$overrides" || true
+  IFS=$'\t' read -r arn failure <<<"$AWS_OUT"
+  if [[ -z "$arn" || "$arn" == "None" ]]; then
+    record FAIL "run-task started nothing (${failure:-no reason given})"
+    return 1
+  fi
+  TOOLS_TASK="$arn"
+  echo "started ${TOOLS_FAMILY} task ${arn##*/}: ${TOOLS_VERB}"
+
+  if ! wait_for_seconds "$timeout" tools_task_stopped; then
+    record FAIL "task still ${TOOLS_LAST:-unknown} after ${timeout}s (limit for ${TOOLS_VERB}); stopping it"
+    return 1
+  fi
+  if [[ "$TOOLS_EXIT" == "0" ]]; then
+    record PASS "${TOOLS_VERB}: container exited 0"
+  else
+    record FAIL "${TOOLS_VERB}: container exit code ${TOOLS_EXIT:-unknown}"
+    return 1
+  fi
+}
+
+# Read one output of the data stack. Dies, with a pointer, if the stack or the output is missing
+# or the value does not look like what it should.
+data_output() {
+  local key="$1" pattern="$2" rc=0
+  probe q_stack_output "$DATA_STACK" "$key" || rc=$?
+  if [[ $rc -ne 0 || -z "$AWS_OUT" || "$AWS_OUT" == "None" ]]; then
+    die "${DATA_STACK} is not deployed (no output ${key}); deploy it first: scripts/deploy.sh up ${DATA_STACK}"
+  fi
+  [[ "$AWS_OUT" =~ $pattern ]] || die "output ${key} of ${DATA_STACK} has an unexpected value"
+  printf '%s' "$AWS_OUT"
+}
+
+cmd_tools() {
+  TOOLS_VERB="$1"
+  tools_settings "$TOOLS_VERB"
+  local timeout="${DEPLOY_TOOLS_TIMEOUT:-$TOOLS_DEFAULT_TIMEOUT}"
+  local overrides
+  overrides="$(tools_overrides)"
+
+  if $DRY_RUN; then
+    echo "dry-run: no AWS call is made. Order of a real run:"
+    if [[ "$TOOLS_VERB" == "load" ]]; then
+      echo "dry-run: would ask 'Continue? [y/N]' first (--yes does not skip it)"
+    fi
+    q_stack_output "$DATA_STACK" ToolsSubnetIds
+    q_stack_output "$DATA_STACK" ToolsSecurityGroupId
+    q_stack_output "$DATA_STACK" ToolsLogGroupName
+    q_tools_running
+    echo "dry-run: refuses here if the line above lists a task"
+    q_tools_run "$TOOLS_VERB" "SUBNET_IDS" "SECURITY_GROUP_ID" "$overrides"
+    echo "dry-run: waits up to ${timeout}s for STOPPED, polling:"
+    q_tools_describe "TASK_ARN"
+    echo "dry-run: on exit, interrupt, timeout or failure, always:"
+    q_tools_running
+    q_tools_stop "TASK_ARN"
+    q_tools_running
+    q_tools_logs "LOG_GROUP" "tools/${TOOLS_CONTAINER}/TASK_ID"
+    return 0
+  fi
+
+  # Ask before anything starts, so nothing bills while a question waits.
+  if [[ "$TOOLS_VERB" == "load" ]]; then
+    confirm "This makes real Bedrock embedding calls and writes to the database. Continue?" ||
+      die "not confirmed; nothing started"
+  fi
+
+  local subnets group
+  subnets="$(data_output ToolsSubnetIds '^subnet-[0-9a-f]+(,subnet-[0-9a-f]+)*$')"
+  group="$(data_output ToolsSecurityGroupId '^sg-[0-9a-f]+$')"
+  TOOLS_LOG_GROUP_NAME="$(data_output ToolsLogGroupName '^/[A-Za-z0-9/_.-]+$')"
+
+  probe q_tools_running
+  if [[ -n "$AWS_OUT" && "$AWS_OUT" != "None" ]]; then
+    die "refusing: a ${TOOLS_FAMILY} task is already running (${AWS_OUT##*/}); it may be another run. Stop it: aws ecs stop-task --cluster ${CLUSTER} --task <task arn>"
+  fi
+
+  trap tools_finish EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  tools_steps "$timeout" "$overrides" "$subnets" "$group" || true
+}
+
 main() {
   local positional=()
   local arg
@@ -804,6 +1109,9 @@ main() {
   if $ASSUME_YES && [[ "$command" == "status" || "$command" == "smoke" || "$command" == "down" ]]; then
     die "--yes does not apply to ${command}"
   fi
+  if $ASSUME_YES && [[ "$command" == "tools" && "${positional[1]:-}" != "load" ]]; then
+    die "--yes does not apply to tools ${positional[1]:-}"
+  fi
   [[ "$POLL_SECONDS" =~ ^[0-9]+$ && "$WAIT_TIMEOUT" =~ ^[0-9]+$ ]] ||
     die "DEPLOY_POLL_SECONDS and DEPLOY_WAIT_TIMEOUT must be whole numbers"
 
@@ -833,6 +1141,10 @@ main() {
     down)
       [[ ${#positional[@]} -eq 1 ]] || die "down takes no arguments"
       cmd_down
+      ;;
+    tools)
+      [[ ${#positional[@]} -eq 2 ]] || die "usage: deploy.sh tools migrate|load|check"
+      cmd_tools "${positional[1]}"
       ;;
     *) die "unknown command '${command}' (see --help)" ;;
   esac

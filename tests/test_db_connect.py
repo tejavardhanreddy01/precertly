@@ -146,7 +146,11 @@ def test_migrations_use_the_shared_helper_and_the_probe(
 
 def test_only_the_shared_helper_users_create_engines() -> None:
     """A second create_async_engine call would be a second copy of the pool settings."""
-    allowed = {ROOT / "src/precertly/db/session.py", ROOT / "migrations/env.py"}
+    allowed = {
+        ROOT / "src/precertly/db/session.py",
+        ROOT / "src/precertly/db/check.py",
+        ROOT / "migrations/env.py",
+    }
     found = {
         path
         for folder in ("src", "migrations", "scripts")

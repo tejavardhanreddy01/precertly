@@ -5,7 +5,9 @@ no interface endpoints, no load balancer. The task has no inbound rules at all; 
 reached with ECS Exec, not over the network. The service has desired count 0, so deploying
 this stack starts nothing and costs nothing beyond the log group.
 
-The API task gets no database and no secrets; the data stack is empty.
+The API task gets no database and no secrets. The VPC also has two isolated subnets (no route
+out at all) for the database in the data stack, which depends on this stack; this stack never
+refers to it.
 """
 
 from typing import Any
@@ -46,6 +48,12 @@ class AppStack(PrecertlyStack):
     def __init__(self, scope: Construct, construct_id: str, *, image_tag: str, **kwargs: Any):
         super().__init__(scope, construct_id, **kwargs)
         self.vpc = self._vpc()
+        # What the data stack builds on: the isolated subnets for the database and the public
+        # ones for the tools task, which has no NAT or endpoints and so needs a public IP.
+        self.database_subnets = aws_ec2.SubnetSelection(
+            subnet_type=aws_ec2.SubnetType.PRIVATE_ISOLATED
+        )
+        self.public_subnets = aws_ec2.SubnetSelection(subnet_type=aws_ec2.SubnetType.PUBLIC)
         self.security_group = aws_ec2.SecurityGroup(
             self,
             "TaskSecurityGroup",
@@ -96,9 +104,14 @@ class AppStack(PrecertlyStack):
             availability_zones=self.availability_zones,
             nat_gateways=0,
             subnet_configuration=[
+                # Order matters: addresses are handed out in this order, so `public` stays
+                # 10.0.0.0/24 and 10.0.1.0/24 and the new group follows it.
                 aws_ec2.SubnetConfiguration(
                     name="public", subnet_type=aws_ec2.SubnetType.PUBLIC, cidr_mask=24
-                )
+                ),
+                aws_ec2.SubnetConfiguration(
+                    name="database", subnet_type=aws_ec2.SubnetType.PRIVATE_ISOLATED, cidr_mask=24
+                ),
             ],
             # The default would add a custom-resource Lambda and its role to empty the VPC's
             # default security group. Nothing uses that group; the task has its own.

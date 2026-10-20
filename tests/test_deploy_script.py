@@ -8,6 +8,7 @@ so a developer's real .env.local never reaches a test.
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -147,7 +148,10 @@ def test_stack_dry_run(stub_bin: Path) -> None:
     result = _deploy(stub_bin, "stack", "precertly-base", "--dry-run")
     assert result.returncode == 0, _output(result)
     tag = _head_tag(stub_bin)
-    assert f"cdk deploy precertly-base -c budgetEmail=REDACTED -c imageTag={tag}" in result.stdout
+    assert (
+        f"cdk deploy --exclusively precertly-base -c budgetEmail=REDACTED -c imageTag={tag}"
+        in result.stdout
+    )
     assert "is in ECR" not in result.stdout
     assert "--require-approval" not in result.stdout
     assert FAKE_EMAIL not in _output(result)
@@ -158,7 +162,10 @@ def test_app_stack_dry_run_passes_the_image_tag(stub_bin: Path) -> None:
     result = _deploy(stub_bin, "stack", "precertly-app", "--dry-run")
     assert result.returncode == 0, _output(result)
     tag = _head_tag(stub_bin)
-    assert f"cdk deploy precertly-app -c budgetEmail=REDACTED -c imageTag={tag}" in result.stdout
+    assert (
+        f"cdk deploy --exclusively precertly-app -c budgetEmail=REDACTED -c imageTag={tag}"
+        in result.stdout
+    )
     assert f"skipping the check that {tag} is in ECR" in result.stdout
     assert FAKE_EMAIL not in _output(result)
     _assert_no_calls(stub_bin)
@@ -223,6 +230,8 @@ def test_script_names_match_the_cdk_names() -> None:
     )
     script = SCRIPT.read_text()
     assert f'readonly CLUSTER="{names["CLUSTER"]}"' in script
+    assert f'readonly TOOLS_FAMILY="{names["TOOLS_FAMILY"]}"' in script
+    assert f'readonly TOOLS_CONTAINER="{names["TOOLS_CONTAINER"]}"' in script
     assert f'readonly SERVICE="{names["SERVICE"]}"' in script
     assert f'readonly REPO_NAME="{names["ECR_REPO"]}"' in script
     app_stack = (ROOT / "infra" / "app_stack.py").read_text()
@@ -312,9 +321,13 @@ def test_up_app_dry_run_pushes_the_image_then_diffs_then_deploys(stub_bin: Path)
     out = result.stdout
     tag = _head_tag(stub_bin)
     build = out.index("docker buildx build")
-    diff = out.index(f"cdk diff precertly-app -c budgetEmail=REDACTED -c imageTag={tag}")
+    diff = out.index(
+        f"cdk diff --exclusively precertly-app -c budgetEmail=REDACTED -c imageTag={tag}"
+    )
     ask = out.index("Deploy? [y/N]")
-    deploy = out.index(f"cdk deploy precertly-app -c budgetEmail=REDACTED -c imageTag={tag}")
+    deploy = out.index(
+        f"cdk deploy --exclusively precertly-app -c budgetEmail=REDACTED -c imageTag={tag}"
+    )
     assert build < diff < ask < deploy
     assert FAKE_EMAIL not in _output(result)
     _assert_no_calls(stub_bin)
@@ -324,8 +337,8 @@ def test_up_base_dry_run_has_no_image_step(stub_bin: Path) -> None:
     result = _deploy(stub_bin, "up", "precertly-base", "--dry-run", "--yes")
     assert result.returncode == 0, _output(result)
     assert "docker" not in result.stdout
-    assert "cdk diff precertly-base" in result.stdout
-    assert "cdk deploy precertly-base" in result.stdout
+    assert "cdk diff --exclusively precertly-base" in result.stdout
+    assert "cdk deploy --exclusively precertly-base" in result.stdout
     _assert_no_calls(stub_bin)
 
 
@@ -338,7 +351,9 @@ def test_up_with_yes_still_shows_the_diff_and_asks(stub_bin: Path, answer: str) 
     assert FAKE_EMAIL not in _output(result)
     assert "Deploy? [y/N]" in result.stderr
     calls = _calls(stub_bin)
-    assert any(c.startswith("npx --no-install cdk diff precertly-base") for c in calls)
+    assert any(
+        c.startswith("npx --no-install cdk diff --exclusively precertly-base") for c in calls
+    )
     assert not any("cdk deploy" in c for c in calls)
 
 
@@ -778,3 +793,339 @@ def test_smoke_health_check_does_not_hide_an_application_failure(stub_bin: Path)
     assert result.returncode != 0
     assert re.search(r"FAIL\s+GET /health returned 200", result.stdout)
     assert "ECS health check" not in result.stdout  # never reached, and no 2 minute wait
+
+
+# ---------------------------------------------------------------------------------------------
+# --exclusively and the data stack
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["precertly-base", "precertly-app", "precertly-data"])
+def test_stack_and_up_dry_runs_never_deploy_dependencies(stub_bin: Path, name: str) -> None:
+    tag = _head_tag(stub_bin)
+    stack = _deploy(stub_bin, "stack", name, "--dry-run")
+    assert f"cdk deploy --exclusively {name} -c budgetEmail=REDACTED -c imageTag={tag}" in (
+        stack.stdout
+    )
+    up = _deploy(stub_bin, "up", name, "--dry-run")
+    assert f"cdk diff --exclusively {name} -c" in up.stdout
+    assert f"cdk deploy --exclusively {name} -c" in up.stdout
+    _assert_no_calls(stub_bin)
+
+
+def test_data_stack_needs_the_image_like_the_app_stack(stub_bin: Path) -> None:
+    dry = _deploy(stub_bin, "stack", "precertly-data", "--dry-run")
+    assert f"skipping the check that {_head_tag(stub_bin)} is in ECR" in dry.stdout
+    up = _deploy(stub_bin, "up", "precertly-data", "--dry-run")
+    assert up.stdout.index("docker buildx build") < up.stdout.index("cdk diff --exclusively")
+    base = _deploy(stub_bin, "up", "precertly-base", "--dry-run")
+    assert "docker" not in base.stdout
+
+
+def test_data_stack_refuses_when_the_image_is_not_in_ecr(stub_bin: Path) -> None:
+    _configure(stub_bin, ecr_missing=True)
+    result = _deploy(stub_bin, "stack", "precertly-data")
+    assert result.returncode != 0
+    assert "is not in ECR" in result.stderr or "could not check" in result.stderr
+    assert not any("cdk deploy" in c for c in _calls(stub_bin))
+
+
+# ---------------------------------------------------------------------------------------------
+# status: the Aurora line
+# ---------------------------------------------------------------------------------------------
+
+
+def _dry_run_command(out: str, prefix: str) -> list[str]:
+    """The words of the one dry-run line that starts with `+ <prefix>`, as the shell sees them."""
+    (line,) = [ln for ln in out.splitlines() if ln.startswith(f"+ {prefix}")]
+    return shlex.split(line[2:])
+
+
+def test_status_dry_run_lists_the_aurora_queries(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "status", "--dry-run")
+    outputs = [
+        words
+        for line in result.stdout.splitlines()
+        if line.startswith("+ aws cloudformation describe-stacks --stack-name precertly-data")
+        and (words := shlex.split(line[2:]))
+    ]
+    assert any("OutputKey=='ClusterIdentifier'" in w[-3] for w in outputs)
+    cluster = _dry_run_command(result.stdout, "aws rds describe-db-clusters")
+    assert cluster[cluster.index("--db-cluster-identifier") + 1] == "CLUSTER_ID"
+    assert "ServerlessV2ScalingConfiguration.MinCapacity" in " ".join(cluster)
+    assert "ServerlessV2ScalingConfiguration.MaxCapacity" in " ".join(cluster)
+    _assert_no_calls(stub_bin)
+
+
+def test_status_reports_the_aurora_cluster(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks={"precertly-data": "CREATE_COMPLETE"})
+    result = _deploy(stub_bin, "status")
+    assert result.returncode == 0, _output(result)
+    assert "aurora cluster\n  status available, engine version 16.13, capacity 0.0 to 2.0 ACU" in (
+        result.stdout
+    )
+    assert not any("update-service" in c or "run-task" in c for c in _calls(stub_bin))
+
+
+@pytest.mark.parametrize("config", [{}, {"aurora_missing": True}, {"no_outputs": True}])
+def test_status_says_when_there_is_no_aurora_cluster(
+    stub_bin: Path, config: dict[str, Any]
+) -> None:
+    stacks = {"precertly-data": "CREATE_COMPLETE"} if config else {}
+    _configure(stub_bin, stacks=stacks, **config)
+    result = _deploy(stub_bin, "status")
+    assert result.returncode == 0, _output(result)
+    assert "aurora cluster\n  not deployed" in result.stdout
+
+
+# ---------------------------------------------------------------------------------------------
+# tools
+# ---------------------------------------------------------------------------------------------
+
+DATA_DEPLOYED = {"precertly-data": "CREATE_COMPLETE"}
+
+
+def _tools(
+    stub_bin: Path, *args: str, stdin: str = "", env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(SCRIPT), "tools", *args],
+        cwd=_repo(stub_bin),
+        env={**_env(stub_bin, None), "DEPLOY_TOOLS_TIMEOUT": "5", **(env or {})},
+        input=stdin,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+
+def _ops(stub_bin: Path, *needles: str) -> list[str]:
+    return [c for c in _calls(stub_bin) if any(n in c for n in needles)]
+
+
+def _index(stub_bin: Path, needle: str) -> int:
+    calls = _calls(stub_bin)
+    return next(i for i, c in enumerate(calls) if needle in c)
+
+
+@pytest.mark.parametrize(
+    ("verb", "command"),
+    [
+        ("migrate", '["alembic","upgrade","head"]'),
+        ("load", '["python","-m","precertly.ingest","evals/bundles","--embed"]'),
+        ("check", '["python","-m","precertly.db.check"]'),
+    ],
+)
+def test_tools_dry_run(stub_bin: Path, verb: str, command: str) -> None:
+    result = _tools(stub_bin, verb, "--dry-run")
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    run_task = _dry_run_command(out, "aws ecs run-task")
+    overrides = json.loads(run_task[run_task.index("--overrides") + 1])
+    assert overrides == {"containerOverrides": [{"name": "tools", "command": json.loads(command)}]}
+    assert run_task[run_task.index("--task-definition") + 1] == "precertly-tools"
+    assert run_task[run_task.index("--launch-type") + 1] == "FARGATE"
+    assert run_task[run_task.index("--network-configuration") + 1] == (
+        "awsvpcConfiguration={subnets=[SUBNET_IDS],securityGroups=[SECURITY_GROUP_ID],"
+        "assignPublicIp=ENABLED}"
+    )
+    for key in ("ToolsSubnetIds", "ToolsSecurityGroupId", "ToolsLogGroupName"):
+        assert key in out
+    assert (
+        out.index("ecs list-tasks")
+        < out.index("ecs run-task")
+        < out.index("ecs describe-tasks")
+        < out.index("always:")
+        < out.index("ecs stop-task")
+        < out.index("logs get-log-events")
+    )
+    assert ("Continue? [y/N]" in out) == (verb == "load")
+    assert ACCOUNT not in out
+    _assert_no_calls(stub_bin)
+
+
+@pytest.mark.parametrize(("verb", "seconds"), [("migrate", 600), ("load", 1800), ("check", 300)])
+def test_tools_time_limits(stub_bin: Path, verb: str, seconds: int) -> None:
+    result = _tools(stub_bin, verb, "--dry-run", env={"DEPLOY_TOOLS_TIMEOUT": ""})
+    assert f"waits up to {seconds}s" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        (),
+        ("bogus",),
+        ("migrate", "extra"),
+        ("migrate", "--yes"),
+        ("check", "--yes"),
+        ("migrate", "--bedrock"),
+        ("--all",),
+    ],
+)
+def test_tools_bad_invocations(stub_bin: Path, args: tuple[str, ...]) -> None:
+    result = _tools(stub_bin, *args)
+    assert result.returncode != 0
+    _assert_no_calls(stub_bin)
+
+
+def test_tools_migrate_runs_one_task_and_passes(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED, tools_log="Running upgrade -> head")
+    result = _tools(stub_bin, "migrate")
+    assert result.returncode == 0, _output(result)
+    (run_task,) = _ops(stub_bin, "ecs run-task")
+    assert "--cluster precertly" in run_task
+    assert "--task-definition precertly-tools" in run_task
+    assert "--launch-type FARGATE" in run_task
+    assert "subnets=[subnet-0a1b2c,subnet-3d4e5f]" in run_task
+    assert "securityGroups=[sg-0123abcd]" in run_task
+    assert "assignPublicIp=ENABLED" in run_task
+    assert '"command":["alembic","upgrade","head"]' in run_task
+    assert '"name":"tools"' in run_task
+    assert "--started-by deploy.sh-tools-migrate" in run_task
+    assert re.search(r"PASS\s+migrate: container exited 0", result.stdout)
+    assert "container exit code 0" in result.stdout
+    assert "| Running upgrade -> head" in result.stdout
+    assert "result: PASS" in result.stdout
+    assert not _ops(stub_bin, "stop-task")  # it stopped by itself, so there was nothing to stop
+    assert ACCOUNT not in result.stdout.replace("aaaabbbbccccdddd", "")
+
+
+def test_tools_need_no_budget_email_and_never_touch_the_service(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED)
+    result = _tools(stub_bin, "check")
+    assert result.returncode == 0, _output(result)
+    assert not _ops(stub_bin, "update-service", "execute-command", "npx", "docker")
+
+
+def test_tools_nonzero_exit_code_fails_and_shows_the_log(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED, tools_exit=1, tools_log="not ready: pgvector")
+    result = _tools(stub_bin, "check")
+    assert result.returncode != 0
+    assert re.search(r"FAIL\s+check: container exit code 1", result.stdout)
+    assert "| not ready: pgvector" in result.stdout
+    assert "result: FAIL" in result.stdout
+
+
+def test_tools_wait_for_the_task_to_stop(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED, tools_polls=3)
+    result = _tools(stub_bin, "migrate")
+    assert result.returncode == 0, _output(result)
+    assert len(_ops(stub_bin, "describe-tasks")) >= 4
+
+
+def test_tools_refuse_when_a_task_is_already_running(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED, tools_running=True)
+    result = _tools(stub_bin, "migrate")
+    assert result.returncode != 0
+    assert "already running" in result.stderr
+    assert "9999888877776666" in result.stderr
+    assert not _ops(stub_bin, "run-task", "stop-task")  # it is not ours to stop
+
+
+def test_tools_say_so_when_the_data_stack_is_not_deployed(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks={})
+    result = _tools(stub_bin, "migrate")
+    assert result.returncode != 0
+    assert "precertly-data is not deployed" in result.stderr
+    assert not _ops(stub_bin, "run-task")
+
+
+def test_tools_refuse_a_malformed_output(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED, outputs={"ToolsSecurityGroupId": "sg-1,--evil"})
+    result = _tools(stub_bin, "migrate")
+    assert result.returncode != 0
+    assert "unexpected value" in result.stderr
+    assert not _ops(stub_bin, "run-task")
+
+
+def test_tools_run_task_that_starts_nothing_fails(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED, tools_run_fail="RESOURCE:CPU")
+    result = _tools(stub_bin, "migrate")
+    assert result.returncode != 0
+    assert "run-task started nothing (RESOURCE:CPU)" in result.stdout
+    assert "result: FAIL" in result.stdout
+
+
+@pytest.mark.parametrize("answer", ["", "n\n", "yes please\n"])
+def test_tools_load_asks_and_yes_does_not_answer_for_you(stub_bin: Path, answer: str) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED)
+    result = _tools(stub_bin, "load", "--yes", stdin=answer)
+    assert result.returncode != 0
+    assert "Continue? [y/N]" in result.stderr
+    assert "not confirmed; nothing started" in result.stderr
+    _assert_no_calls(stub_bin)
+
+
+def test_tools_load_runs_after_a_yes_and_runs_the_ingest(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED)
+    result = _tools(stub_bin, "load", stdin="y\n")
+    assert result.returncode == 0, _output(result)
+    (run_task,) = _ops(stub_bin, "ecs run-task")
+    assert '"command":["python","-m","precertly.ingest","evals/bundles","--embed"]' in run_task
+    assert "Continue? [y/N]" in result.stderr
+
+
+def test_tools_stop_a_task_that_outlives_its_time_limit(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED, tools_never_stops=True)
+    result = _tools(stub_bin, "migrate", env={"DEPLOY_TOOLS_TIMEOUT": "1"})
+    assert result.returncode != 0
+    assert "after 1s" in result.stdout
+    assert _index(stub_bin, "ecs run-task") < _index(stub_bin, "ecs stop-task")
+    assert re.search(r"PASS\s+no precertly-tools task running", result.stdout)
+    assert "result: FAIL" in result.stdout
+
+
+def test_tools_stop_the_task_when_a_later_call_fails(stub_bin: Path) -> None:
+    """The cleanup trap runs on a die, not only on the paths the script expects."""
+    _configure(stub_bin, stacks=DATA_DEPLOYED, tools_never_stops=True, tools_describe_fail=True)
+    result = _tools(stub_bin, "migrate")
+    assert result.returncode != 0
+    assert "aws call failed" in result.stderr
+    assert _index(stub_bin, "ecs run-task") < _index(stub_bin, "ecs stop-task")
+    assert "result: FAIL" in result.stdout
+
+
+def test_tools_report_loudly_when_the_stop_cannot_be_confirmed(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED, tools_never_stops=True, tools_stop_fail=True)
+    result = _tools(stub_bin, "migrate", env={"DEPLOY_TOOLS_TIMEOUT": "1"})
+    assert result.returncode != 0
+    assert re.search(r"FAIL\s+stop not confirmed", result.stdout)
+    assert "NOW" in result.stdout
+    assert len(_ops(stub_bin, "stop-task")) == 3
+
+
+@pytest.mark.parametrize(("sig", "status"), [(signal.SIGTERM, 143), (signal.SIGINT, 130)])
+def test_tools_stop_the_task_when_interrupted(
+    stub_bin: Path, sig: signal.Signals, status: int
+) -> None:
+    _configure(stub_bin, stacks=DATA_DEPLOYED, tools_never_stops=True)
+    proc = subprocess.Popen(
+        ["bash", str(SCRIPT), "tools", "migrate"],
+        cwd=_repo(stub_bin),
+        env={**_env(stub_bin, None), "DEPLOY_TOOLS_TIMEOUT": "60", "DEPLOY_POLL_SECONDS": "1"},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    deadline = time.monotonic() + 30
+    while not _ops(stub_bin, "describe-tasks"):
+        assert time.monotonic() < deadline, "tools never reached the wait"
+        time.sleep(0.05)
+    proc.send_signal(sig)
+    stdout, stderr = proc.communicate(timeout=30)
+    assert proc.returncode == status, stdout + stderr
+    assert _index(stub_bin, "ecs run-task") < _index(stub_bin, "ecs stop-task")
+    assert re.search(r"PASS\s+no precertly-tools task running", stdout)
+    assert "result: FAIL" in stdout
+
+
+def test_tools_commands_exist_in_the_image() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    assert "COPY src ./src" in dockerfile  # precertly.db.check and precertly.ingest
+    assert "COPY evals/bundles ./evals/bundles" in dockerfile
+    assert "COPY migrations ./migrations" in dockerfile and "alembic.ini" in dockerfile
+    assert (ROOT / "src" / "precertly" / "db" / "check.py").exists()
+    assert (ROOT / "src" / "precertly" / "ingest" / "__main__.py").exists()
+    assert any((ROOT / "evals" / "bundles").glob("*.json"))
