@@ -21,6 +21,8 @@ uv run python -m precertly.evals.rules_check [--table | --recompute <results.jso
 uv run python -m precertly.evals.prompt_check <results.json>  # rebuild every recorded prompt and check its hash
 uv run python -m precertly.evals.rescore <results.json> --out <derived.json>  # re-check recorded answers with the current verifier, offline
 uv run python -m precertly.pas [--check]         # draft PAS request bundles + review envelopes in evals/pas/ (never submitted)
+uv run python -m precertly.export [--out web/public/data]  # recorded-mode static export: policies, 29 cases, the recorded facet run as JSON (no database, network or model; output git-ignored)
+uv run python -m precertly.export --check       # build to a temp dir, run every invariant, print file sizes; non-zero on the first failure
 uv run python scripts/validate_pas.py [--tx]     # HL7 FHIR Validator on the drafts (offline; CI job pas-validate)
 uv run python -m precertly.fhir <bundle-or-dir>  # chunk summary for FHIR bundles
 docker compose up -d db                         # Postgres 16 + pgvector on localhost:5433
@@ -53,6 +55,7 @@ shellcheck scripts/*.sh                         # CI lint job
 - `src/precertly/judgment/` – per-criterion verdicts with verified citations, combined by the variant logic; only `chart` and `request` stage criteria are judged; `lines.py` splits evidence into line handles for the experimental prompt version 4 (`v4.py` holds its output schema); prompt version 3 is the default
 - `src/precertly/evals/` – eval case schema, scorer, the runner (`python -m precertly.evals.run`), `compare`, `rules_check`, `prompt_check` and `rescore`
 - `src/precertly/pas/` – draft Da Vinci PAS 2.2.1 request bundles and review envelopes from recorded verdicts; reviewed diagnosis map (`diagnosis_map.yaml`); never submitted, no verdicts in the bundle
+- `src/precertly/export/` – recorded-mode static export (`build.py` builds the files in memory, `checks.py` holds the invariants, `models.py` the Pydantic models and `schema.json`); reads policies, case YAML, bundles and the recorded run `pas.__main__.SOURCE`; the 18 unscored cases are exported as labels only
 - `src/precertly/settings.py` – `PRECERTLY_*` settings (model id, region, AWS profile); `sqlalchemy_url()` builds the database URL from `PRECERTLY_DATABASE_URL` or the `PRECERTLY_DB_*` parts
 - `infra/` – AWS CDK app in Python, separate project (own `pyproject.toml`, `uv.lock`, `package.json` for the pinned CDK CLI); three environment-agnostic stacks (`precertly-base`, `precertly-app`, `precertly-data`); `precertly-base` (`base_stack.py`) holds the budget and the ECR repository (no IAM: the account denies `iam:*Provider*`), `precertly-app` (`app_stack.py`) holds the VPC (two public subnets and two isolated `database` subnets, no NAT or endpoints), the ECS cluster, the Fargate API service at desired count 0 and its task and execution roles, and requires the CDK context `imageTag`; `precertly-data` (`data_stack.py`, depends on `precertly-app`, which never refers to it) holds the Aurora Serverless v2 PostgreSQL cluster (minimum capacity 0), its generated secret, the DB and tools security groups, and the `precertly-tools` task definition with its own roles and log group; shared names in `names.py`
 - `data/policies/*.yaml` – the 4 coverage policies as atomic criteria + all_of/any_of logic per variant
