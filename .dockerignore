@@ -22,6 +22,7 @@ docs
 docker
 docker-compose.yml
 infra
+web
 .pre-commit-config.yaml
 
 data/synthea
