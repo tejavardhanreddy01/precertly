@@ -201,6 +201,10 @@ For each facet case, `python -m precertly.pas` builds a draft [Da Vinci PAS 2.2.
 
 The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on all 11 facet drafts; `scripts/validate_pas.py` runs it, and so does CI. Every draft is marked not ready to send: it has no diagnosis code from the billing article's covered list. Design and limits are in [evals/pas/README.md](evals/pas/README.md).
 
+## Recorded-mode export
+
+As of 2026-10-20, `uv run python -m precertly.export` writes the data a static recorded-mode site will read, to `web/public/data` (git-ignored): `index.json`, one file per policy and per case (the chart chunks as the model saw them, the labels and, for the 11 facet cases, the recorded verdicts with their verified citations) and `schema.json` for generating UI types. It uses no database, network or model call, and the output is byte-identical between runs. The 18 other cases are exported as labels with `scored: false` and no verdicts. `--check` runs the invariants (citations located at their recorded offsets, counts, flags equal to the recorded run, no email addresses or keys, file sizes). This is the export only: there is no UI yet, and nothing is deployed or served anywhere.
+
 ## Roadmap
 
 - [x] Policy criteria for 4 procedures, validated in CI
@@ -215,6 +219,7 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 - [x] `precertly-app` (public-subnet VPC, cluster, API service) deployed at desired count 0 and smoke-tested once through ECS Exec: `/health` and `/policies` returned 200 and one real Bedrock call succeeded; scaled back to zero (owner-confirmed 2026-10-18)
 - [x] `precertly-data` deployed (Aurora Serverless v2 at minimum capacity 0, secret, tools task); migrations applied, all 29 bundles ingested with 237 Titan calls; the database holds only the last bundle (owner-confirmed 2026-10-20)
 - [ ] AWS deployment, rest (a path to reach the API, a database-enabled API service, AgentCore): the API task has no database and there is no inbound path, so the API is not reachable and nothing is live
+- [x] Recorded-mode static export script and tests (files only; not served anywhere; checked 2026-10-20)
 - [ ] Reviewer UI, MCP server, demo mode
 
 ## License
