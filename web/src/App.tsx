@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout";
 import { DataStore, StoreContext, useLoaded, useStore } from "./lib/data";
 import { IndexContext } from "./lib/index-context";
 import { parseHash, useHash } from "./lib/router";
+import { About } from "./screens/About";
 import { CaseScreen } from "./screens/CaseScreen";
 import { CasesList } from "./screens/CasesList";
 import { Landing } from "./screens/Landing";
@@ -34,6 +35,7 @@ function Routes() {
   if (first === "policies" && second && route.path.length === 2) {
     return <PolicyScreen key={second} id={second} route={route} />;
   }
+  if (first === "about" && route.path.length === 1) return <About />;
   return <NotFound />;
 }
 

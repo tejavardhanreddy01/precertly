@@ -201,6 +201,23 @@ describe("policy view", () => {
   });
 });
 
+describe("about and method", () => {
+  it("shows the recorded numbers with the facet-only caveat and the failing gate", async () => {
+    renderAt("#/about");
+    await screen.findByRole("heading", { level: 1, name: "About and method" });
+    expect(screen.getByText("Facet cases only.")).toBeInTheDocument();
+    const figures = screen.getByTestId("run-figures");
+    expect(figures).toHaveTextContent(`${index.summary.criteria_correct} of ${index.summary.scored_criteria}`);
+    expect(screen.getByRole("heading", { name: /five steps/ })).toBeInTheDocument();
+    expect(document.querySelectorAll("#pipe-h ~ ol > li")).toHaveLength(5);
+    const gates = screen.getByTestId("gates");
+    const row = within(gates).getByRole("row", { name: /Citation precision/ });
+    expect(row).toHaveTextContent("74.4% and 74.8%: fails");
+    expect(within(row).getByText("Fails")).toBeInTheDocument();
+    expect(within(screen.getByRole("article")).getByText(/never denies a request/)).toBeInTheDocument();
+  });
+});
+
 describe("failure screens", () => {
   it("shows a readable error for a schema version mismatch", async () => {
     const store = new DataStore(async () => new Response(JSON.stringify({ schema_version: 99 })));
@@ -244,6 +261,7 @@ describe("accessibility (axe, colour contrast excluded: jsdom cannot compute it)
     "#/cases/pap-01",
     "#/policies",
     "#/policies/facet-joint-interventions",
+    "#/about",
   ];
   for (const route of routes) {
     it(`${route} has no violations`, async () => {
