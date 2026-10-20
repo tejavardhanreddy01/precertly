@@ -9,14 +9,14 @@ Deploys run from the owner's Mac with `scripts/deploy.sh`. GitHub Actions never 
 - `BUDGET_EMAIL` for `stack` and `up`. Set it in the environment, or put one line `BUDGET_EMAIL=<address>` in `.env.local` at the repo root. That file is gitignored and is parsed, not sourced: only blank lines, `#` comments and `KEY=value` lines are accepted, nothing is expanded, and only `BUDGET_EMAIL` is used. The environment wins if both are set. The address is passed to the CDK as `-c budgetEmail=...` and is never printed (the `cdk diff` that `up` shows is redacted). Do not put it in a committed file, a shell history you share or a CI variable.
 - For stacks: `cd infra && uv sync --locked && npm ci` once, and the account bootstrapped for the CDK.
 - For `smoke`: the AWS `session-manager-plugin`, which ECS Exec needs on your machine.
-- A clean working tree with `HEAD` pushed, for `image` (and so for `up precertly-app`).
+- A clean working tree with `HEAD` pushed, for `image` (and so for `up precertly-app` and `up precertly-data`, which also check that the image is in ECR).
 
 ## Runbook
 
 Every command takes `--dry-run`, which prints the commands with the account id and email redacted and does not touch AWS or Docker. Run it first.
 
 1. **Check what exists:** `scripts/deploy.sh status`. Read-only. It prints the CloudFormation status of the three stacks, the service's desired, running and pending counts and rollout, the task definition revision, its image tag and whether a container health check is set, the number of available NAT gateways, the number of RDS instances and the images in the ECR repository. A resource that does not exist prints "not deployed"; any other failure (expired login, no permission) stops with the AWS error instead of reading as "not deployed".
-2. **Deploy a stack:** `scripts/deploy.sh up <name>`, one stack at a time, in dependency order: `precertly-base`, then `precertly-data`, then `precertly-app`, once the middle one is defined. For `precertly-app` it first runs the image step (build for `linux/arm64`, push `sha-<12 hex of HEAD>`, skipped if that tag exists). It then shows `cdk diff` with the budget address redacted, asks `Deploy? [y/N]`, and only on `y` runs the same deploy as `scripts/deploy.sh stack <name>`. `--yes` only skips the image build confirmation: it never skips the diff or the Deploy question, and the CDK's own approval prompt for IAM and security-group changes stays on. `--all` is refused. `precertly-app` deploys the service at desired count 0, so nothing starts.
+2. **Deploy a stack:** `scripts/deploy.sh up <name>`, one stack at a time, in dependency order: `precertly-base`, then `precertly-app`, then `precertly-data`. Deploy `precertly-app` before `precertly-data` even if it was deployed before: it gains the two isolated `database` subnets, which the data stack's cluster needs. Every deploy and diff passes `--exclusively`, so one stack is never deployed together with the stacks it depends on. For `precertly-app` and `precertly-data` it first runs the image step (build for `linux/arm64`, push `sha-<12 hex of HEAD>`, skipped if that tag exists). It then shows `cdk diff` with the budget address redacted, asks `Deploy? [y/N]`, and only on `y` runs the same deploy as `scripts/deploy.sh stack <name>`. `--yes` only skips the image build confirmation: it never skips the diff or the Deploy question, and the CDK's own approval prompt for IAM and security-group changes stays on. `--all` is refused. `precertly-app` deploys the service at desired count 0, so nothing starts.
 3. **Smoke test:** `scripts/deploy.sh smoke [--bedrock]`. It refuses unless the service exists and has desired, running and pending counts of 0, so it never touches a task someone else started. With `--bedrock` it first asks `One real Bedrock call, costs a fraction of a cent. Continue? [y/N]` (before anything starts, so no task bills while the question waits; `--yes` is not accepted). Then it scales to 1 and runs these checks in order, stopping at the first failure:
    1. **Service stable:** desired 1, running 1, pending 0, rollout completed, within 10 minutes (`DEPLOY_WAIT_TIMEOUT`).
    2. **Task RUNNING:** the task's `lastStatus`; its `healthStatus` is printed for information.
@@ -31,9 +31,29 @@ Every command takes `--dry-run`, which prints the commands with the account id a
 
 `image` and `stack <name>` still exist as the two halves of `up`: `scripts/deploy.sh image [--yes]` builds and pushes, and `scripts/deploy.sh stack <name>` deploys without a diff or question. `precertly-app` needs the image from `image`: the script passes `-c imageTag=<tag of HEAD>` and refuses if that tag is not in ECR.
 
+## Database and tools
+
+`precertly-data` is **defined and tested by synthesis, and not deployed** (2026-10-20): no database exists in AWS. After the owner deploys it (`up precertly-app`, then `up precertly-data`; creating the Aurora cluster takes several minutes), `scripts/deploy.sh tools` works on it:
+
+- `tools migrate` runs `alembic upgrade head`; `tools load` runs `python -m precertly.ingest evals/bundles --embed`, which makes real Bedrock embedding calls and writes to the database, so it asks `Continue? [y/N]` first and `--yes` does not skip that question; `tools check` runs `python -m precertly.db.check`, read-only SELECTs that print the pgvector version, each table's row count and whether the connection uses TLS, and no host, user, database name or password.
+- Each reads the subnets, security group and log group from the `precertly-data` stack outputs, refuses if a `precertly-tools` task already runs, starts one task with `aws ecs run-task` in the public subnets with a public IP, and waits for it to stop, for at most 10 minutes (`migrate`), 30 (`load`) or 5 (`check`; `DEPLOY_TOOLS_TIMEOUT` overrides, for tests). On any exit, failure, timeout or Ctrl-C it stops every `precertly-tools` task still running and waits until none does, then prints the container exit code and the log tail. The exit status is non-zero unless the container exited 0. If the stop cannot be confirmed it says so loudly: stop the task by hand, because it bills while it runs.
+- Idle, the database costs Aurora storage plus about 0.40 USD a month for the secret (the storage rate is approximate and unchecked). A paused instance still reports `available`; see the pause and resume checks below.
+
+**To verify after the first deploy** (none of this has been done; the owner runs it):
+
+1. `scripts/deploy.sh status` shows the Aurora cluster with engine version 16.13 and capacity 0.0 to 2.0.
+2. `tools migrate` exits 0: that proves the task can resolve the secret's five JSON keys, reach the database and run `CREATE EXTENSION vector` as the master user.
+3. `tools check` prints the pgvector version (the AWS release notes list 0.8.1 for 16.13) and `tls: yes` or `tls: no`.
+4. `tools load` embeds the bundles, which also shows whether the task role may call Titan.
+5. Pause and resume: wait more than 5 minutes after the last task, then read the `ServerlessDatabaseCapacity` CloudWatch metric (zero while paused) and `aws rds describe-events --source-type db-instance` for the pause and resume events. Then run `tools check` again and compare its first-connect time in the log with the 60 s connect timeout. If it never pauses, look for open connections (the `DatabaseConnections` metric).
+6. The secret's JSON keys after the cluster attachment: `aws secretsmanager get-secret-value` with `--query SecretString` shows `host` and `port` next to `username`, `dbname` and `password`; compare key names only and do not paste the values.
+7. Cross-stack references use `Fn::GetStackOutput` (the `weak` setting in `infra/cdk.json`); the deploy of `precertly-data` is the first time CloudFormation resolves them.
+
+To remove the database: `cd infra && npx --no-install cdk destroy precertly-data -c budgetEmail=<address> -c imageTag=sha-<12 hex>` (not part of `deploy.sh`). Everything in the stack is deleted with it, without a snapshot.
+
 ## What is verified
 
-`up`, `status`, `smoke` and `down` are tested with stub `aws`, `npx` and `docker` programs and with `--dry-run` (`tests/test_deploy_script.py`), and the script is shellchecked. They have not been run against real AWS, and the ECS Exec readiness wait, the retries and the health-check wait were added after a first real run failed because the Exec agent was not running yet; they are also tested with stubs only until `smoke` is run against AWS again. The next real run is the check of three things the stubs cannot show: the `--query` expressions against the real API output, the exact quoting of the ECS Exec command string, and that a Ctrl-C during an Exec session reaches the trap. Until the owner has run them, do not call them verified.
+`up`, `status`, `smoke`, `down` and `tools` are tested with stub `aws`, `npx` and `docker` programs and with `--dry-run` (`tests/test_deploy_script.py`), and CI shellchecks the script (it was not run locally for the `tools` change: shellcheck was not installed). They have not been run against real AWS, and the ECS Exec readiness wait, the retries and the health-check wait were added after a first real run failed because the Exec agent was not running yet; they are also tested with stubs only until `smoke` is run against AWS again. The next real run is the check of three things the stubs cannot show: the `--query` expressions against the real API output, the exact quoting of the ECS Exec command string, and that a Ctrl-C during an Exec session reaches the trap. Until the owner has run them, do not call them verified.
 
 ## Manual fallback
 
@@ -64,8 +84,8 @@ aws ecs wait services-stable --cluster precertly --services precertly-api
 
 # image and stack
 scripts/deploy.sh image
-cd infra && npx --no-install cdk diff precertly-app -c budgetEmail=<address> -c imageTag=sha-<12 hex>
-cd infra && npx --no-install cdk deploy precertly-app -c budgetEmail=<address> -c imageTag=sha-<12 hex>
+cd infra && npx --no-install cdk diff --exclusively precertly-app -c budgetEmail=<address> -c imageTag=sha-<12 hex>
+cd infra && npx --no-install cdk deploy --exclusively precertly-app -c budgetEmail=<address> -c imageTag=sha-<12 hex>
 ```
 
 ## Why tags are immutable
@@ -79,6 +99,7 @@ The repository keeps the last 5 `sha-` images and expires untagged images after 
 - The VPC has no NAT gateway, no interface endpoints and no load balancer, which are the parts of a network that bill by the hour, so the network costs nothing.
 - The service is at desired count 0 and costs nothing. A running task costs Fargate vCPU and memory time plus the hourly charge for its public IPv4 address. `smoke` always scales back to 0 and `down` confirms it; `status` shows the running count.
 - The log group keeps logs for 7 days.
+- The data stack (not deployed) would add Aurora storage and the secret while idle; see Database and tools.
 
 ## What to call it
 
