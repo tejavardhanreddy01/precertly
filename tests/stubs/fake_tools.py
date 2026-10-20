@@ -26,6 +26,17 @@ stub.json keys (all optional):
                     then HEALTHY
   diff_text         what `cdk diff` prints; {email} is replaced by the budgetEmail context value
   diff_fail         `cdk diff` prints this to stderr and fails
+  outputs           {output key: value} for the data stack's outputs (defaults below)
+  no_outputs        the data stack exists but has no outputs
+  aurora_missing    describe-db-clusters fails with DBClusterNotFoundFault
+  tools_running     a precertly-tools task is already running (its ARN is listed)
+  tools_run_fail    run-task starts nothing and reports this failure reason
+  tools_exit        container exit code of a tools task (default 0)
+  tools_polls       describe-tasks reports RUNNING this many times before STOPPED (default 0)
+  tools_never_stops the task stays RUNNING until stop-task is called (then exit code 137)
+  tools_describe_fail  describe-tasks for the tools task fails
+  tools_stop_fail   stop-task fails
+  tools_log         what the log group holds (default "tools output")
 """
 
 import json
@@ -36,6 +47,15 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent.parent
 ACCOUNT = "123456789012"
 TASK_ARN = f"arn:aws:ecs:us-east-2:{ACCOUNT}:task/precertly/0123456789abcdef"
+TOOLS_ARN = f"arn:aws:ecs:us-east-2:{ACCOUNT}:task/precertly/aaaabbbbccccdddd"
+OTHER_TOOLS_ARN = f"arn:aws:ecs:us-east-2:{ACCOUNT}:task/precertly/9999888877776666"
+DATA_OUTPUTS = {
+    "ClusterIdentifier": "precertly-data-database-abc123",
+    "SecretArn": f"arn:aws:secretsmanager:us-east-2:{ACCOUNT}:secret:DatabaseSecret-AbCdEf",
+    "ToolsSubnetIds": "subnet-0a1b2c,subnet-3d4e5f",
+    "ToolsSecurityGroupId": "sg-0123abcd",
+    "ToolsLogGroupName": "/precertly/tools",
+}
 IMAGE = f"{ACCOUNT}.dkr.ecr.us-east-2.amazonaws.com/precertly-api:sha-abc123def456"
 
 
@@ -102,7 +122,19 @@ def aws(args: list[str], config: dict) -> int:
         stacks = config.get("stacks", {})
         if name not in stacks:
             return fail(f"An error occurred (ValidationError): Stack with id {name} does not exist")
-        print(stacks[name])
+        query = " ".join(args)
+        if "Outputs" in query:
+            key = query.split("OutputKey==")[1].split("'")[1]
+            outputs = {**DATA_OUTPUTS, **config.get("outputs", {})}
+            print("None" if config.get("no_outputs") else outputs.get(key, "None"))
+        else:
+            print(stacks[name])
+    elif tools_call(args):
+        return tools(args, config, state)
+    elif operation == "describe-db-clusters":
+        if config.get("aurora_missing"):
+            return fail("An error occurred (DBClusterNotFoundFault): DBCluster x not found.")
+        print("available\t16.13\t0.0\t2.0")
     elif operation == "describe-services":
         if config.get("cluster_missing"):
             return fail("An error occurred (ClusterNotFoundException): Cluster not found.")
@@ -147,6 +179,68 @@ def aws(args: list[str], config: dict) -> int:
         print("sha-abc123def456" if "imageDetails[].imageTags[]" in " ".join(args) else 1)
     else:
         return fail(f"stub: unexpected call {args}", 98)
+    return 0
+
+
+def tools_call(args: list[str]) -> bool:
+    """Calls about the precertly-tools task rather than the API service."""
+    joined = " ".join(args)
+    return (
+        "--family" in args
+        or args[1] in ("run-task", "stop-task")
+        or (args[1] == "describe-tasks" and "exitCode" in joined)
+        or args[0] == "logs"
+    )
+
+
+def tools(args: list[str], config: dict, state: dict) -> int:
+    operation = args[1]
+    task = state.get("tools") or (
+        {"arn": OTHER_TOOLS_ARN, "status": "RUNNING", "polls": 0}
+        if config.get("tools_running")
+        else None
+    )
+    path = BASE / "state.json"
+
+    def save(new: dict) -> None:
+        state["tools"] = new
+        path.write_text(json.dumps(state))
+
+    if operation == "list-tasks":
+        print(task["arn"] if task and task["status"] == "RUNNING" else "")
+    elif operation == "run-task":
+        if config.get("tools_run_fail"):
+            print(f"None\t{config['tools_run_fail']}")
+        else:
+            save({"arn": TOOLS_ARN, "status": "RUNNING", "polls": 0})
+            print(f"{TOOLS_ARN}\tNone")
+    elif operation == "describe-tasks":
+        if config.get("tools_describe_fail"):
+            return fail("An error occurred (ThrottlingException): Rate exceeded")
+        assert task is not None
+        if task["status"] == "RUNNING" and not config.get("tools_never_stops"):
+            task["polls"] += 1
+            if task["polls"] > config.get("tools_polls", 0):
+                task["status"] = "STOPPED"
+                task["exit"] = config.get("tools_exit", 0)
+            save(task)
+        if task["status"] == "STOPPED":
+            print(f"STOPPED\t{task.get('exit', 137)}\tEssential container in task exited")
+        else:
+            print("RUNNING\tNone\tNone")
+    elif operation == "stop-task":
+        if config.get("tools_stop_fail"):
+            return fail("An error occurred (ThrottlingException): Rate exceeded")
+        assert task is not None
+        if task["status"] == "RUNNING":
+            task["status"] = "STOPPED"
+            task["exit"] = 137
+            save(task)
+        print("STOPPED")
+    elif args[0] == "logs":
+        print(config.get("tools_log", "tools output"))
+    else:
+        return fail(f"stub: unexpected tools call {args}", 98)
     return 0
 
 
