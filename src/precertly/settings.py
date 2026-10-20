@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
@@ -54,6 +55,30 @@ class Settings(BaseSettings):
     db_name: str | None = None
     db_user: str | None = None
     db_password: SecretStr | None = None
+    # Connection behaviour, for a database that scales to zero (see db/connect.py). "queue" is
+    # SQLAlchemy's default pool; "null" holds no idle connection, which an auto-pausing
+    # database needs. The timeout is for each connect, in seconds, and must cover a resume.
+    db_pool: Literal["queue", "null"] = "queue"
+    db_connect_timeout: float = 60.0
+
+    @field_validator("db_pool", mode="before")
+    @classmethod
+    def _check_db_pool(cls, value: Any) -> Any:
+        if value not in ("queue", "null"):
+            raise ValueError("PRECERTLY_DB_POOL must be 'queue' or 'null'")
+        return value
+
+    @field_validator("db_connect_timeout", mode="before")
+    @classmethod
+    def _check_db_connect_timeout(cls, value: Any) -> float:
+        message = "PRECERTLY_DB_CONNECT_TIMEOUT must be a positive number of seconds"
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(message) from None
+        if not math.isfinite(seconds) or seconds <= 0:
+            raise ValueError(message)
+        return seconds
 
     def sqlalchemy_url(self) -> URL:
         """The database URL for create_async_engine and Alembic.

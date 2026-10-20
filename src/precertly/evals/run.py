@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from precertly.db import get_engine, session_factory
+from precertly.db.connect import wait_for_database
 from precertly.evals.cases import EVALS_DIR, EvalCase, load_cases, scored_criteria
 from precertly.evals.rules_check import check_cases
 from precertly.evals.scoring import CaseScore, CriterionScore, Summary, score_case, summarize
@@ -97,6 +98,8 @@ async def _run(
     sessions = session_factory()
     results: list[Result] = []
     try:
+        # Waits for a paused database to wake up; the cases below run once.
+        await wait_for_database(get_engine())
         for case in cases:
             async with sessions() as session:
                 # All cases share one synthetic patient, so each ingest replaces the

@@ -18,6 +18,7 @@ import uuid
 from pathlib import Path
 
 from precertly.db import get_engine, session_factory
+from precertly.db.connect import wait_for_database
 from precertly.fhir import chunk_bundle, load_bundle
 from precertly.ingest.pipeline import IngestError, estimate_embedding, ingest_bundle
 from precertly.llm import BedrockEmbedder
@@ -27,6 +28,8 @@ async def _ingest(paths: list[Path], case_id: uuid.UUID | None, embed: bool) -> 
     embedder = BedrockEmbedder() if embed else None
     sessions = session_factory()
     try:
+        # Waits for a paused database to wake up; the ingest below runs once.
+        await wait_for_database(get_engine())
         for path in paths:
             async with sessions() as session:
                 try:
