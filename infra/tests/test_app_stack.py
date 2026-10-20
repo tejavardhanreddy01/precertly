@@ -67,21 +67,76 @@ def test_network_has_no_nat_no_endpoints_no_load_balancer() -> None:
     assert _only(template, "AWS::ECS::Service").get("LoadBalancers", []) == []
 
 
-def test_two_public_subnets_in_the_fixed_zones_and_no_private_ones() -> None:
+PUBLIC_SUBNETS = {
+    # Logical ID -> (CIDR, zone). These two were deployed before the isolated group existed;
+    # a different ID or address would replace them (and the running network) on the next deploy.
+    "VpcpublicSubnet1Subnet2BB74ED7": ("10.0.0.0/24", "us-east-2a"),
+    "VpcpublicSubnet2SubnetE34B022A": ("10.0.1.0/24", "us-east-2b"),
+}
+ISOLATED_SUBNETS = {
+    "VpcdatabaseSubnet1SubnetD53A427B": ("10.0.2.0/24", "us-east-2a"),
+    "VpcdatabaseSubnet2Subnet75663D63": ("10.0.3.0/24", "us-east-2b"),
+}
+
+
+def test_public_subnets_keep_their_ids_and_addresses() -> None:
+    subnets = _resources(_template(), "AWS::EC2::Subnet")
+    for logical_id, (cidr, zone) in PUBLIC_SUBNETS.items():
+        properties = subnets[logical_id]["Properties"]
+        assert (properties["CidrBlock"], properties["AvailabilityZone"]) == (cidr, zone)
+        assert properties["MapPublicIpOnLaunch"] is True
+
+
+def test_two_isolated_subnets_with_no_route_out() -> None:
     template = _template()
     subnets = _resources(template, "AWS::EC2::Subnet")
-    assert len(subnets) == 2
-    zones = sorted(s["Properties"]["AvailabilityZone"] for s in subnets.values())
-    assert zones == ["us-east-2a", "us-east-2b"]
-    for subnet in subnets.values():
-        assert subnet["Properties"]["MapPublicIpOnLaunch"] is True
-    # Every route table sends 0.0.0.0/0 to the internet gateway, none to a NAT gateway.
+    assert set(subnets) == set(PUBLIC_SUBNETS) | set(ISOLATED_SUBNETS)
+    for logical_id, (cidr, zone) in ISOLATED_SUBNETS.items():
+        properties = subnets[logical_id]["Properties"]
+        assert (properties["CidrBlock"], properties["AvailabilityZone"]) == (cidr, zone)
+        assert properties["MapPublicIpOnLaunch"] is False
+    # Only the public route tables have a route (0.0.0.0/0 to the internet gateway); the
+    # isolated route tables have none, so there is no path out: no NAT, no gateway.
     routes = _resources(template, "AWS::EC2::Route")
     assert len(routes) == 2
+    public_tables = {r["Properties"]["RouteTableId"]["Ref"] for r in routes.values()}
+    associations = _resources(template, "AWS::EC2::SubnetRouteTableAssociation")
+    isolated_tables = {
+        a["Properties"]["RouteTableId"]["Ref"]
+        for a in associations.values()
+        if a["Properties"]["SubnetId"]["Ref"] in ISOLATED_SUBNETS
+    }
+    assert len(isolated_tables) == 2
+    assert not isolated_tables & public_tables
     for route in routes.values():
         assert route["Properties"]["DestinationCidrBlock"] == "0.0.0.0/0"
         assert "GatewayId" in route["Properties"]
         assert "NatGatewayId" not in route["Properties"]
+
+
+def test_the_service_and_its_cluster_stay_in_the_public_subnets() -> None:
+    service = _only(_template(), "AWS::ECS::Service")
+    subnets = service["NetworkConfiguration"]["AwsvpcConfiguration"]["Subnets"]
+    assert {s["Ref"] for s in subnets} == set(PUBLIC_SUBNETS)
+
+
+def test_app_template_never_refers_to_another_stack() -> None:
+    text = json.dumps(_template().to_json())
+    assert "Fn::ImportValue" not in text
+    assert "Fn::GetStackOutput" not in text
+    assert "precertly-data" not in text
+
+
+def test_app_stack_source_does_not_import_the_data_module() -> None:
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "app_stack.py").read_text())
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(a.name for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.add(node.module or "")
+            imported.update(a.name for a in node.names)
+    assert not {name for name in imported if "data_stack" in name or "DataStack" in name}
 
 
 def test_task_security_group_has_no_ingress() -> None:
@@ -293,7 +348,16 @@ def test_log_group() -> None:
 
 def test_outputs() -> None:
     outputs = _template().to_json()["Outputs"]
-    assert set(outputs) == {"ClusterName", "ServiceName", "LogGroupName"}
+    named = {"ClusterName", "ServiceName", "LogGroupName"}
+    assert named <= set(outputs)
+    # The rest are the VPC and subnet IDs that the data stack reads (weak cross-stack
+    # references, see cdk.json). They publish IDs only and import nothing.
+    extra = set(outputs) - named
+    assert {n for n in extra if not n.startswith("PublishOutputRef")} == set()
+    assert len(extra) == 5  # the VPC and the four subnets
+    for name in extra:
+        assert list(outputs[name]["Value"]) == ["Ref"]
+        assert "Export" not in outputs[name]
 
 
 @pytest.mark.parametrize(

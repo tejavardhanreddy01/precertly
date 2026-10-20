@@ -158,8 +158,8 @@ jobs:
       - name: HL7 FHIR Validator on the PAS drafts (offline)
         run: uv run python scripts/validate_pas.py
 
-  # Only precertly-data is still empty. Nothing here has credentials, and the AWS SDK is
-  # pointed at a closed local port, so any AWS call from synthesis would fail the job.
+  # Nothing here has credentials, and the AWS SDK is pointed at a closed local port, so any AWS
+  # call from synthesis would fail the job.
   infra-synth:
     runs-on: ubuntu-latest
     permissions:

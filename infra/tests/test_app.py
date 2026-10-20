@@ -1,7 +1,4 @@
-import json
-
 import aws_cdk as cdk
-from aws_cdk.assertions import Template
 from support import context
 
 from app import AVAILABILITY_ZONES, STACK_NAMES, PrecertlyStack, build_app
@@ -37,9 +34,12 @@ def test_availability_zones_are_fixed_without_a_lookup() -> None:
     assert AVAILABILITY_ZONES == ("us-east-2a", "us-east-2b")
 
 
-def test_data_stack_defines_no_resources() -> None:
-    stack = _stacks(build_app(CONTEXT))["precertly-data"]
-    template = Template.from_stack(stack).to_json()
-    assert not template.get("Resources")
-    # Nothing in an empty template should pin a region or an account either.
-    assert "us-east-2" not in json.dumps(template)
+def test_data_stack_depends_on_app_and_the_app_never_on_data() -> None:
+    assembly = build_app(CONTEXT).synth()
+    dependencies = {
+        stack.stack_name: {d.id for d in stack.dependencies if d.id in STACK_NAMES}
+        for stack in assembly.stacks
+    }
+    assert dependencies["precertly-data"] == {"precertly-app"}
+    assert dependencies["precertly-app"] == set()
+    assert dependencies["precertly-base"] == set()

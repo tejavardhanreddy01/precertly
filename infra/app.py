@@ -1,4 +1,6 @@
-"""CDK app for Precertly: three stacks; precertly-base and precertly-app define resources.
+"""CDK app for Precertly: three stacks, precertly-base, precertly-app and precertly-data.
+
+precertly-data depends on precertly-app (its VPC); precertly-app never refers to it.
 
 The stacks are environment-agnostic: no account or region is set, so synthesis needs no
 credentials and makes no lookups. Availability zones are fixed for the same reason.
@@ -10,18 +12,12 @@ import aws_cdk as cdk
 
 from app_stack import IMAGE_TAG_CONTEXT_KEY, AppStack, validate_image_tag
 from base_stack import BUDGET_EMAIL_CONTEXT_KEY, BaseStack
+from data_stack import DataStack
 from precertly_stack import AVAILABILITY_ZONES, PrecertlyStack
 
 __all__ = ["AVAILABILITY_ZONES", "STACK_NAMES", "PrecertlyStack", "build_app"]
 
 STACK_NAMES = ("precertly-base", "precertly-app", "precertly-data")
-# The CDK's built-in template validation rejects a stack with no resources. precertly-data is
-# still empty, so the rule is acknowledged on it; delete this (and the acknowledgement below)
-# when it gets its first resource.
-EMPTY_STACK_RULE = cdk.Acknowledgment(
-    id="CloudFormation-Validate::F0001",
-    reason="Scaffold: the stack defines no resources yet.",
-)
 # Availability zones are fixed on purpose (see the module docstring), so the CDK's advice to
 # avoid hard-coded zones does not apply.
 FIXED_AZ_RULE = cdk.Acknowledgment(
@@ -45,8 +41,15 @@ def build_app(context: dict[str, Any] | None = None) -> cdk.App:
     BaseStack(app, "precertly-base", budget_email=email.strip())
     app_stack = AppStack(app, "precertly-app", image_tag=image_tag)
     cdk.Validations.of(app_stack).acknowledge(FIXED_AZ_RULE)
-    data = PrecertlyStack(app, "precertly-data")
-    cdk.Validations.of(data).acknowledge(EMPTY_STACK_RULE)
+    # The references to the app's VPC and subnets make precertly-data depend on precertly-app.
+    DataStack(
+        app,
+        "precertly-data",
+        image_tag=image_tag,
+        vpc=app_stack.vpc,
+        database_subnets=app_stack.database_subnets,
+        tools_subnets=app_stack.public_subnets,
+    )
     return app
 
 
