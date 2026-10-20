@@ -25,6 +25,19 @@ updates:
       infra-npm:
         patterns: ["*"]
 
+  # web/ is the recorded-mode site: its own npm project and lock.
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      web-npm:
+        patterns: ["*"]
+    # typescript-eslint does not yet allow TypeScript 7; lift this when its peer range does.
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
   - package-ecosystem: docker
     directory: /
     schedule:

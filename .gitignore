@@ -27,3 +27,8 @@ data/fhir-validator/bin/
 
 # Recorded-mode static export (rebuild with: uv run python -m precertly.export)
 /web/public/data/
+
+# Web UI (web/): installed packages, build output and types generated from schema.json
+web/node_modules/
+web/dist/
+web/src/generated/

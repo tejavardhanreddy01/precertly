@@ -189,3 +189,48 @@ jobs:
           npx --no-install cdk synth --no-lookups -c budgetEmail=ci@example.invalid -c imageTag=sha-000000000000
           npx --no-install cdk ls -c budgetEmail=ci@example.invalid -c imageTag=sha-000000000000 | tee stacks.txt
           [ "$(sort stacks.txt | tr '\n' ' ')" = "precertly-app precertly-base precertly-data " ]
+
+  # The recorded-mode site. It reads only the files the Python export writes, so the job builds
+  # them first. No credentials, no AWS, no model calls.
+  web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      # The Node release is read from engines.node in web/package.json.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/package.json
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install the web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Export the recorded data and generate the types
+        working-directory: web
+        run: npm run prepare-data
+      - name: Type-check
+        working-directory: web
+        run: npm run check
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+      - name: Test
+        working-directory: web
+        run: npm test
+      - name: Build
+        working-directory: web
+        run: npm run build
+      - name: Audit the locked dependencies
+        working-directory: web
+        run: npm audit --audit-level=high
+      - name: Check the built site for hosts outside the allowlist
+        working-directory: web
+        run: node scripts/check-dist.mjs
