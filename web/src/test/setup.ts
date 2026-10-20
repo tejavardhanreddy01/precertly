@@ -12,6 +12,8 @@ afterEach(() => {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
+// jsdom prints "not implemented" for window.scrollTo; the app only calls it on route changes.
+window.scrollTo = (() => {}) as typeof window.scrollTo;
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({
