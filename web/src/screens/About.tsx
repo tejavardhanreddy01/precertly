@@ -23,7 +23,7 @@ export function About() {
   useTitle("About and method");
   return (
     <div className="mx-auto max-w-text space-y-8">
-      <header>
+      <div>
         <h1 className="text-2xl font-bold tracking-tight">About and method</h1>
         <p className="mt-3">
           <a
@@ -34,7 +34,7 @@ export function About() {
             <IconArrowRight size={14} />
           </a>
         </p>
-      </header>
+      </div>
 
       <Notices />
 

@@ -73,13 +73,13 @@ export function CasesList() {
   const shown = filter ? ordered.filter((c) => c.set === filter) : ordered;
   return (
     <div className="space-y-4">
-      <header>
+      <div>
         <h1 className="text-2xl font-bold tracking-tight">Cases</h1>
         <p className="mt-1 max-w-text text-ink-2">
           {cases.length} synthetic cases. The recorded run scored the {summary.cases} facet cases; the others show their
           expected labels only.
         </p>
-      </header>
+      </div>
 
       <div role="group" aria-label="Filter by policy" className="flex flex-wrap gap-2">
         <Chip pressed={filter === null} onClick={() => setFilter(null)}>
