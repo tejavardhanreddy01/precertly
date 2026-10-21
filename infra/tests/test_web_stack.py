@@ -254,7 +254,7 @@ def test_security_headers_have_exactly_these_values_and_override_the_origin() ->
         "ContentSecurityPolicy": {
             "ContentSecurityPolicy": (
                 "default-src 'none'; script-src 'self'; style-src 'self'; "
-                "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+                "img-src 'self'; font-src 'self'; connect-src 'self'; "
                 "base-uri 'self'; form-action 'none'; frame-ancestors 'none'; "
                 "object-src 'none'"
             ),

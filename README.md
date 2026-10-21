@@ -242,7 +242,7 @@ npm run prepare-data    # writes web/public/data and src/generated (both git-ign
 npm run dev
 ```
 
-`npm test` fails, never skips, if `web/public/data` is missing. CI runs it as the job `web`, which also builds the site and scans the output for URL hosts outside a short allowlist and for anything a strict Content Security Policy would block (inline script or style, a style or event-handler attribute, a `data:` URI in CSS). As of 2026-10-21 the build is written to work under `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'` and has a static `404.html`; no such header is set anywhere yet, because the site is not hosted.
+`npm test` fails, never skips, if `web/public/data` is missing. CI runs it as the job `web`, which also builds the site and scans the output for URL hosts outside a short allowlist and for anything a strict Content Security Policy would block (inline script or style, a style or event-handler attribute, a `data:` URI in CSS). As of 2026-10-21 the build is written to work under `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'` and has a static `404.html`; no such header is set anywhere yet, because the site is not hosted.
 
 Measured on 2026-10-21: 238 web tests in 16 files pass.
 

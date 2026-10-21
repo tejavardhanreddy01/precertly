@@ -40,9 +40,9 @@ CACHE_DEFAULT_TTL = cdk.Duration.seconds(300)
 CACHE_MAX_TTL = cdk.Duration.days(365)
 
 # The built site needs only its own origin: one external script and stylesheet, same-origin JSON.
-# `data:` in img-src is kept on purpose from the stack's specification (see the report).
+# No `data:` in img-src or font-src: the build has none (web/scripts/check-dist.mjs fails on one).
 CONTENT_SECURITY_POLICY = (
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
     "font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'none'; "
     "frame-ancestors 'none'; object-src 'none'"
 )
