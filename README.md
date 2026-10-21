@@ -4,7 +4,17 @@
 
 Precertly reads a patient chart (FHIR R4) and a requested procedure, checks each payer coverage criterion against the chart, cites the exact evidence for each verdict, and drafts a prior-authorization request shaped like the HL7 Da Vinci PAS format. A human reviews and approves. It never auto-denies.
 
-> 🚧 **In active development.** Chart ingest, search, cited per-criterion verdicts and the eval harness have been run for facet joint interventions only: 11 of the 29 labeled eval cases have been scored. The other 18 cases (PAP, bariatric surgery and spinal cord stimulators) and their request fields are tested offline only, not yet run against the model. Draft PAS requests are built and validated for the 11 facet cases, but not ready to send. The reviewer UI and the deployment are not built yet.
+> 🚧 **In active development (state checked 2026-10-21).** Chart ingest, search, cited per-criterion verdicts and the eval harness have been run for facet joint interventions only: the 11 facet cases are scored, and the other 18 of the 29 labeled cases (PAP, bariatric surgery and spinal cord stimulators) are labeled only, tested offline and not yet run against the model. Draft PAS requests are built and validated for the 11 facet cases, but not ready to send. A static recorded-mode site in `web/` shows the recorded runs and runs locally; it is not hosted anywhere and has no URL. The AWS stacks are deployed with the service at zero tasks and nothing reachable. Hosting the site and a live mode are not built.
+
+## What it looks like
+
+![The landing page with four tiles for the recorded run's results](web/docs/screenshots/landing-1280-after.png)
+
+*The landing page. A recorded run on synthetic data; the site is not hosted yet.*
+
+![The false approval on facet-11, with the cited quote highlighted in the chart](web/docs/screenshots/tour-step-3-1280-after.png)
+
+*Tour step 3: the one false approval, with the quote the model cited highlighted in the chart. A recorded run on synthetic data; the site is not hosted yet.*
 
 ## Why
 
@@ -203,7 +213,7 @@ The official HL7 FHIR Validator (pinned and sha256-checked) finds zero errors on
 
 ## Recorded-mode export
 
-As of 2026-10-20, `uv run python -m precertly.export` writes the data a static recorded-mode site will read, to `web/public/data` (git-ignored): `index.json`, one file per policy and per case (the chart chunks as the model saw them, the labels and, for the 11 facet cases, the recorded verdicts with their verified citations) and `schema.json` for generating UI types. It uses no database, network or model call, and the output is byte-identical between runs. The 18 other cases are exported as labels with `scored: false` and no verdicts. `--check` runs the invariants (citations located at their recorded offsets, counts, flags equal to the recorded run, no email addresses or keys, file sizes). The site that reads it is described next.
+As of 2026-10-20, `uv run python -m precertly.export` writes the data the static recorded-mode site reads, to `web/public/data` (git-ignored): `index.json`, one file per policy and per case (the chart chunks as the model saw them, the labels and, for the 11 facet cases, the recorded verdicts with their verified citations) and `schema.json` for generating UI types. It uses no database, network or model call, and the output is byte-identical between runs. The 18 other cases are exported as labels with `scored: false` and no verdicts. `--check` runs the invariants (citations located at their recorded offsets, counts, flags equal to the recorded run, no email addresses or keys, file sizes). The site that reads it is described next.
 
 ## Recorded-mode site (`web/`)
 
@@ -215,7 +225,7 @@ As of 2026-10-21, `web/` holds a static single-page site (Vite, React, TypeScrip
 - **Case workspace.** At 1024 px and wider, a summary bar (case, policy, overall result, expected label with Correct or Incorrect, and the counts met, not met, insufficient, invalidated, wrong) over three panes that scroll on their own and never scroll the page: criteria as a compact table (the false-approval row is the strongest mark on the page), evidence (the chart with each cited quote marked, and each chunk badged "shown to the model" or "not shown to the model" for the selected criterion; the first highlight is centered in the chart panel), and the verdict (who decided it, rationale, computed facts, citations, the expected label). The tour bar is pinned to the bottom. Under 1024 px the panes sit behind a Criteria, Evidence, Verdict tab control with arrow-key support: selecting a criterion opens Verdict and a link to the chart opens Evidence. The `c`, `cite`, `res` and `tour` address parameters work as before.
 - **Policies and About** use the same shell, pills and tiles in a readable text width.
 
-The 18 cases without a recorded run show their labels only. It is not deployed or served anywhere and has no URL yet. Screenshots from before and after the redesign are in `web/docs/screenshots/` (`node scripts/screenshots.mjs before|after`).
+The 18 cases without a recorded run show their labels only. It is not deployed or served anywhere and has no URL. Screenshots from before and after the redesign are in `web/docs/screenshots/` (`node scripts/screenshots.mjs before|after`). Known issues are listed in [docs/QUALITY.md](docs/QUALITY.md) under Known limitations.
 
 ```bash
 uv sync
@@ -227,7 +237,9 @@ npm run dev
 
 `npm test` fails, never skips, if `web/public/data` is missing. CI runs it as the job `web`, which also builds the site and scans the output for URL hosts outside a short allowlist.
 
-`web/scripts/check-layout.mjs` is a manual layout check, not part of CI (it needs a downloaded browser): run `npx playwright install chromium` once, then `node scripts/check-layout.mjs` from `web/`. It starts the dev server, opens every kind of route at 360, 390, 768 and 1280 px in headless Chromium, and fails if the page scrolls sideways, if any container scrolls sideways on its own, if a case page scrolls itself or its tour bar leaves the viewport, if a false-approval pill is clipped by the criteria pane, or if the first highlight is not centered in the chart panel (when the chart is on screen).
+Measured on 2026-10-21: 237 web tests in 16 files pass; the Vite build is JS 290.15 kB (87.80 kB gzip) and CSS 26.40 kB (5.97 kB gzip). The owner reports that `web` and `infra-synth` were added to the repository ruleset's required checks on 2026-10-21 (owner-reported; repository settings are not visible from the repo).
+
+`web/scripts/check-layout.mjs` is a manual layout check, not part of CI (it needs a downloaded browser): run `npx playwright install chromium` once, then `node scripts/check-layout.mjs` from `web/`. It starts the dev server, opens every kind of route (13 routes) at 360, 390, 768 and 1280 px in headless Chromium, and fails if the page scrolls sideways, if any container scrolls sideways on its own, if a case page scrolls itself or its tour bar leaves the viewport, if a false-approval pill is clipped by the criteria pane, or if the first highlight is not centered in the chart panel (when the chart is on screen).
 
 ## Roadmap
 
@@ -244,8 +256,8 @@ npm run dev
 - [x] `precertly-data` deployed (Aurora Serverless v2 at minimum capacity 0, secret, tools task); migrations applied, all 29 bundles ingested with 237 Titan calls; the database holds only the last bundle (owner-confirmed 2026-10-20)
 - [ ] AWS deployment, rest (a path to reach the API, a database-enabled API service, AgentCore): the API task has no database and there is no inbound path, so the API is not reachable and nothing is live
 - [x] Recorded-mode static export script and tests (files only; not served anywhere; checked 2026-10-20)
-- [x] Recorded-mode site in `web/` (static; reads the export; not deployed or served anywhere; checked 2026-10-20)
-- [ ] Hosting for the recorded-mode site, a live reviewer UI, MCP server, demo mode
+- [x] Recorded-mode site in `web/` (static; reads the export; not deployed or served anywhere; redesigned as an application on 2026-10-21: app shell, landing tiles, case workspace)
+- [ ] Hosting for the recorded-mode site (not built; no URL), a live reviewer UI, MCP server, demo mode
 
 ## License
 
