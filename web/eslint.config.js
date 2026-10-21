@@ -30,4 +30,9 @@ export default tseslint.config(
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },
   },
+  {
+    // Its measure() function runs inside the browser page.
+    files: ["scripts/check-layout.mjs"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
 );

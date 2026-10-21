@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { highlight, type Span } from "../lib/highlight";
+import { targetScrollTop } from "../lib/scroll";
+import { NOT_SHOWN_BADGE, SHOWN_BADGE } from "../lib/shown";
 import type { ChartChunk } from "../lib/types";
 
 /** What the viewer should scroll to: a chunk, and optionally one citation's first mark in it. */
@@ -42,13 +44,26 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/**
+ * Scrolls the viewer's own container (never the page) so `element` sits in the middle of what is
+ * visible. The sticky resource heading covers the top of the container, so it is passed as an inset.
+ */
 function scrollWithin(container: HTMLElement, element: HTMLElement): void {
-  const top =
-    element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 12;
+  const box = container.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
+  const heading = container.querySelector<HTMLElement>("h3");
+  const top = targetScrollTop({
+    containerHeight: container.clientHeight,
+    contentHeight: container.scrollHeight,
+    scrollTop: container.scrollTop,
+    // From the top of the scroll content: viewport offset, less the border, plus how far it is scrolled.
+    mark: { top: rect.top - box.top - container.clientTop + container.scrollTop, height: rect.height },
+    topInset: heading?.offsetHeight ?? 0,
+  });
   if (typeof container.scrollTo === "function") {
-    container.scrollTo({ top: Math.max(0, top), behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    container.scrollTo({ top, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   } else {
-    container.scrollTop = Math.max(0, top);
+    container.scrollTop = top;
   }
 }
 
@@ -77,6 +92,20 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
+/** Words and a border style, never colour alone: solid for given to the model, dashed for not. */
+function ShownBadge({ shown }: { shown: boolean }) {
+  return (
+    <span
+      data-shown={shown}
+      className={`shrink-0 rounded border px-1 text-xs font-medium ${
+        shown ? "border-slate-900 bg-white text-slate-900" : "border-dashed border-slate-600 bg-slate-100 text-slate-800"
+      }`}
+    >
+      {shown ? SHOWN_BADGE : NOT_SHOWN_BADGE}
+    </span>
+  );
+}
+
 function ChunkRow({
   chunk,
   index,
@@ -84,6 +113,7 @@ function ChunkRow({
   onToggle,
   spans,
   activeKey,
+  shown,
 }: {
   chunk: ChartChunk;
   index: number;
@@ -91,6 +121,8 @@ function ChunkRow({
   onToggle: () => void;
   spans: readonly Span[] | undefined;
   activeKey: number | undefined;
+  /** Whether the model was given this chunk, or null when nothing is badged. */
+  shown: boolean | null;
 }) {
   const cited = !!spans && spans.length > 0;
   const bodyId = `chunk-body-${index}`;
@@ -103,7 +135,7 @@ function ChunkRow({
         aria-expanded={open}
         aria-controls={bodyId}
         onClick={onToggle}
-        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-slate-100"
+        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 text-left text-sm hover:bg-slate-100"
       >
         <Chevron open={open} />
         <span className="shrink-0 font-medium">{name}</span>
@@ -112,10 +144,11 @@ function ChunkRow({
             highlighted
           </span>
         ) : null}
-        {!open ? <span className="truncate text-slate-700">{preview}</span> : null}
+        {shown === null ? null : <ShownBadge shown={shown} />}
+        {!open ? <span className="min-w-0 flex-1 basis-40 truncate text-slate-700">{preview}</span> : null}
       </button>
       {open ? (
-        <pre id={bodyId} className="whitespace-pre-wrap break-words px-2 pb-2 pl-7 font-sans text-sm leading-relaxed">
+        <pre id={bodyId} className="whitespace-pre-wrap wrap-anywhere px-2 pb-2 pl-7 font-sans text-sm leading-relaxed">
           <Highlighted text={chunk.text} spans={spans ?? []} activeKey={activeKey} />
         </pre>
       ) : null}
@@ -132,14 +165,36 @@ export function ChartViewer({
   chart,
   highlights,
   target,
+  requestKey = "",
+  shown = null,
 }: {
   chart: readonly ChartChunk[];
   highlights: ReadonlyMap<string, readonly Span[]>;
   target: Target;
+  /** Changes each time the reader asks to see the target, even when the target itself is the same. */
+  requestKey?: string;
+  /** Ids of the chunks the model was given for the selected criterion; null badges nothing. */
+  shown?: ReadonlySet<string> | null;
 }) {
   const groups = useMemo(() => groupChunks(chart), [chart]);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
   const container = useRef<HTMLDivElement>(null);
+
+  // A new target (say "Show in the chart" on a chunk the reader had closed) opens its chunk in the
+  // same render, so the effect below measures after the text is in the DOM.
+  const targetKey = `${target.chunkId ?? ""}|${target.citeKey ?? ""}|${requestKey}`;
+  const [seenTarget, setSeenTarget] = useState(targetKey);
+  if (seenTarget !== targetKey) {
+    setSeenTarget(targetKey);
+    const id = target.chunkId;
+    if (id !== undefined && toggled.get(id) === false) {
+      setToggled((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
 
   useEffect(() => {
     const root = container.current;
@@ -148,14 +203,15 @@ export function ChartViewer({
       (el) => el.dataset.chunkId === target.chunkId,
     );
     if (!row) return;
+    // The chunk is open in this render (see the reset above), so the marks are in the DOM and the
+    // read below lays the page out before measuring.
+    const marks = [...row.querySelectorAll<HTMLElement>("mark[data-cites]")];
     const mark =
       target.citeKey === undefined
-        ? null
-        : [...row.querySelectorAll<HTMLElement>("mark[data-cites]")].find((m) =>
-            (m.dataset.cites ?? "").split(" ").includes(String(target.citeKey)),
-          );
+        ? marks[0]
+        : marks.find((m) => (m.dataset.cites ?? "").split(" ").includes(String(target.citeKey)));
     scrollWithin(root, mark ?? row);
-  }, [target.chunkId, target.citeKey]);
+  }, [target.chunkId, target.citeKey, requestKey]);
 
   return (
     <div
@@ -184,6 +240,7 @@ export function ChartViewer({
                 open={open}
                 spans={spans}
                 activeKey={chunk.chunk_id === target.chunkId ? target.citeKey : undefined}
+                shown={shown === null ? null : shown.has(chunk.chunk_id)}
                 onToggle={() => setToggled((prev) => new Map(prev).set(chunk.chunk_id, !open))}
               />
             );

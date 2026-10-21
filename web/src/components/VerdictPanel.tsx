@@ -41,7 +41,10 @@ export function VerdictPanel({
   const link = (extra: Record<string, string>) =>
     href(["cases", caseId], { c: verdict.criterion, tour, ...extra });
   return (
-    <div className="mt-2 space-y-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm" data-testid="verdict-panel">
+    <div
+      className="mt-2 space-y-3 rounded border border-slate-300 bg-slate-50 p-3 text-sm wrap-anywhere"
+      data-testid="verdict-panel"
+    >
       <h3 className="text-base font-semibold">Recorded verdict</h3>
 
       {verdict.false_approval ? (
