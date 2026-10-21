@@ -1254,8 +1254,16 @@ def test_web_environment_wins_over_env_local(stub_bin: Path) -> None:
     _configure(stub_bin)
     result = _deploy(stub_bin, "stack", "precertly-web", env=WEB_ENV)
     assert result.returncode == 0, _output(result)
-    assert any(f"webDomain={WEB_DOMAIN}" in c for c in _calls(stub_bin))
-    assert not any("file.example.org" in c for c in _calls(stub_bin))
+    # Exactly the environment's domain reached the CDK; the .env.local one (a different
+    # hostname) did not.
+    domains = [
+        token
+        for call in _calls(stub_bin)
+        if "cdk deploy" in call
+        for token in call.split()
+        if token.startswith("webDomain=")
+    ]
+    assert domains == [f"webDomain={WEB_DOMAIN}"]
 
 
 @pytest.mark.parametrize(
