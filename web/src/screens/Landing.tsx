@@ -17,7 +17,7 @@ export function Landing() {
           Every verdict, backed by a quote from the chart.
         </h1>
         <p className="mt-4 max-w-2xl text-lg text-ink-2">
-          Precertly checks a coverage policy against a synthetic patient chart and leaves the decision to a person.
+          Precertly checks a policy against a synthetic chart. A person decides.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <a
