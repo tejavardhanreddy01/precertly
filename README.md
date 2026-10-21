@@ -207,7 +207,15 @@ As of 2026-10-20, `uv run python -m precertly.export` writes the data a static r
 
 ## Recorded-mode site (`web/`)
 
-As of 2026-10-20, `web/` holds a static single-page site (Vite, React, TypeScript, Tailwind) that reads only the files the export writes and shows recorded runs. Nothing runs when it is open: no server, no model call, no login, no analytics. It shows a cases list, a case view (criteria with outcome badges beside the chart, with each cited quote marked; the recorded verdict with who decided it, its rationale, computed facts and citations; a verdict whose quote failed verification is shown as insufficient), when a verdict is selected, each chart chunk is badged "shown to the model" or "not shown to the model" (a verdict a rule decided alone made no model call, so nothing is badged and the page says so); the first highlight is centered in the chart panel; a policy view with the verbatim CMS quotes, an about and method page with the release gates (including the one that fails) and a four-step tour. The 18 cases without a recorded run show their labels only. It is not deployed or served anywhere and has no URL yet.
+As of 2026-10-21, `web/` holds a static single-page site (Vite, React, TypeScript, Tailwind) that reads only the files the export writes and shows recorded runs. Nothing runs when it is open: no server, no model call, no login, no analytics. It is built as an application, not a document:
+
+- **Shell.** A top bar stays in view with Cases, Policies, About, a link to the repository and one chip, "Recorded runs on synthetic data", that opens the recorded run (date, prompt version, prompt hash, git, model). The full notices are on the landing page and About only. Colors, type scale, spacing, radius and shadow are tokens in one Tailwind `@theme` block in `src/index.css`, with one accent. Each verdict state (Met, Not met, Insufficient, Invalidated, False approval) is a pill with an icon and words, never color alone.
+- **Landing.** One headline, a "Start the 4-step tour" button, "Browse the cases", and four tiles (criterion accuracy, citation precision with its gate shown failing, cases correct overall, false approvals) read from `index.json`.
+- **Cases.** A table with policy filter chips; rows are fully clickable; the 18 cases without a recorded run are greyed and say "labels only, not yet scored".
+- **Case workspace.** At 1024 px and wider, a summary bar (case, policy, overall result, expected label with Correct or Incorrect, and the counts met, not met, insufficient, invalidated, wrong) over three panes that scroll on their own and never scroll the page: criteria as a compact table (the false-approval row is the strongest mark on the page), evidence (the chart with each cited quote marked, and each chunk badged "shown to the model" or "not shown to the model" for the selected criterion; the first highlight is centered in the chart panel), and the verdict (who decided it, rationale, computed facts, citations, the expected label). The tour bar is pinned to the bottom. Under 1024 px the panes sit behind a Criteria, Evidence, Verdict tab control with arrow-key support: selecting a criterion opens Verdict and a link to the chart opens Evidence. The `c`, `cite`, `res` and `tour` address parameters work as before.
+- **Policies and About** use the same shell, pills and tiles in a readable text width.
+
+The 18 cases without a recorded run show their labels only. It is not deployed or served anywhere and has no URL yet. Screenshots from before and after the redesign are in `web/docs/screenshots/` (`node scripts/screenshots.mjs before|after`).
 
 ```bash
 uv sync
@@ -219,7 +227,7 @@ npm run dev
 
 `npm test` fails, never skips, if `web/public/data` is missing. CI runs it as the job `web`, which also builds the site and scans the output for URL hosts outside a short allowlist.
 
-`web/scripts/check-layout.mjs` is a manual layout check, not part of CI (it needs a downloaded browser): run `npx playwright install chromium` once, then `node scripts/check-layout.mjs` from `web/`. It starts the dev server, opens every kind of route at 360, 390, 768 and 1280 px in headless Chromium, and fails if the page scrolls sideways, if any container scrolls sideways on its own, if a false-approval label sits beside its row's text on a narrow screen, or if the first highlight is not centered in the chart panel.
+`web/scripts/check-layout.mjs` is a manual layout check, not part of CI (it needs a downloaded browser): run `npx playwright install chromium` once, then `node scripts/check-layout.mjs` from `web/`. It starts the dev server, opens every kind of route at 360, 390, 768 and 1280 px in headless Chromium, and fails if the page scrolls sideways, if any container scrolls sideways on its own, if a case page scrolls itself or its tour bar leaves the viewport, if a false-approval pill is clipped by the criteria pane, or if the first highlight is not centered in the chart panel (when the chart is on screen).
 
 ## Roadmap
 
