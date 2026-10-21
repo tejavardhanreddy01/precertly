@@ -64,6 +64,14 @@ export const SET_TITLE: Record<string, string> = {
   "spinal-cord-stimulators": "Spinal cord stimulators",
 };
 
+/** The policy filter chips on the cases list. */
+export const SET_SHORT: Record<string, string> = {
+  facet: "Facet",
+  pap: "PAP",
+  bariatric: "Bariatric",
+  "spinal-cord-stimulators": "SCS",
+};
+
 export const SET_ORDER = ["facet", "pap", "bariatric", "spinal-cord-stimulators"];
 
 /** "pain_scale" → "pain scale". */

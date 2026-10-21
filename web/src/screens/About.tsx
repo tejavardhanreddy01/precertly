@@ -1,175 +1,163 @@
-import { tourHref } from "../content/tour";
+import { GateMark } from "../components/GateMark";
+import { IconArrowRight } from "../components/icons";
+import { Notices } from "../components/Notices";
+import { StatTiles } from "../components/StatTiles";
 import {
   DOCS_QUALITY_URL,
   GATES,
   GATES_CAVEAT,
   LIMITATIONS,
   NOTES_URL,
-  percent,
   PIPELINE,
   WHAT_IT_IS,
   WHAT_IT_IS_NOT,
-  type GateStatus,
 } from "../content/about";
+import { tourHref } from "../content/tour";
 import { useIndex } from "../lib/index-context";
 import { useTitle } from "../lib/title";
 
-const STATUS: Record<GateStatus, { text: string; style: string; icon: string }> = {
-  passes: { text: "Passes", style: "border-green-800 bg-green-50 text-green-900", icon: "M3 8.5l3.2 3.2L13 4.5" },
-  fails: { text: "Fails", style: "border-red-800 bg-red-50 text-red-900", icon: "M3.5 3.5l9 9M12.5 3.5l-9 9" },
-  reported: { text: "Reported", style: "border-slate-600 bg-slate-100 text-slate-900", icon: "M3 8h10" },
-};
-
-function StatusMark({ status }: { status: GateStatus }) {
-  const s = STATUS[status];
-  return (
-    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded border px-1.5 py-0.5 text-xs font-semibold ${s.style}`}>
-      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d={s.icon} fill="none" stroke="currentColor" strokeWidth="2" />
-      </svg>
-      {s.text}
-    </span>
-  );
-}
+const textLink = "font-medium text-accent underline underline-offset-2";
 
 export function About() {
   const { summary } = useIndex();
   useTitle("About and method");
-  const figures: [string, string][] = [
-    ["Cases scored", `${summary.cases}, of which ${summary.cases_correct} have the expected overall result`],
-    ["Criterion verdicts correct", `${summary.criteria_correct} of ${summary.scored_criteria} (${percent(summary.criterion_accuracy)})`],
-    ["False approvals", `${summary.false_approvals} of ${summary.negative_labels} criteria labeled not met or insufficient; ${summary.case_false_approvals} case approved that should not have been`],
-    ["Citation precision", `${summary.citations_in_label} of ${summary.citations} citations on a labeled resource (${percent(summary.citation_precision)})`],
-  ];
   return (
-    <article className="max-w-4xl space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold">About and method</h1>
-        <p className="mt-1">
-          <a className="underline" href={tourHref(1)}>
+    <div className="mx-auto max-w-text space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">About and method</h1>
+        <p className="mt-3">
+          <a
+            href={tourHref(1)}
+            className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent hover:bg-accent-strong"
+          >
             Take the 4-step tour
+            <IconArrowRight size={14} />
           </a>
         </p>
-      </header>
+      </div>
 
-      <section aria-labelledby="is-h" className="space-y-2">
-        <h2 id="is-h" className="text-lg font-semibold">
-          What this is, and what it is not
-        </h2>
-        {WHAT_IT_IS.map((p) => (
-          <p key={p}>{p}</p>
-        ))}
-        <ul className="list-inside list-disc space-y-1">
-          {WHAT_IT_IS_NOT.map((p) => (
-            <li key={p}>{p}</li>
+      <Notices />
+
+      <article className="space-y-8">
+        <section aria-labelledby="is-h" className="space-y-2">
+          <h2 id="is-h" className="text-lg font-semibold">
+            What this is, and what it is not
+          </h2>
+          {WHAT_IT_IS.map((p) => (
+            <p key={p}>{p}</p>
           ))}
-        </ul>
-      </section>
+          <ul className="list-inside list-disc space-y-1">
+            {WHAT_IT_IS_NOT.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        </section>
 
-      <section aria-labelledby="pipe-h">
-        <h2 id="pipe-h" className="text-lg font-semibold">
-          How a result is made, in five steps
-        </h2>
-        <ol className="mt-2 list-inside list-decimal space-y-2">
-          {PIPELINE.map((step) => (
-            <li key={step.title}>
-              <span className="font-semibold">{step.title}.</span> {step.text}
-            </li>
-          ))}
-        </ol>
-      </section>
+        <section aria-labelledby="pipe-h">
+          <h2 id="pipe-h" className="text-lg font-semibold">
+            How a result is made, in five steps
+          </h2>
+          <ol className="mt-2 list-inside list-decimal space-y-2">
+            {PIPELINE.map((step) => (
+              <li key={step.title}>
+                <span className="font-semibold">{step.title}.</span> {step.text}
+              </li>
+            ))}
+          </ol>
+        </section>
 
-      <section aria-labelledby="run-h">
-        <h2 id="run-h" className="text-lg font-semibold">
-          The recorded run
-        </h2>
-        <p className="font-semibold">Facet cases only.</p>
-        <p className="text-sm text-slate-800">
-          These numbers come from the data file this page loaded. The other 18 cases have not been scored.
-        </p>
-        <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-[auto_1fr]" data-testid="run-figures">
-          {figures.map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="font-medium text-slate-700">{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+        <section aria-labelledby="run-h">
+          <h2 id="run-h" className="text-lg font-semibold">
+            The recorded run
+          </h2>
+          <p className="font-semibold">Facet cases only.</p>
+          <p className="mb-3 text-sm text-ink-2">
+            These numbers come from the data file this page loaded. The other 18 cases have not been scored.
+          </p>
+          <StatTiles summary={summary} id="run-figures" />
+        </section>
 
-      <section aria-labelledby="gates-h">
-        <h2 id="gates-h" className="text-lg font-semibold">
-          Release gates
-        </h2>
-        <p className="text-sm text-slate-800">{GATES_CAVEAT}</p>
-        <p className="text-sm text-slate-800">
-          Thresholds are starting goals, published with the real numbers, including the failures. The table mirrors{" "}
-          <a className="underline" href={DOCS_QUALITY_URL}>
-            docs/QUALITY.md
-          </a>
-          .
-        </p>
-        <div className="mt-2 overflow-x-auto" tabIndex={0} role="region" aria-label="Release gates table, scrolls sideways on a narrow screen">
-          <table className="w-full min-w-[40rem] border-collapse text-left text-sm" data-testid="gates">
-            <caption className="sr-only">Release gates, their thresholds and the current results on the facet cases</caption>
-            <thead>
-              <tr className="border-b-2 border-slate-900">
-                <th scope="col" className="p-2">
-                  Gate
-                </th>
-                <th scope="col" className="p-2">
-                  Threshold
-                </th>
-                <th scope="col" className="p-2">
-                  Current (facet cases only)
-                </th>
-                <th scope="col" className="p-2">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {GATES.map((g) => (
-                <tr key={g.gate} className="border-b border-slate-300 align-top">
-                  <th scope="row" className="p-2 font-semibold">
-                    {g.gate}
+        <section aria-labelledby="gates-h">
+          <h2 id="gates-h" className="text-lg font-semibold">
+            Release gates
+          </h2>
+          <p className="text-sm text-ink-2">{GATES_CAVEAT}</p>
+          <p className="text-sm text-ink-2">
+            Thresholds are starting goals, published with the real numbers, including the failures. The table mirrors{" "}
+            <a className={textLink} href={DOCS_QUALITY_URL}>
+              docs/QUALITY.md
+            </a>
+            .
+          </p>
+          <div
+            className="mt-2 overflow-x-auto rounded-lg border border-line bg-surface"
+            tabIndex={0}
+            role="region"
+            aria-label="Release gates table, scrolls sideways on a narrow screen"
+          >
+            <table className="w-full min-w-[40rem] border-collapse text-left text-sm" data-testid="gates">
+              <caption className="sr-only">
+                Release gates, their thresholds and the current results on the facet cases
+              </caption>
+              <thead>
+                <tr className="border-b border-line-strong bg-sunken">
+                  <th scope="col" className="p-2 font-semibold">
+                    Gate
                   </th>
-                  <td className="p-2">{g.threshold}</td>
-                  <td className="p-2">{g.current}</td>
-                  <td className="p-2">
-                    <StatusMark status={g.status} />
-                  </td>
+                  <th scope="col" className="p-2 font-semibold">
+                    Threshold
+                  </th>
+                  <th scope="col" className="p-2 font-semibold">
+                    Current (facet cases only)
+                  </th>
+                  <th scope="col" className="p-2 font-semibold">
+                    Status
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {GATES.map((g) => (
+                  <tr key={g.gate} className="border-b border-line align-top last:border-b-0">
+                    <th scope="row" className="p-2 font-semibold">
+                      {g.gate}
+                    </th>
+                    <td className="p-2">{g.threshold}</td>
+                    <td className="p-2">{g.current}</td>
+                    <td className="p-2">
+                      <GateMark status={g.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
-      <section aria-labelledby="lim-h">
-        <h2 id="lim-h" className="text-lg font-semibold">
-          Known limitations
-        </h2>
-        <ul className="mt-2 space-y-2">
-          {LIMITATIONS.map((l) => (
-            <li key={l.title} className="rounded border border-slate-300 bg-white p-3">
-              <h3 className="font-semibold">{l.title}</h3>
-              <p className="text-sm">{l.text}</p>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2 text-sm">
-          The full list is in{" "}
-          <a className="underline" href={DOCS_QUALITY_URL}>
-            docs/QUALITY.md
-          </a>{" "}
-          and the experiment record in{" "}
-          <a className="underline" href={NOTES_URL}>
-            evals/results/NOTES.md
-          </a>
-          .
-        </p>
-      </section>
-    </article>
+        <section aria-labelledby="lim-h">
+          <h2 id="lim-h" className="text-lg font-semibold">
+            Known limitations
+          </h2>
+          <ul className="mt-2 space-y-2">
+            {LIMITATIONS.map((l) => (
+              <li key={l.title} className="rounded-lg border border-line bg-surface p-3">
+                <h3 className="font-semibold">{l.title}</h3>
+                <p className="text-sm text-ink-2">{l.text}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-sm">
+            The full list is in{" "}
+            <a className={textLink} href={DOCS_QUALITY_URL}>
+              docs/QUALITY.md
+            </a>{" "}
+            and the experiment record in{" "}
+            <a className={textLink} href={NOTES_URL}>
+              evals/results/NOTES.md
+            </a>
+            .
+          </p>
+        </section>
+      </article>
+    </div>
   );
 }

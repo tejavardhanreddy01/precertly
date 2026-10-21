@@ -41,25 +41,28 @@ function Routes() {
 
 function Shell() {
   const store = useStore();
+  const path = parseHash(useHash()).path;
+  // A case is a workspace that fills the viewport; every other page scrolls.
+  const workspace = path[0] === "cases" && path.length === 2;
   const loaded = useLoaded("index", () => store.index());
 
   if (loaded.status === "loading") {
     return (
-      <Layout withNotices={false}>
+      <Layout ready={false}>
         <Loading what="the recorded data" />
       </Layout>
     );
   }
   if (loaded.status === "error") {
     return (
-      <Layout withNotices={false}>
+      <Layout ready={false}>
         <ErrorScreen title="The recorded data could not be loaded" message={loaded.message} />
       </Layout>
     );
   }
   return (
     <IndexContext.Provider value={loaded.value}>
-      <Layout>
+      <Layout workspace={workspace}>
         <Routes />
       </Layout>
     </IndexContext.Provider>

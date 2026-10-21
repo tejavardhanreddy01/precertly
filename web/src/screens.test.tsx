@@ -9,17 +9,38 @@ import { loaded, renderAt } from "./test/render";
 const index = readIndex();
 
 describe("every screen", () => {
-  it("shows all banners, the run label and the footer", async () => {
+  it("keeps the short notice in the top bar, with the recorded run behind it", async () => {
     renderAt("#/cases");
-    const strip = await loaded();
-    for (const banner of index.banners) expect(within(strip).getByText(banner)).toBeInTheDocument();
-    const label = screen.getByTestId("run-label").textContent ?? "";
-    expect(label).toContain(index.run.run_date);
-    expect(label).toContain(`prompt version ${index.run.prompt_version}`);
-    expect(label).toContain(index.run.system_prompt_sha256.slice(0, 12));
-    expect(label).not.toContain(index.run.system_prompt_sha256.slice(0, 13));
-    expect(label).toContain(index.run.git_sha);
-    expect(label).toContain(index.run.model_id);
+    const chip = await loaded();
+    expect(chip).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(chip);
+    const details = screen.getByTestId("run-details");
+    const text = details.textContent ?? "";
+    expect(text).toContain(index.run.run_date);
+    expect(text).toContain(index.run.prompt_version);
+    expect(text).toContain(index.run.system_prompt_sha256.slice(0, 12));
+    expect(text).not.toContain(index.run.system_prompt_sha256.slice(0, 13));
+    expect(text).toContain(index.run.git_sha);
+    expect(text).toContain(index.run.model_id);
+    expect(screen.getByRole("link", { name: "Read the notices and the method" })).toHaveAttribute("href", "#/about");
+    // Escape closes it and gives the focus back to the chip.
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("run-details")).toBeNull();
+    expect(chip).toHaveFocus();
+  });
+
+  it("has a header, a main navigation, a main region and the footer on every page", async () => {
+    renderAt("#/cases");
+    await loaded();
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Cases", "Policies", "About"]);
+    expect(within(nav).getByRole("link", { name: "Cases" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(within(screen.getByRole("banner")).getByRole("link", { name: "Repository" })).toHaveAttribute(
+      "href",
+      "https://github.com/tejavardhanreddy01/precertly",
+    );
     const footer = screen.getByRole("contentinfo");
     expect(footer).toHaveTextContent("Recorded runs only. Nothing runs when you open this site.");
     expect(within(footer).getByRole("link")).toHaveAttribute(
@@ -28,51 +49,125 @@ describe("every screen", () => {
     );
   });
 
+  it("shows the full notices on the landing page and About only", async () => {
+    for (const route of ["", "#/about"]) {
+      renderAt(route);
+      const strip = await screen.findByRole("region", { name: "Notices" });
+      for (const banner of index.banners) expect(within(strip).getByText(banner)).toBeInTheDocument();
+      const label = screen.getByTestId("run-label").textContent ?? "";
+      expect(label).toContain(index.run.run_date);
+      expect(label).toContain(`prompt version ${index.run.prompt_version}`);
+      expect(label).toContain(index.run.system_prompt_sha256.slice(0, 12));
+      expect(label).not.toContain(index.run.system_prompt_sha256.slice(0, 13));
+      expect(label).toContain(index.run.git_sha);
+      expect(label).toContain(index.run.model_id);
+      // No collapse control: the notices are always open.
+      expect(within(strip).queryByRole("button")).toBeNull();
+      expect(strip.querySelector("details")).toBeNull();
+      cleanup();
+    }
+    for (const route of ["#/cases", "#/policies", "#/cases/facet-03"]) {
+      renderAt(route);
+      await loaded();
+      expect(screen.queryByRole("region", { name: "Notices" })).toBeNull();
+      cleanup();
+    }
+  });
+
   it("never claims to be live or validated", async () => {
-    renderAt("#/cases");
+    renderAt("");
     await loaded();
     const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/\blive\b/i);
     expect(text).not.toMatch(/clinically validated(?!\.)/i);
     expect(text).toMatch(/not clinically validated/i);
   });
-
-  it("keeps the notices strip free of any collapse control", async () => {
-    renderAt("#/cases");
-    const strip = await loaded();
-    expect(within(strip).queryByRole("button")).toBeNull();
-    expect(strip.querySelector("details")).toBeNull();
-  });
 });
 
 describe("landing", () => {
-  it("redirects to the first tour case and offers the tour", async () => {
+  it("offers the tour and the cases above the four tiles", async () => {
     renderAt("");
     await loaded();
-    await waitFor(() => expect(window.location.hash).toMatch(/^#\/cases\/facet-03\?.*tour=1/));
-    expect(screen.getAllByRole("link", { name: "Take the 4-step tour" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Every verdict, backed by a quote from the chart.");
+    expect(screen.getByRole("link", { name: /Start the 4-step tour/ })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/^#\/cases\/facet-03\?.*tour=1/),
+    );
+    expect(screen.getByRole("link", { name: "Browse the cases" })).toHaveAttribute("href", "#/cases");
+    // The landing page no longer redirects.
+    expect(window.location.hash).toBe("");
+    expect(screen.getAllByTestId("tile-value")).toHaveLength(4);
+  });
+
+  it("starts the tour on the first step", async () => {
+    renderAt("");
+    await loaded();
+    await userEvent.click(screen.getByRole("link", { name: /Start the 4-step tour/ }));
     expect(await screen.findByRole("heading", { level: 1, name: /facet-03/ })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Tour" })).toHaveTextContent("step 1 of 4");
   });
 });
 
 describe("cases list", () => {
-  it("groups the 29 cases by set and marks the 18 unscored", async () => {
+  const rows = () => [...document.querySelectorAll<HTMLElement>("[data-case-row]")];
+
+  it("lists the 29 cases in a table and marks the 18 unscored", async () => {
     renderAt("#/cases");
     await loaded();
-    const headings = (await screen.findAllByRole("heading", { level: 2 })).map((h) => h.textContent ?? "");
-    expect(headings.map((h) => h.replace(/\s*\(\d+ cases\)$/, ""))).toEqual([
-      "Facet joint interventions",
-      "Positive airway pressure (PAP)",
-      "Bariatric surgery",
-      "Spinal cord stimulators",
+    const table = await screen.findByTestId("cases-table");
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Case",
+      "Policy",
+      "Procedure",
+      "Expected",
+      "Recorded",
     ]);
-    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(29);
+    expect(rows()).toHaveLength(29);
     expect(screen.getAllByText("labels only, not yet scored")).toHaveLength(18);
+    expect(rows().filter((r) => r.dataset.scored === "false")).toHaveLength(18);
     expect(document.querySelectorAll('[data-correct="true"]')).toHaveLength(index.summary.cases_correct);
     expect(document.querySelectorAll('[data-correct="false"]')).toHaveLength(
       index.summary.cases - index.summary.cases_correct,
     );
+  });
+
+  it("makes each row a link to its case that covers the whole row", async () => {
+    renderAt("#/cases");
+    await loaded();
+    await screen.findByTestId("cases-table");
+    const link = within(rows()[0] as HTMLElement).getByRole("link");
+    expect(link).toHaveAttribute("href", "#/cases/facet-01");
+    expect(link.className).toContain("after:absolute");
+    expect(link.className).toContain("after:inset-0");
+    await userEvent.click(link);
+    expect(await screen.findByRole("heading", { level: 1, name: /facet-01/ })).toBeInTheDocument();
+  });
+
+  it("filters by policy with chips and says what it shows", async () => {
+    renderAt("#/cases");
+    await loaded();
+    await screen.findByTestId("cases-table");
+    const group = screen.getByRole("group", { name: "Filter by policy" });
+    const chips = within(group).getAllByRole("button");
+    expect(chips.map((c) => (c.textContent ?? "").replace(/\s+\d+$/, ""))).toEqual([
+      "All",
+      "Facet",
+      "PAP",
+      "Bariatric",
+      "SCS",
+    ]);
+    expect(chips[0]).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(within(group).getByRole("button", { name: /^Facet/ }));
+    expect(rows()).toHaveLength(11);
+    expect(rows().every((r) => r.dataset.scored === "true")).toBe(true);
+    expect(within(group).getByRole("button", { name: /^Facet/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Showing 11 of 29 cases.")).toBeInTheDocument();
+    await userEvent.click(within(group).getByRole("button", { name: /^SCS/ }));
+    expect(rows().length).toBe(index.cases.filter((c) => c.set === "spinal-cord-stimulators").length);
+    expect(rows().every((r) => r.dataset.scored === "false")).toBe(true);
+    // Pressing the chip again clears the filter.
+    await userEvent.click(within(group).getByRole("button", { name: /^SCS/ }));
+    expect(rows()).toHaveLength(29);
   });
 });
 
@@ -114,7 +209,7 @@ describe("selecting a criterion", () => {
     const row = screen.getByRole("button", { name: /chronic-axial-pain-functional-deficit/ });
     row.focus();
     await user.keyboard("{Enter}");
-    expect(row).toHaveAttribute("aria-expanded", "true");
+    expect(row).toHaveAttribute("aria-pressed", "true");
     expect(window.location.hash).toContain("c=chronic-axial-pain-functional-deficit");
     const panel = await screen.findByTestId("verdict-panel");
     expect(within(panel).getByText("Decided by the model")).toBeInTheDocument();
@@ -183,9 +278,15 @@ describe("selecting a criterion", () => {
   it("marks the false approval prominently", async () => {
     renderAt("#/cases/facet-11?c=conservative-care-failed");
     await screen.findByTestId("verdict-panel");
-    // One in the overall panel, one in the verdict panel.
-    expect(document.querySelectorAll("[data-false-approval]")).toHaveLength(2);
-    expect(screen.getAllByText(/False approval/).length).toBeGreaterThanOrEqual(2);
+    // The summary bar, the criteria row and the verdict pane each say it, as a pill or a block.
+    expect(within(screen.getByTestId("summary-bar")).getByText("False approval")).toBeInTheDocument();
+    const falseRow = document.querySelector("[data-false-approval-row]");
+    expect(falseRow).not.toBeNull();
+    expect(falseRow).toHaveAttribute("data-criterion", "conservative-care-failed");
+    expect(within(falseRow as HTMLElement).getByText("False approval")).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-false-approval-row]")).toHaveLength(1);
+    const panel = screen.getByTestId("verdict-panel");
+    expect(panel.querySelector("[data-false-approval]")).toHaveTextContent(/False approval/);
   });
 
   it("lists criteria the copilot does not judge under their stage", async () => {

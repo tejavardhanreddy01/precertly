@@ -31,8 +31,8 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
-    // Its measure() function runs inside the browser page.
-    files: ["scripts/check-layout.mjs"],
+    // Their page.evaluate callbacks run inside the browser page.
+    files: ["scripts/check-layout.mjs", "scripts/screenshots.mjs"],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 );

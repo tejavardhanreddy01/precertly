@@ -10,14 +10,14 @@ function show(value: unknown): string {
 export function RequestPanel({ request }: { request: Request }) {
   const entries = Object.entries(request).filter(([, v]) => v !== null && v !== undefined);
   return (
-    <section aria-labelledby="request-h" className="rounded border border-slate-300 bg-white p-3">
-      <h2 id="request-h" className="text-base font-semibold">
+    <section aria-labelledby="request-h" className="rounded-lg border border-line bg-surface p-4">
+      <h3 id="request-h" className="text-sm font-semibold">
         Request
-      </h2>
-      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr_auto_1fr]">
+      </h3>
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         {entries.map(([key, value]) => (
           <div key={key} className="contents">
-            <dt className="text-slate-700">{humanize(key)}</dt>
+            <dt className="text-ink-3">{humanize(key)}</dt>
             <dd className="font-medium wrap-anywhere">{show(value)}</dd>
           </div>
         ))}

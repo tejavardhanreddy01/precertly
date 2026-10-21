@@ -1,5 +1,95 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens: the one place colors, type, spacing, radius and shadow are defined. Components use
+ * the generated utilities (bg-surface, text-ink-2, border-line, text-sm, rounded-md, shadow-pop) and
+ * never a raw color; tokens.test.ts fails on a leftover palette class and checks the contrast of
+ * every text and background pair below against WCAG AA (4.5:1).
+ *
+ * One accent (indigo) marks what can be acted on. Verdict states carry their own colors, and each is
+ * always drawn with an icon and words as well (components/Pill.tsx), so no color stands alone.
+ */
+@theme {
+  /* Surfaces and lines */
+  --color-canvas: #f3f4f8;
+  --color-surface: #ffffff;
+  --color-sunken: #e9ecf2;
+  --color-line: #d6dae3;
+  --color-line-strong: #aeb5c3;
+
+  /* Text */
+  --color-ink: #11151d;
+  --color-ink-2: #384152;
+  --color-ink-3: #525c6f;
+
+  /* The accent */
+  --color-accent: #3342c0;
+  --color-accent-strong: #26329a;
+  --color-accent-soft: #e5e8fa;
+  --color-on-accent: #ffffff;
+
+  /* Verdict states: text, tint and border for each */
+  --color-met-fg: #0f5a2c;
+  --color-met-bg: #def2e5;
+  --color-met-line: #7fc197;
+  --color-notmet-fg: #8a1a1a;
+  --color-notmet-bg: #fae3e3;
+  --color-notmet-line: #dd9999;
+  --color-insufficient-fg: #6a4000;
+  --color-insufficient-bg: #fbedc8;
+  --color-insufficient-line: #dcb85f;
+  --color-invalidated-fg: #52247b;
+  --color-invalidated-bg: #ede2f7;
+  --color-invalidated-line: #bf9fdc;
+  --color-na-fg: #414a5b;
+  --color-na-bg: #e9ecf2;
+  --color-na-line: #aeb5c3;
+
+  /* A false approval is the one solid fill on the site */
+  --color-danger: #a01212;
+  --color-danger-deep: #650a0a;
+  --color-danger-tint: #fdeded;
+  --color-on-danger: #ffffff;
+
+  /* Chart text that a verdict cites */
+  --color-mark: #fde047;
+
+  /* Type: system sans for the interface, monospace only for ids, chart text and code */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.0625rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.1875rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.3125rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 2.125rem;
+  --text-3xl: 2.375rem;
+  --text-3xl--line-height: 2.625rem;
+  --text-4xl: 3.25rem;
+  --text-4xl--line-height: 3.5rem;
+
+  /* Spacing is Tailwind's 0.25rem step; these are the fixed sizes of the shell */
+  --spacing: 0.25rem;
+  --size-topbar: 3rem;
+  --container-text: 46rem;
+  --container-page: 76rem;
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.4375rem;
+  --radius-lg: 0.75rem;
+
+  /* Shadow: one for what floats over the page, one for bars pinned to its edge */
+  --shadow-pop: 0 10px 30px -8px rgb(17 21 29 / 0.28), 0 2px 6px rgb(17 21 29 / 0.1);
+  --shadow-bar: 0 -6px 18px -10px rgb(17 21 29 / 0.35);
+}
+
 :root {
   color-scheme: light;
 }
@@ -9,27 +99,30 @@ html {
 }
 
 body {
-  background: #f8fafc; /* slate-50 */
-  color: #0f172a; /* slate-900 */
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Visible focus on everything that can take it. */
-:where(a, button, summary, [tabindex]):focus-visible {
-  outline: 3px solid #1d4ed8; /* blue-700 */
+:where(a, button, summary, [tabindex], [role="tab"]):focus-visible {
+  outline: 3px solid var(--color-accent);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
 }
 
 mark {
-  background: #fde047; /* yellow-300 */
-  color: #0f172a;
+  background: var(--color-mark);
+  color: var(--color-ink);
   padding: 0 1px;
   border-radius: 2px;
 }
 
 mark[data-active="true"] {
-  outline: 2px solid #0f172a;
+  outline: 2px solid var(--color-ink);
   outline-offset: 1px;
 }
 

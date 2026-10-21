@@ -7,9 +7,10 @@
 // Without --url it starts the Vite dev server on a free local port and stops it afterwards.
 // For each width and route it loads the page, waits for the content, and compares
 // document.documentElement.scrollWidth with the viewport width, looks for containers that scroll
-// sideways on their own, and checks that a false-approval label sits below its row's text on
-// narrow widths and that the first highlight is centered in the chart panel. Exit code 1 if any
-// check fails.
+// sideways on their own, and checks that a case page does not scroll itself (its panes do), that
+// the tour bar is pinned inside the viewport, that a false-approval pill sits whole inside the
+// criteria pane, and that the first highlight is centered in the chart panel (when the chart is
+// on screen: under 1024 px it is behind the Evidence tab). Exit code 1 if any check fails.
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -28,43 +29,61 @@ if (!unscoredCriterion) throw new Error("pap-01 has no judged criterion in publi
 
 // `wait` is a selector that is present once the route has rendered what is being measured;
 // `scrollChunk` names the chunk whose first mark the page should have scrolled to.
+// `workspace` marks a case page: the page itself must not scroll and the tour bar, when there is
+// one, must sit inside the viewport.
 const ROUTES = [
-  { name: "landing (redirect target)", hash: "", wait: '[aria-label="Tour"]' },
-  { name: "cases", hash: "#/cases", wait: "h3" },
+  { name: "landing", hash: "", wait: '[data-testid="tile-value"]' },
+  { name: "cases", hash: "#/cases", wait: '[data-testid="cases-table"]' },
   {
     name: "scored case, criterion selected",
     hash: "#/cases/facet-03?c=chronic-axial-pain-functional-deficit",
     wait: '[data-testid="verdict-panel"]',
+    workspace: true,
   },
   {
     name: "false approval open (tour step 3)",
     hash: "#/cases/facet-11?c=conservative-care-failed&tour=3",
     wait: '[data-testid="verdict-panel"]',
+    workspace: true,
   },
   {
     name: "unseen resource (tour link)",
     hash: "#/cases/facet-11?c=conservative-care-failed&tour=3&res=DocumentReference%2Fnote-pt-records",
     wait: '[data-chunk-id="DocumentReference/note-pt-records#0"] mark',
     scrollChunk: "DocumentReference/note-pt-records#0",
+    workspace: true,
   },
   {
     name: "rule-decided verdict",
     hash: "#/cases/facet-02?c=two-mbbs-80pct-sustained-relief",
     wait: '[data-testid="computed-fact"]',
+    workspace: true,
   },
   {
     name: "invalidated verdict",
     hash: "#/cases/facet-01?c=no-non-facet-pathology",
     wait: '[data-testid="invalidated"]',
+    workspace: true,
   },
-  { name: "unscored case", hash: `#/cases/pap-01?c=${unscoredCriterion}`, wait: '[data-testid="label-panel"]' },
+  {
+    name: "case, nothing selected",
+    hash: "#/cases/facet-11",
+    wait: '[data-testid="summary-bar"]',
+    workspace: true,
+  },
+  {
+    name: "unscored case",
+    hash: `#/cases/pap-01?c=${unscoredCriterion}`,
+    wait: '[data-testid="label-panel"]',
+    workspace: true,
+  },
   { name: "policies", hash: "#/policies", wait: "h1" },
   { name: "policy", hash: "#/policies/facet-joint-interventions", wait: "blockquote" },
   { name: "about", hash: "#/about", wait: '[data-testid="gates"]' },
 ];
 
 // What to run in the page: the widths, and which elements stick out past the viewport edge.
-function measure(scrollChunk) {
+function measure({ scrollChunk, workspace }) {
   const viewport = document.documentElement.clientWidth;
   const scrollWidth = document.documentElement.scrollWidth;
   const label = (el) => {
@@ -90,15 +109,33 @@ function measure(scrollChunk) {
       inner.push({ el: label(el), right: el.scrollWidth, text: (el.textContent ?? "").trim().slice(0, 40) });
     }
   }
-  // Below the sm breakpoint a row's false-approval label sits under the criterion text.
-  let falseApprovalBeside = false;
-  if (viewport < 640) {
-    for (const row of document.querySelectorAll("[data-criterion]")) {
-      const marker = [...row.querySelectorAll("button > span")].find((s) => /false approval/i.test(s.textContent ?? ""));
-      const text = row.querySelector("button > span.flex-1");
-      if (marker && text && marker.getBoundingClientRect().top < text.getBoundingClientRect().bottom - 1) {
-        falseApprovalBeside = true;
-      }
+  // A false-approval pill must sit whole inside the criteria pane, beside some visible criterion text.
+  // The row is in the page at every width but only on screen when the criteria pane is.
+  let falseApprovalClipped = false;
+  for (const row of document.querySelectorAll("[data-false-approval-row]")) {
+    const pill = row.querySelector('[data-outcome="false_approval"]');
+    const pane = row.closest("section");
+    const text = row.querySelector("button");
+    if (!pill || !pane || pane.getBoundingClientRect().width === 0) continue;
+    const p = pill.getBoundingClientRect();
+    const box = pane.getBoundingClientRect();
+    if (p.right > box.right + 0.5 || p.left < box.left - 0.5 || (text?.getBoundingClientRect().width ?? 0) < 40) {
+      falseApprovalClipped = true;
+    }
+  }
+  // A case page fills the viewport and its panes scroll; the page itself does not. The tour bar is
+  // pinned inside the viewport.
+  let workspaceProblem = null;
+  if (workspace) {
+    const doc = document.documentElement;
+    if (doc.scrollHeight > doc.clientHeight + 1) workspaceProblem = `the page scrolls (${doc.scrollHeight} px tall in ${doc.clientHeight})`;
+    const tour = document.querySelector('nav[aria-label="Tour"]');
+    if (!workspaceProblem && tour && tour.getBoundingClientRect().bottom > doc.clientHeight + 1) {
+      workspaceProblem = "the tour bar is below the viewport";
+    }
+    if (!workspaceProblem && viewport >= 1024) {
+      const panes = ["criteria", "evidence", "verdict"].map((id) => document.getElementById(`pane-${id}`)?.getBoundingClientRect());
+      if (panes.some((r) => !r || r.width < 200 || r.height < 100)) workspaceProblem = "a pane is missing or too small";
     }
   }
   // The first highlighted mark should sit in the middle of the chart panel, clear of its sticky
@@ -110,7 +147,8 @@ function measure(scrollChunk) {
     ? [...(viewer?.querySelectorAll("[data-chunk-id]") ?? [])].find((el) => el.dataset.chunkId === scrollChunk)
     : viewer;
   const mark = scope?.querySelector('mark[data-active="true"]') ?? scope?.querySelector("mark");
-  if (viewer && mark) {
+  // Under 1024 px the chart is behind the Evidence tab and has no size to measure.
+  if (viewer && viewer.clientHeight > 0 && mark) {
     const box = viewer.getBoundingClientRect();
     const rect = mark.getBoundingClientRect();
     const inset = viewer.querySelector("h3")?.getBoundingClientRect().height ?? 0;
@@ -125,7 +163,7 @@ function measure(scrollChunk) {
       top: Math.round(rect.top - visibleTop),
     };
   }
-  return { viewport, scrollWidth, wide: wide.slice(0, 6), inner: inner.slice(0, 6), falseApprovalBeside, scroll };
+  return { viewport, scrollWidth, wide: wide.slice(0, 6), inner: inner.slice(0, 6), falseApprovalClipped, workspaceProblem, scroll };
 }
 
 // A mark that fits the visible area is centered within 12 px (or the content ends first); one taller
@@ -172,10 +210,10 @@ async function main() {
           // Let fonts, the smooth scroll and any layout after the first paint settle.
           await page.evaluate(() => document.fonts?.ready);
           await page.waitForTimeout(400);
-          const m = await page.evaluate(measure, route.scrollChunk ?? null);
+          const m = await page.evaluate(measure, { scrollChunk: route.scrollChunk ?? null, workspace: route.workspace === true });
           const badScroll = m.scroll !== null && scrollProblem(m.scroll) !== null;
-          const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.falseApprovalBeside || badScroll;
-          const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.falseApprovalBeside ? " BESIDE" : badScroll ? " SCROLL" : "";
+          const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.falseApprovalClipped || m.workspaceProblem !== null || badScroll;
+          const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.falseApprovalClipped ? " PILL" : m.workspaceProblem !== null ? " PAGE" : badScroll ? " SCROLL" : "";
           cells.push(`${m.scrollWidth}/${m.viewport}${flag}`);
           if (over) failures.push({ route: route.name, width, ...m });
         } finally {
@@ -190,7 +228,7 @@ async function main() {
   }
 
   const col = 20;
-  console.log(`scrollWidth/viewport at ${WIDTHS.join(", ")} px (OVER = page scrolls sideways, CLIP = a container scrolls sideways, BESIDE = false-approval label beside its text, SCROLL = first highlight not centered in the chart panel)`);
+  console.log(`scrollWidth/viewport at ${WIDTHS.join(", ")} px (OVER = page scrolls sideways, CLIP = a container scrolls sideways, PILL = false-approval pill clipped, PAGE = a case page scrolls itself or its tour bar or panes are off, SCROLL = first highlight not centered in the chart panel)`);
   console.log("route".padEnd(36) + WIDTHS.map((w) => String(w).padEnd(col)).join(""));
   for (const r of rows) console.log(r.route.padEnd(36) + r.cells.map((c) => c.padEnd(col)).join(""));
 
@@ -201,11 +239,12 @@ async function main() {
       for (const w of f.wide) console.error(`    right edge ${w.right}: ${w.el} "${w.text}"`);
       for (const w of f.inner) console.error(`    scrolls sideways inside (content ${w.right}): ${w.el} "${w.text}"`);
       if (f.scroll && scrollProblem(f.scroll)) console.error(`    chart scroll: ${scrollProblem(f.scroll)}`);
-      if (f.falseApprovalBeside) console.error("    a FALSE APPROVAL label sits beside its criterion text, not below it");
+      if (f.falseApprovalClipped) console.error("    the FALSE APPROVAL pill is clipped by the criteria pane or leaves no room for the text");
+      if (f.workspaceProblem) console.error(`    case page: ${f.workspaceProblem}`);
     }
     process.exit(1);
   }
-  console.log("\ncheck-layout: no horizontal overflow, and the first highlight is centered in the chart panel.");
+  console.log("\ncheck-layout: no horizontal overflow, case pages do not scroll themselves, and the first highlight is centered in the chart panel.");
 }
 
 main().catch((error) => {
