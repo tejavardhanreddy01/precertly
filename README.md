@@ -237,7 +237,7 @@ npm run dev
 
 `npm test` fails, never skips, if `web/public/data` is missing. CI runs it as the job `web`, which also builds the site and scans the output for URL hosts outside a short allowlist.
 
-Measured on 2026-10-21: 237 web tests in 16 files pass; the Vite build is JS 290.15 kB (87.80 kB gzip) and CSS 26.40 kB (5.97 kB gzip). The owner reports that `web` and `infra-synth` were added to the repository ruleset's required checks on 2026-10-21 (owner-reported; repository settings are not visible from the repo).
+Measured on 2026-10-21: 237 web tests in 16 files pass.
 
 `web/scripts/check-layout.mjs` is a manual layout check, not part of CI (it needs a downloaded browser): run `npx playwright install chromium` once, then `node scripts/check-layout.mjs` from `web/`. It starts the dev server, opens every kind of route (13 routes) at 360, 390, 768 and 1280 px in headless Chromium, and fails if the page scrolls sideways, if any container scrolls sideways on its own, if a case page scrolls itself or its tour bar leaves the viewport, if a false-approval pill is clipped by the criteria pane, or if the first highlight is not centered in the chart panel (when the chart is on screen).
 
