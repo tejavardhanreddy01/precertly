@@ -1,5 +1,8 @@
 // Scans the built site for absolute URLs and fails on any outside a short allowlist, so a
-// dependency cannot quietly add a request to another host. Run after `npm run build`.
+// dependency cannot quietly add a request to another host. It also fails on anything a strict
+// Content Security Policy (default-src 'none'; script-src 'self'; style-src 'self') would block:
+// an inline script or style, a style or event-handler attribute in HTML, or a data: URI in CSS.
+// Run after `npm run build`.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative } from "node:path";
 
@@ -56,13 +59,23 @@ for (const file of files) {
       failures.push(`${relative(dist, file)}: ${match[0]}`);
     }
   }
+  if (extname(file) === ".html") {
+    const rel = relative(dist, file);
+    if (/<script\b(?![^>]*\bsrc\s*=)/i.test(text)) failures.push(`${rel}: inline script`);
+    if (/<style\b/i.test(text)) failures.push(`${rel}: inline style element`);
+    if (/<[a-z][^>]*\sstyle\s*=/i.test(text)) failures.push(`${rel}: style attribute`);
+    if (/<[a-z][^>]*\son[a-z]+\s*=/i.test(text)) failures.push(`${rel}: inline event handler`);
+  }
+  if (extname(file) === ".css" && /url\(\s*["']?data:/i.test(text)) {
+    failures.push(`${relative(dist, file)}: data: URI (the CSP img-src and font-src would need data:)`);
+  }
   if (extname(file) === ".html" && /(?:src|href)\s*=\s*["']\/\//.test(text)) {
     failures.push(`${relative(dist, file)}: protocol-relative URL`);
   }
 }
 
 if (failures.length > 0) {
-  console.error("Hosts outside the allowlist:");
+  console.error("check-dist failed:");
   for (const f of failures) console.error(`  ${f}`);
   process.exit(1);
 }

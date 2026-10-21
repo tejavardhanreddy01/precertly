@@ -10,7 +10,8 @@ export interface TabItem<T extends string> {
 /**
  * A segmented control that follows the tabs pattern: one tab is in the tab order, the arrow keys
  * move between tabs (wrapping), Home and End jump to the first and last, and the focused tab is
- * selected at once.
+ * selected at once. The tabs share one row in equal columns through utility classes, not an inline
+ * style, so the page needs no `style-src 'unsafe-inline'`.
  */
 export function SegmentedTabs<T extends string>({
   tabs,
@@ -53,8 +54,7 @@ export function SegmentedTabs<T extends string>({
       role="tablist"
       aria-label={label}
       onKeyDown={onKeyDown}
-      className="grid shrink-0 gap-1 rounded-lg bg-sunken p-1"
-      style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+      className="grid shrink-0 auto-cols-fr grid-flow-col gap-1 rounded-lg bg-sunken p-1"
     >
       {tabs.map((tab) => {
         const selected = tab.id === value;
