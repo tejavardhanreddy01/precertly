@@ -77,8 +77,8 @@
   /* Spacing is Tailwind's 0.25rem step; these are the fixed sizes of the shell */
   --spacing: 0.25rem;
   --size-topbar: 3rem;
-  --size-text-width: 46rem;
-  --size-page-width: 72rem;
+  --container-text: 46rem;
+  --container-page: 76rem;
 
   /* Radius */
   --radius-sm: 0.25rem;

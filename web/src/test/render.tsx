@@ -9,7 +9,22 @@ export function renderAt(hash: string, store = new DataStore(diskFetch())) {
   return render(<App store={store} />);
 }
 
-/** Waits for the notices strip, which appears once index.json has loaded. */
+/** Waits for the run chip in the top bar, which appears once index.json has loaded. */
 export async function loaded() {
-  return screen.findByRole("region", { name: "Notices" });
+  return screen.findByRole("button", { name: /Recorded runs on synthetic data/ });
+}
+
+/** Makes the page a narrow screen (under 1024 px), where a case shows tabs instead of three panes. */
+export function narrowScreen() {
+  window.matchMedia = ((query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList) as typeof window.matchMedia;
 }

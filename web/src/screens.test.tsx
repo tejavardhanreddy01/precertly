@@ -9,17 +9,38 @@ import { loaded, renderAt } from "./test/render";
 const index = readIndex();
 
 describe("every screen", () => {
-  it("shows all banners, the run label and the footer", async () => {
+  it("keeps the short notice in the top bar, with the recorded run behind it", async () => {
     renderAt("#/cases");
-    const strip = await loaded();
-    for (const banner of index.banners) expect(within(strip).getByText(banner)).toBeInTheDocument();
-    const label = screen.getByTestId("run-label").textContent ?? "";
-    expect(label).toContain(index.run.run_date);
-    expect(label).toContain(`prompt version ${index.run.prompt_version}`);
-    expect(label).toContain(index.run.system_prompt_sha256.slice(0, 12));
-    expect(label).not.toContain(index.run.system_prompt_sha256.slice(0, 13));
-    expect(label).toContain(index.run.git_sha);
-    expect(label).toContain(index.run.model_id);
+    const chip = await loaded();
+    expect(chip).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(chip);
+    const details = screen.getByTestId("run-details");
+    const text = details.textContent ?? "";
+    expect(text).toContain(index.run.run_date);
+    expect(text).toContain(index.run.prompt_version);
+    expect(text).toContain(index.run.system_prompt_sha256.slice(0, 12));
+    expect(text).not.toContain(index.run.system_prompt_sha256.slice(0, 13));
+    expect(text).toContain(index.run.git_sha);
+    expect(text).toContain(index.run.model_id);
+    expect(screen.getByRole("link", { name: "Read the notices and the method" })).toHaveAttribute("href", "#/about");
+    // Escape closes it and gives the focus back to the chip.
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("run-details")).toBeNull();
+    expect(chip).toHaveFocus();
+  });
+
+  it("has a header, a main navigation, a main region and the footer on every page", async () => {
+    renderAt("#/cases");
+    await loaded();
+    expect(screen.getByRole("banner")).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    expect(within(nav).getAllByRole("link").map((a) => a.textContent)).toEqual(["Cases", "Policies", "About"]);
+    expect(within(nav).getByRole("link", { name: "Cases" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(within(screen.getByRole("banner")).getByRole("link", { name: "Repository" })).toHaveAttribute(
+      "href",
+      "https://github.com/tejavardhanreddy01/precertly",
+    );
     const footer = screen.getByRole("contentinfo");
     expect(footer).toHaveTextContent("Recorded runs only. Nothing runs when you open this site.");
     expect(within(footer).getByRole("link")).toHaveAttribute(
@@ -28,29 +49,60 @@ describe("every screen", () => {
     );
   });
 
+  it("shows the full notices on the landing page and About only", async () => {
+    for (const route of ["", "#/about"]) {
+      renderAt(route);
+      const strip = await screen.findByRole("region", { name: "Notices" });
+      for (const banner of index.banners) expect(within(strip).getByText(banner)).toBeInTheDocument();
+      const label = screen.getByTestId("run-label").textContent ?? "";
+      expect(label).toContain(index.run.run_date);
+      expect(label).toContain(`prompt version ${index.run.prompt_version}`);
+      expect(label).toContain(index.run.system_prompt_sha256.slice(0, 12));
+      expect(label).not.toContain(index.run.system_prompt_sha256.slice(0, 13));
+      expect(label).toContain(index.run.git_sha);
+      expect(label).toContain(index.run.model_id);
+      // No collapse control: the notices are always open.
+      expect(within(strip).queryByRole("button")).toBeNull();
+      expect(strip.querySelector("details")).toBeNull();
+      cleanup();
+    }
+    for (const route of ["#/cases", "#/policies", "#/cases/facet-03"]) {
+      renderAt(route);
+      await loaded();
+      expect(screen.queryByRole("region", { name: "Notices" })).toBeNull();
+      cleanup();
+    }
+  });
+
   it("never claims to be live or validated", async () => {
-    renderAt("#/cases");
+    renderAt("");
     await loaded();
     const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/\blive\b/i);
     expect(text).not.toMatch(/clinically validated(?!\.)/i);
     expect(text).toMatch(/not clinically validated/i);
   });
-
-  it("keeps the notices strip free of any collapse control", async () => {
-    renderAt("#/cases");
-    const strip = await loaded();
-    expect(within(strip).queryByRole("button")).toBeNull();
-    expect(strip.querySelector("details")).toBeNull();
-  });
 });
 
 describe("landing", () => {
-  it("redirects to the first tour case and offers the tour", async () => {
+  it("offers the tour and the cases above the four tiles", async () => {
     renderAt("");
     await loaded();
-    await waitFor(() => expect(window.location.hash).toMatch(/^#\/cases\/facet-03\?.*tour=1/));
-    expect(screen.getAllByRole("link", { name: "Take the 4-step tour" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Every verdict, backed by a quote from the chart.");
+    expect(screen.getByRole("link", { name: /Start the 4-step tour/ })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/^#\/cases\/facet-03\?.*tour=1/),
+    );
+    expect(screen.getByRole("link", { name: "Browse the cases" })).toHaveAttribute("href", "#/cases");
+    // The landing page no longer redirects.
+    expect(window.location.hash).toBe("");
+    expect(screen.getAllByTestId("tile-value")).toHaveLength(4);
+  });
+
+  it("starts the tour on the first step", async () => {
+    renderAt("");
+    await loaded();
+    await userEvent.click(screen.getByRole("link", { name: /Start the 4-step tour/ }));
     expect(await screen.findByRole("heading", { level: 1, name: /facet-03/ })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Tour" })).toHaveTextContent("step 1 of 4");
   });
