@@ -31,6 +31,13 @@ describe("SegmentedTabs", () => {
     expect(tab("Evidence")).toHaveAttribute("aria-controls", "pane-evidence");
   });
 
+  it("lays the tabs out in equal columns without an inline style", () => {
+    render(<Harness />);
+    const list = screen.getByRole("tablist");
+    expect(list).not.toHaveAttribute("style");
+    expect(list).toHaveClass("grid", "grid-flow-col", "auto-cols-fr");
+  });
+
   it("Tab reaches the selected tab and leaves the control in one more press", async () => {
     render(
       <>
