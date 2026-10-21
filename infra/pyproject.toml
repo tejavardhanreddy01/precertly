@@ -29,7 +29,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.pyright]
-include = ["app.py", "base_stack.py", "names.py", "precertly_stack.py", "tests"]
+include = ["app.py", "base_stack.py", "names.py", "precertly_stack.py", "web_stack.py", "tests"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 venvPath = "."

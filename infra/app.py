@@ -1,6 +1,7 @@
-"""CDK app for Precertly: three stacks, precertly-base, precertly-app and precertly-data.
+"""CDK app for Precertly: four stacks (base, app, data and web, all named precertly-<name>).
 
 precertly-data depends on precertly-app (its VPC); precertly-app never refers to it.
+precertly-web (the static site on S3 and CloudFront) stands alone.
 
 The stacks are environment-agnostic: no account or region is set, so synthesis needs no
 credentials and makes no lookups. Availability zones are fixed for the same reason.
@@ -14,10 +15,17 @@ from app_stack import IMAGE_TAG_CONTEXT_KEY, AppStack, validate_image_tag
 from base_stack import BUDGET_EMAIL_CONTEXT_KEY, BaseStack
 from data_stack import DataStack
 from precertly_stack import AVAILABILITY_ZONES, PrecertlyStack
+from web_stack import (
+    WEB_CERTIFICATE_ARN_CONTEXT_KEY,
+    WEB_DOMAIN_CONTEXT_KEY,
+    WebStack,
+    validate_certificate_arn,
+    validate_web_domain,
+)
 
 __all__ = ["AVAILABILITY_ZONES", "STACK_NAMES", "PrecertlyStack", "build_app"]
 
-STACK_NAMES = ("precertly-base", "precertly-app", "precertly-data")
+STACK_NAMES = ("precertly-base", "precertly-app", "precertly-data", "precertly-web")
 # Availability zones are fixed on purpose (see the module docstring), so the CDK's advice to
 # avoid hard-coded zones does not apply.
 FIXED_AZ_RULE = cdk.Acknowledgment(
@@ -38,6 +46,12 @@ def build_app(context: dict[str, Any] | None = None) -> cdk.App:
         )
     # Required for every stack, because one `cdk deploy <name>` still runs the whole app.
     image_tag = validate_image_tag(app.node.try_get_context(IMAGE_TAG_CONTEXT_KEY))
+    # Likewise required for every stack. Never committed: scripts/deploy.sh reads them from the
+    # environment or .env.local, and CI and the tests pass clearly fake placeholders.
+    web_domain = validate_web_domain(app.node.try_get_context(WEB_DOMAIN_CONTEXT_KEY))
+    web_certificate_arn = validate_certificate_arn(
+        app.node.try_get_context(WEB_CERTIFICATE_ARN_CONTEXT_KEY)
+    )
     BaseStack(app, "precertly-base", budget_email=email.strip())
     app_stack = AppStack(app, "precertly-app", image_tag=image_tag)
     cdk.Validations.of(app_stack).acknowledge(FIXED_AZ_RULE)
@@ -50,6 +64,7 @@ def build_app(context: dict[str, Any] | None = None) -> cdk.App:
         database_subnets=app_stack.database_subnets,
         tools_subnets=app_stack.public_subnets,
     )
+    WebStack(app, "precertly-web", domain=web_domain, certificate_arn=web_certificate_arn)
     return app
 
 

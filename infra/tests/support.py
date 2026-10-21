@@ -11,6 +11,12 @@ CDK_JSON_CONTEXT: dict[str, Any] = json.loads(_CDK_JSON.read_text())["context"]
 
 EMAIL = "ci@example.invalid"
 IMAGE_TAG = "sha-000000000000"
+# Placeholders that CI, scripts/deploy.sh (for the other stacks) and these tests share; the
+# domain is reserved (RFC 2606) and the account and certificate ids are all zeros.
+WEB_DOMAIN = "site.example.invalid"
+WEB_CERTIFICATE_ARN = (
+    "arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000"
+)
 
 
 def context(**extra: Any) -> dict[str, Any]:
@@ -19,6 +25,8 @@ def context(**extra: Any) -> dict[str, Any]:
         **CDK_JSON_CONTEXT,
         "budgetEmail": EMAIL,
         "imageTag": IMAGE_TAG,
+        "webDomain": WEB_DOMAIN,
+        "webCertificateArn": WEB_CERTIFICATE_ARN,
     }
     merged.update(extra)
     return {k: v for k, v in merged.items() if v is not None}
