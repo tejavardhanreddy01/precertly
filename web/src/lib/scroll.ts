@@ -1,4 +1,4 @@
-/** Space kept above a mark that is too tall to center, in pixels. */
+/** Space kept above a mark that is taller than the visible area, in pixels. */
 export const MARK_MARGIN = 24;
 
 export interface ScrollInput {
@@ -16,16 +16,17 @@ export interface ScrollInput {
 
 /**
  * Where to set scrollTop so the first highlighted mark is centered in the visible part of the
- * container, with context above and below it. A mark that does not fit with MARK_MARGIN above and
- * below it is aligned with its top MARK_MARGIN under the pinned area instead. The result is
- * rounded and clamped to the scrollable range; with no mark the current position is kept.
+ * container (the container less the pinned area). A mark that fits there, even with no room to spare,
+ * is centered so all of it is visible. Only a mark taller than the visible area is aligned with its
+ * top MARK_MARGIN under the pinned area instead. The result is rounded and clamped to the
+ * scrollable range; with no mark the current position is kept.
  */
 export function targetScrollTop({ containerHeight, contentHeight, scrollTop, mark, topInset = 0 }: ScrollInput): number {
   const max = Math.max(0, contentHeight - containerHeight);
   const clamp = (value: number) => Math.min(max, Math.max(0, Math.round(value)));
   if (!mark) return clamp(scrollTop);
   const visible = Math.max(0, containerHeight - topInset);
-  if (mark.height + 2 * MARK_MARGIN <= visible) {
+  if (mark.height <= visible) {
     // The mark's center goes to the center of the visible area.
     return clamp(mark.top + mark.height / 2 - (topInset + visible / 2));
   }

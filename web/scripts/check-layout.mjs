@@ -121,14 +121,15 @@ function measure(scrollChunk) {
       offCenter: Math.round(rect.top + rect.height / 2 - (visibleTop + visibleBottom) / 2),
       clamped,
       under: rect.top < visibleTop - 1 || (rect.height <= visibleBottom - visibleTop && rect.bottom > visibleBottom + 1),
-      tall: rect.height + 48 > visibleBottom - visibleTop,
+      tall: rect.height > visibleBottom - visibleTop,
       top: Math.round(rect.top - visibleTop),
     };
   }
   return { viewport, scrollWidth, wide: wide.slice(0, 6), inner: inner.slice(0, 6), falseApprovalBeside, scroll };
 }
 
-// A mark that fits is centered within 12 px (or the content ends first); a taller one starts at least 24 px down.
+// A mark that fits the visible area is centered within 12 px (or the content ends first); one taller
+// than the visible area starts at least 24 px down. This is the same threshold as targetScrollTop.
 function scrollProblem(sc) {
   if (sc.under) return "the first mark is cut off by the panel edge or its sticky heading";
   if (sc.tall) return sc.top >= 24 || sc.clamped ? null : `a tall mark starts ${sc.top} px below the heading, not 24`;
