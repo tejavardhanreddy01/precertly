@@ -11,9 +11,9 @@ def _stacks(app: cdk.App) -> dict[str, PrecertlyStack]:
     return {name: stack for name, stack in found.items() if isinstance(stack, PrecertlyStack)}
 
 
-def test_three_stacks_exist() -> None:
+def test_four_stacks_exist() -> None:
     assert tuple(_stacks(build_app(CONTEXT))) == STACK_NAMES
-    assert STACK_NAMES == ("precertly-base", "precertly-app", "precertly-data")
+    assert STACK_NAMES == ("precertly-base", "precertly-app", "precertly-data", "precertly-web")
 
 
 def test_stacks_have_no_hard_coded_account_or_region() -> None:
@@ -43,3 +43,4 @@ def test_data_stack_depends_on_app_and_the_app_never_on_data() -> None:
     assert dependencies["precertly-data"] == {"precertly-app"}
     assert dependencies["precertly-app"] == set()
     assert dependencies["precertly-base"] == set()
+    assert dependencies["precertly-web"] == set()

@@ -186,9 +186,13 @@ jobs:
           AWS_ENDPOINT_URL: http://127.0.0.1:9
           AWS_EC2_METADATA_DISABLED: "true"
         run: |
-          npx --no-install cdk synth --no-lookups -c budgetEmail=ci@example.invalid -c imageTag=sha-000000000000
-          npx --no-install cdk ls -c budgetEmail=ci@example.invalid -c imageTag=sha-000000000000 | tee stacks.txt
-          [ "$(sort stacks.txt | tr '\n' ' ')" = "precertly-app precertly-base precertly-data " ]
+          # Placeholders only: the real domain and certificate ARN are never committed.
+          ctx=(-c budgetEmail=ci@example.invalid -c imageTag=sha-000000000000
+               -c webDomain=site.example.invalid
+               -c webCertificateArn=arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000)
+          npx --no-install cdk synth --no-lookups "${ctx[@]}"
+          npx --no-install cdk ls "${ctx[@]}" | tee stacks.txt
+          [ "$(sort stacks.txt | tr '\n' ' ')" = "precertly-app precertly-base precertly-data precertly-web " ]
 
   # The recorded-mode site. It reads only the files the Python export writes, so the job builds
   # them first. No credentials, no AWS, no model calls.
