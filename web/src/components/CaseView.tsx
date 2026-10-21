@@ -303,6 +303,7 @@ export function CaseView({ file, row, route }: { file: CaseFile; row: CaseRow; r
             chart={file.chart}
             highlights={highlights}
             target={target}
+            requestKey={cite === null ? "" : String(cite)}
           />
         </section>
       </div>

@@ -142,6 +142,25 @@ describe("selecting a criterion", () => {
     await waitFor(() => expect(document.querySelector('mark[data-active="true"]')).not.toBeNull());
   });
 
+  it("reopens a cited chunk the reader closed when a citation link points at it", async () => {
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo as unknown as typeof Element.prototype.scrollTo;
+    renderAt("#/cases/facet-03?c=chronic-axial-pain-functional-deficit");
+    const panel = await screen.findByTestId("verdict-panel");
+    const viewer = screen.getByTestId("chart-viewer");
+    const openButton = () => viewer.querySelector<HTMLElement>('[data-cited="true"] button[aria-expanded]');
+    const user = userEvent.setup();
+    await user.click(openButton() as HTMLElement);
+    expect(viewer.querySelector("mark")).toBeNull();
+    scrollTo.mockClear();
+    await user.click(within(panel).getAllByRole("link", { name: "Show in the chart" })[0] as HTMLElement);
+    await waitFor(() => expect(document.querySelector('mark[data-active="true"]')).not.toBeNull());
+    // The chunk was open before the scroll was computed: one call, with a whole-pixel position.
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    const arg = scrollTo.mock.calls[0]?.[0] as { top: number };
+    expect(Number.isInteger(arg.top)).toBe(true);
+  });
+
   it("explains a verdict a rule decided and shows its computed fact", async () => {
     renderAt("#/cases/facet-02?c=two-mbbs-80pct-sustained-relief");
     const panel = await screen.findByTestId("verdict-panel");

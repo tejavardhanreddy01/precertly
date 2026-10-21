@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { highlight, type Span } from "../lib/highlight";
+import { targetScrollTop } from "../lib/scroll";
 import type { ChartChunk } from "../lib/types";
 
 /** What the viewer should scroll to: a chunk, and optionally one citation's first mark in it. */
@@ -42,13 +43,26 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/**
+ * Scrolls the viewer's own container (never the page) so `element` sits in the middle of what is
+ * visible. The sticky resource heading covers the top of the container, so it is passed as an inset.
+ */
 function scrollWithin(container: HTMLElement, element: HTMLElement): void {
-  const top =
-    element.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 12;
+  const box = container.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
+  const heading = container.querySelector<HTMLElement>("h3");
+  const top = targetScrollTop({
+    containerHeight: container.clientHeight,
+    contentHeight: container.scrollHeight,
+    scrollTop: container.scrollTop,
+    // From the top of the scroll content: viewport offset, less the border, plus how far it is scrolled.
+    mark: { top: rect.top - box.top - container.clientTop + container.scrollTop, height: rect.height },
+    topInset: heading?.offsetHeight ?? 0,
+  });
   if (typeof container.scrollTo === "function") {
-    container.scrollTo({ top: Math.max(0, top), behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    container.scrollTo({ top, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   } else {
-    container.scrollTop = Math.max(0, top);
+    container.scrollTop = top;
   }
 }
 
@@ -132,14 +146,33 @@ export function ChartViewer({
   chart,
   highlights,
   target,
+  requestKey = "",
 }: {
   chart: readonly ChartChunk[];
   highlights: ReadonlyMap<string, readonly Span[]>;
   target: Target;
+  /** Changes each time the reader asks to see the target, even when the target itself is the same. */
+  requestKey?: string;
 }) {
   const groups = useMemo(() => groupChunks(chart), [chart]);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
   const container = useRef<HTMLDivElement>(null);
+
+  // A new target (say "Show in the chart" on a chunk the reader had closed) opens its chunk in the
+  // same render, so the effect below measures after the text is in the DOM.
+  const targetKey = `${target.chunkId ?? ""}|${target.citeKey ?? ""}|${requestKey}`;
+  const [seenTarget, setSeenTarget] = useState(targetKey);
+  if (seenTarget !== targetKey) {
+    setSeenTarget(targetKey);
+    const id = target.chunkId;
+    if (id !== undefined && toggled.get(id) === false) {
+      setToggled((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
 
   useEffect(() => {
     const root = container.current;
@@ -148,14 +181,15 @@ export function ChartViewer({
       (el) => el.dataset.chunkId === target.chunkId,
     );
     if (!row) return;
+    // The chunk is open in this render (see the reset above), so the marks are in the DOM and the
+    // read below lays the page out before measuring.
+    const marks = [...row.querySelectorAll<HTMLElement>("mark[data-cites]")];
     const mark =
       target.citeKey === undefined
-        ? null
-        : [...row.querySelectorAll<HTMLElement>("mark[data-cites]")].find((m) =>
-            (m.dataset.cites ?? "").split(" ").includes(String(target.citeKey)),
-          );
+        ? marks[0]
+        : marks.find((m) => (m.dataset.cites ?? "").split(" ").includes(String(target.citeKey)));
     scrollWithin(root, mark ?? row);
-  }, [target.chunkId, target.citeKey]);
+  }, [target.chunkId, target.citeKey, requestKey]);
 
   return (
     <div

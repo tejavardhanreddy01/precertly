@@ -8,7 +8,8 @@
 // For each width and route it loads the page, waits for the content, and compares
 // document.documentElement.scrollWidth with the viewport width, looks for containers that scroll
 // sideways on their own, and checks that a false-approval label sits below its row's text on
-// narrow widths. Exit code 1 if any check fails.
+// narrow widths and that the first highlight is centered in the chart panel. Exit code 1 if any
+// check fails.
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -93,7 +94,35 @@ function measure() {
       }
     }
   }
-  return { viewport, scrollWidth, wide: wide.slice(0, 6), inner: inner.slice(0, 6), falseApprovalBeside };
+  // The first highlighted mark should sit in the middle of the chart panel, clear of its sticky
+  // heading, unless the content is too short to scroll that far.
+  let scroll = null;
+  const viewer = document.querySelector('[data-testid="chart-viewer"]');
+  const mark = viewer?.querySelector('mark[data-active="true"]') ?? viewer?.querySelector("mark");
+  if (viewer && mark) {
+    const box = viewer.getBoundingClientRect();
+    const rect = mark.getBoundingClientRect();
+    const inset = viewer.querySelector("h3")?.getBoundingClientRect().height ?? 0;
+    const visibleTop = box.top + viewer.clientTop + inset;
+    const visibleBottom = box.top + viewer.clientTop + viewer.clientHeight;
+    const clamped = viewer.scrollTop <= 1 || viewer.scrollTop >= viewer.scrollHeight - viewer.clientHeight - 1;
+    scroll = {
+      offCenter: Math.round(rect.top + rect.height / 2 - (visibleTop + visibleBottom) / 2),
+      clamped,
+      under: rect.top < visibleTop - 1 || (rect.height <= visibleBottom - visibleTop && rect.bottom > visibleBottom + 1),
+      tall: rect.height + 48 > visibleBottom - visibleTop,
+      top: Math.round(rect.top - visibleTop),
+    };
+  }
+  return { viewport, scrollWidth, wide: wide.slice(0, 6), inner: inner.slice(0, 6), falseApprovalBeside, scroll };
+}
+
+// A mark that fits is centered within 12 px (or the content ends first); a taller one starts at least 24 px down.
+function scrollProblem(sc) {
+  if (sc.under) return "the first mark is cut off by the panel edge or its sticky heading";
+  if (sc.tall) return sc.top >= 24 || sc.clamped ? null : `a tall mark starts ${sc.top} px below the heading, not 24`;
+  if (sc.clamped || Math.abs(sc.offCenter) <= 12) return null;
+  return `the first mark is ${sc.offCenter} px from the center of the panel`;
 }
 
 async function main() {
@@ -121,7 +150,9 @@ async function main() {
     for (const route of ROUTES) {
       const cells = [];
       for (const width of WIDTHS) {
-        const page = await browser.newPage({ viewport: { width, height: HEIGHT } });
+        // Reduced motion makes the chart jump, so the position is final once the page has settled.
+        const context = await browser.newContext({ viewport: { width, height: HEIGHT }, reducedMotion: "reduce" });
+        const page = await context.newPage();
         try {
           await page.goto(`${base}${route.hash}`);
           await page.waitForSelector("main h1, main h2, main h3", { timeout: 15000 });
@@ -130,12 +161,13 @@ async function main() {
           await page.evaluate(() => document.fonts?.ready);
           await page.waitForTimeout(400);
           const m = await page.evaluate(measure);
-          const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.falseApprovalBeside;
-          const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.falseApprovalBeside ? " BESIDE" : "";
+          const badScroll = m.scroll !== null && scrollProblem(m.scroll) !== null;
+          const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.falseApprovalBeside || badScroll;
+          const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.falseApprovalBeside ? " BESIDE" : badScroll ? " SCROLL" : "";
           cells.push(`${m.scrollWidth}/${m.viewport}${flag}`);
           if (over) failures.push({ route: route.name, width, ...m });
         } finally {
-          await page.close();
+          await context.close();
         }
       }
       rows.push({ route: route.name, cells });
@@ -145,22 +177,23 @@ async function main() {
     await server?.close();
   }
 
-  const col = 14;
-  console.log(`scrollWidth/viewport at ${WIDTHS.join(", ")} px (OVER = page scrolls sideways, CLIP = a container scrolls sideways, BESIDE = false-approval label beside its text)`);
+  const col = 20;
+  console.log(`scrollWidth/viewport at ${WIDTHS.join(", ")} px (OVER = page scrolls sideways, CLIP = a container scrolls sideways, BESIDE = false-approval label beside its text, SCROLL = first highlight not centered in the chart panel)`);
   console.log("route".padEnd(36) + WIDTHS.map((w) => String(w).padEnd(col)).join(""));
   for (const r of rows) console.log(r.route.padEnd(36) + r.cells.map((c) => c.padEnd(col)).join(""));
 
   if (failures.length > 0) {
-    console.error(`\n${failures.length} measurement(s) wider than the viewport:`);
+    console.error(`\n${failures.length} measurement(s) failed:`);
     for (const f of failures) {
       console.error(`  ${f.route} at ${f.width}px: scrollWidth ${f.scrollWidth}, viewport ${f.viewport}`);
       for (const w of f.wide) console.error(`    right edge ${w.right}: ${w.el} "${w.text}"`);
       for (const w of f.inner) console.error(`    scrolls sideways inside (content ${w.right}): ${w.el} "${w.text}"`);
+      if (f.scroll && scrollProblem(f.scroll)) console.error(`    chart scroll: ${scrollProblem(f.scroll)}`);
       if (f.falseApprovalBeside) console.error("    a FALSE APPROVAL label sits beside its criterion text, not below it");
     }
     process.exit(1);
   }
-  console.log("\ncheck-layout: no horizontal overflow.");
+  console.log("\ncheck-layout: no horizontal overflow, and the first highlight is centered in the chart panel.");
 }
 
 main().catch((error) => {
