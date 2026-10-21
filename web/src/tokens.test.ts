@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CSS = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "index.css"), "utf8");
@@ -53,5 +53,35 @@ describe("design tokens", () => {
     const states = ["met", "notmet", "insufficient", "invalidated", "na"].map((s) => token(`${s}-fg`));
     expect(new Set(states).size).toBe(states.length);
     expect(CSS.match(/--color-accent:/g)).toHaveLength(1);
+  });
+});
+
+describe("one place for colors", () => {
+  const SRC = dirname(fileURLToPath(import.meta.url));
+  const sources = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return name === "generated" ? [] : sources(path);
+      return /\.tsx$/.test(name) && !/\.test\.tsx$/.test(name) ? [path] : [];
+    });
+
+  // Tailwind's default palette (bg-slate-100, text-red-900, bg-white ...) is a second source of color.
+  const PALETTE = new RegExp(
+    "\\b(?:bg|text|border|ring|outline|fill|stroke|divide|from|to|via|shadow)-" +
+      "(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\\d{2,3}|white|black)\\b",
+  );
+
+  it("uses theme tokens and never a default palette class in a component", () => {
+    const hits = sources(SRC)
+      .filter((f) => PALETTE.test(readFileSync(f, "utf8")))
+      .map((f) => relative(SRC, f));
+    expect(hits).toEqual([]);
+  });
+
+  it("writes no hex color in a component", () => {
+    const hits = sources(SRC)
+      .filter((f) => /#[0-9a-fA-F]{6}\b/.test(readFileSync(f, "utf8")))
+      .map((f) => relative(SRC, f));
+    expect(hits).toEqual([]);
   });
 });

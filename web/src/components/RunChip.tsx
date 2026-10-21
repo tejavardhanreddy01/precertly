@@ -73,7 +73,9 @@ export function RunChip() {
           className="fixed inset-x-4 top-[calc(var(--size-topbar)+0.5rem)] z-40 rounded-lg border border-line bg-surface p-4 shadow-pop sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96"
         >
           <p className="font-semibold">Recorded runs on synthetic data</p>
-          <p className="mt-1 text-sm text-ink-2">Nothing runs when you open this site. Every patient in it is synthetic.</p>
+          <p className="mt-1 text-sm text-ink-2">
+            Nothing runs when you open this site. Every patient in it is synthetic.
+          </p>
           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm" data-testid="run-details">
             {rows.map(([k, v, mono]) => (
               <div key={k} className="contents">
@@ -83,7 +85,11 @@ export function RunChip() {
             ))}
           </dl>
           <p className="mt-3 text-sm">
-            <a className="font-medium text-accent underline underline-offset-2" href="#/about" onClick={() => setOpen(false)}>
+            <a
+              className="font-medium text-accent underline underline-offset-2"
+              href="#/about"
+              onClick={() => setOpen(false)}
+            >
               Read the notices and the method
             </a>
           </p>

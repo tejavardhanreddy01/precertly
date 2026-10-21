@@ -3,6 +3,7 @@ import { highlight, type Span } from "../lib/highlight";
 import { targetScrollTop } from "../lib/scroll";
 import { NOT_SHOWN_BADGE, SHOWN_BADGE } from "../lib/shown";
 import type { ChartChunk } from "../lib/types";
+import { IconChevron, IconEye, IconEyeOff } from "./icons";
 
 /** What the viewer should scroll to: a chunk, and optionally one citation's first mark in it. */
 export interface Target {
@@ -84,23 +85,18 @@ function Highlighted({ text, spans, activeKey }: { text: string; spans: readonly
   );
 }
 
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false" className="shrink-0">
-      <path d={open ? "M2 4l4 4 4-4" : "M4 2l4 4-4 4"} fill="none" stroke="currentColor" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-/** Words and a border style, never colour alone: solid for given to the model, dashed for not. */
+/** Words, an icon and a border style, never color alone: solid for given to the model, dashed for not. */
 function ShownBadge({ shown }: { shown: boolean }) {
   return (
     <span
       data-shown={shown}
-      className={`shrink-0 rounded border px-1 text-xs font-medium ${
-        shown ? "border-slate-900 bg-white text-slate-900" : "border-dashed border-slate-600 bg-slate-100 text-slate-800"
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+        shown
+          ? "border-accent bg-accent-soft text-accent-strong"
+          : "border-dashed border-line-strong bg-sunken text-ink-2"
       }`}
     >
+      {shown ? <IconEye size={12} /> : <IconEyeOff size={12} />}
       {shown ? SHOWN_BADGE : NOT_SHOWN_BADGE}
     </span>
   );
@@ -129,26 +125,26 @@ function ChunkRow({
   const name = chunk.source === "request" ? chunk.chunk_id : `chunk ${chunk.chunk_index}`;
   const preview = chunk.text.replace(/\s+/g, " ").slice(0, 90);
   return (
-    <div id={`chunk-${index}`} data-chunk-id={chunk.chunk_id} data-cited={cited} className="border-t border-slate-200 first:border-t-0">
+    <div id={`chunk-${index}`} data-chunk-id={chunk.chunk_id} data-cited={cited} className="border-t border-line first:border-t-0">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={bodyId}
         onClick={onToggle}
-        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 text-left text-sm hover:bg-slate-100"
+        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left text-sm hover:bg-sunken"
       >
-        <Chevron open={open} />
-        <span className="shrink-0 font-medium">{name}</span>
+        <IconChevron open={open} className="shrink-0 text-ink-3" />
+        <span className="shrink-0 font-mono text-xs font-semibold">{name}</span>
         {cited ? (
-          <span className="shrink-0 rounded border border-slate-900 bg-yellow-200 px-1 text-xs font-semibold text-slate-900">
+          <span className="shrink-0 rounded-full border border-ink bg-mark px-2 py-0.5 text-xs font-semibold text-ink">
             highlighted
           </span>
         ) : null}
         {shown === null ? null : <ShownBadge shown={shown} />}
-        {!open ? <span className="min-w-0 flex-1 basis-40 truncate text-slate-700">{preview}</span> : null}
+        {!open ? <span className="min-w-0 flex-1 basis-40 truncate font-mono text-xs text-ink-3">{preview}</span> : null}
       </button>
       {open ? (
-        <pre id={bodyId} className="whitespace-pre-wrap wrap-anywhere px-2 pb-2 pl-7 font-sans text-sm leading-relaxed">
+        <pre id={bodyId} className="whitespace-pre-wrap wrap-anywhere px-3 pb-3 pl-8 font-mono text-[0.8125rem] leading-relaxed text-ink">
           <Highlighted text={chunk.text} spans={spans ?? []} activeKey={activeKey} />
         </pre>
       ) : null}
@@ -167,6 +163,7 @@ export function ChartViewer({
   target,
   requestKey = "",
   shown = null,
+  active = true,
 }: {
   chart: readonly ChartChunk[];
   highlights: ReadonlyMap<string, readonly Span[]>;
@@ -175,6 +172,8 @@ export function ChartViewer({
   requestKey?: string;
   /** Ids of the chunks the model was given for the selected criterion; null badges nothing. */
   shown?: ReadonlySet<string> | null;
+  /** False while the viewer is not on screen (another tab is showing): it scrolls once it is. */
+  active?: boolean;
 }) {
   const groups = useMemo(() => groupChunks(chart), [chart]);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
@@ -198,7 +197,7 @@ export function ChartViewer({
 
   useEffect(() => {
     const root = container.current;
-    if (!root || target.chunkId === undefined) return;
+    if (!active || !root || target.chunkId === undefined) return;
     const row = [...root.querySelectorAll<HTMLElement>("[data-chunk-id]")].find(
       (el) => el.dataset.chunkId === target.chunkId,
     );
@@ -211,22 +210,22 @@ export function ChartViewer({
         ? marks[0]
         : marks.find((m) => (m.dataset.cites ?? "").split(" ").includes(String(target.citeKey)));
     scrollWithin(root, mark ?? row);
-  }, [target.chunkId, target.citeKey, requestKey]);
+  }, [target.chunkId, target.citeKey, requestKey, active]);
 
   return (
     <div
       ref={container}
-      className="max-h-[70vh] overflow-y-auto rounded border border-slate-300 bg-white"
+      className="min-h-0 flex-1 overflow-y-auto border-t border-line bg-surface"
       data-testid="chart-viewer"
       tabIndex={0}
       role="region"
       aria-label="Chart text, grouped by resource"
     >
       {groups.map((group) => (
-        <section key={group.key} aria-label={group.title} className="border-b border-slate-300 last:border-b-0">
-          <h3 className="sticky top-0 z-10 flex flex-wrap items-baseline gap-x-2 border-b border-slate-200 bg-slate-100 px-2 py-1 text-sm font-semibold">
-            <span className="break-all">{group.title}</span>
-            {group.date ? <span className="font-normal text-slate-700">{group.date}</span> : null}
+        <section key={group.key} aria-label={group.title} className="border-b border-line last:border-b-0">
+          <h3 className="sticky top-0 z-10 flex flex-wrap items-baseline gap-x-2 border-b border-line bg-sunken px-3 py-1.5 text-sm font-semibold">
+            <span className="break-all font-mono text-xs">{group.title}</span>
+            {group.date ? <span className="font-normal text-ink-3">{group.date}</span> : null}
           </h3>
           {group.chunks.map(({ chunk, index }) => {
             const spans = highlights.get(chunk.chunk_id);

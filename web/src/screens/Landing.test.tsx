@@ -25,11 +25,15 @@ describe("landing tiles", () => {
     await loaded();
     const s = real.summary;
     expect(tile("accuracy").getByTestId("tile-value")).toHaveTextContent(percent(s.criterion_accuracy));
-    expect(tile("accuracy").getByText(`${s.criteria_correct} of ${s.scored_criteria} verdicts match the label`)).toBeInTheDocument();
+    expect(
+      tile("accuracy").getByText(`${s.criteria_correct} of ${s.scored_criteria} verdicts match the label`),
+    ).toBeInTheDocument();
     expect(tile("citations").getByTestId("tile-value")).toHaveTextContent(percent(s.citation_precision));
     expect(tile("cases").getByTestId("tile-value")).toHaveTextContent(`${s.cases_correct} of ${s.cases}`);
     expect(tile("false-approvals").getByTestId("tile-value")).toHaveTextContent(String(s.false_approvals));
-    expect(tile("false-approvals").getByText(`of ${s.negative_labels} criteria labeled not met or insufficient`)).toBeInTheDocument();
+    expect(
+      tile("false-approvals").getByText(`of ${s.negative_labels} criteria labeled not met or insufficient`),
+    ).toBeInTheDocument();
   });
 
   it("show the failing citation-precision gate as words and an icon", async () => {

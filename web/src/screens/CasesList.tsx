@@ -14,9 +14,7 @@ function Chip({ pressed, onClick, children }: { pressed: boolean; onClick: () =>
       aria-pressed={pressed}
       onClick={onClick}
       className={`rounded-full border px-3 py-1 text-sm font-medium ${
-        pressed
-          ? "border-accent bg-accent text-on-accent"
-          : "border-line-strong bg-surface text-ink-2 hover:bg-sunken"
+        pressed ? "border-accent bg-accent text-on-accent" : "border-line-strong bg-surface text-ink-2 hover:bg-sunken"
       }`}
     >
       {children}
@@ -33,7 +31,7 @@ function CaseTableRow({ row }: { row: CaseRow }) {
         row.scored ? "bg-surface hover:bg-accent-soft" : "bg-sunken text-ink-3 hover:bg-accent-soft"
       }`}
     >
-      <td className="px-1.5 py-3 align-top first:pl-3 last:pr-3 sm:p-3">
+      <td className="px-1 py-3 align-top first:pl-2.5 last:pr-2.5 sm:p-3">
         <a
           href={href(["cases", row.id])}
           className="font-mono text-sm font-semibold text-inherit after:absolute after:inset-0 hover:underline"
@@ -47,10 +45,10 @@ function CaseTableRow({ row }: { row: CaseRow }) {
         <span className="block text-xs text-ink-3">{row.variant}</span>
       </td>
       <td className="hidden p-3 align-top text-sm md:table-cell">{row.procedure}</td>
-      <td className="px-1.5 py-3 align-top first:pl-3 last:pr-3 sm:p-3">
+      <td className="px-1 py-3 align-top first:pl-2.5 last:pr-2.5 sm:p-3">
         <Pill state={row.expected_overall} />
       </td>
-      <td className="px-1.5 py-3 align-top first:pl-3 last:pr-3 sm:p-3">
+      <td className="px-1 py-3 align-top first:pl-2.5 last:pr-2.5 sm:p-3">
         {row.scored && row.predicted_overall ? (
           <span className="flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
             <Pill state={row.predicted_overall} />
@@ -100,7 +98,7 @@ export function CasesList() {
           </caption>
           <thead className="bg-sunken text-sm text-ink-2">
             <tr className="border-b border-line-strong">
-              <th scope="col" className="px-1.5 py-2 font-semibold first:pl-3 last:pr-3 sm:p-3">
+              <th scope="col" className="px-1 py-2 font-semibold first:pl-2.5 last:pr-2.5 sm:p-3">
                 Case
               </th>
               <th scope="col" className="hidden p-3 font-semibold md:table-cell">
@@ -109,10 +107,10 @@ export function CasesList() {
               <th scope="col" className="hidden p-3 font-semibold md:table-cell">
                 Procedure
               </th>
-              <th scope="col" className="px-1.5 py-2 font-semibold first:pl-3 last:pr-3 sm:p-3">
+              <th scope="col" className="px-1 py-2 font-semibold first:pl-2.5 last:pr-2.5 sm:p-3">
                 Expected
               </th>
-              <th scope="col" className="px-1.5 py-2 font-semibold first:pl-3 last:pr-3 sm:p-3">
+              <th scope="col" className="px-1 py-2 font-semibold first:pl-2.5 last:pr-2.5 sm:p-3">
                 Recorded
               </th>
             </tr>

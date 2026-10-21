@@ -5,10 +5,7 @@ import { GateMark } from "./GateMark";
 /** The four headline numbers of the recorded run, every figure read from index.json's summary. */
 export function StatTiles({ summary, wide = false, id }: { summary: RunSummary; wide?: boolean; id?: string }) {
   return (
-    <ul
-      className={`grid grid-cols-1 gap-3 min-[540px]:grid-cols-2 ${wide ? "lg:grid-cols-4" : ""}`}
-      data-testid={id}
-    >
+    <ul className={`grid grid-cols-1 gap-3 min-[540px]:grid-cols-2 ${wide ? "lg:grid-cols-4" : ""}`} data-testid={id}>
       {tiles(summary).map((t) => (
         <li
           key={t.key}

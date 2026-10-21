@@ -209,7 +209,7 @@ describe("selecting a criterion", () => {
     const row = screen.getByRole("button", { name: /chronic-axial-pain-functional-deficit/ });
     row.focus();
     await user.keyboard("{Enter}");
-    expect(row).toHaveAttribute("aria-expanded", "true");
+    expect(row).toHaveAttribute("aria-pressed", "true");
     expect(window.location.hash).toContain("c=chronic-axial-pain-functional-deficit");
     const panel = await screen.findByTestId("verdict-panel");
     expect(within(panel).getByText("Decided by the model")).toBeInTheDocument();
@@ -278,9 +278,15 @@ describe("selecting a criterion", () => {
   it("marks the false approval prominently", async () => {
     renderAt("#/cases/facet-11?c=conservative-care-failed");
     await screen.findByTestId("verdict-panel");
-    // One in the overall panel, one in the verdict panel.
-    expect(document.querySelectorAll("[data-false-approval]")).toHaveLength(2);
-    expect(screen.getAllByText(/False approval/).length).toBeGreaterThanOrEqual(2);
+    // The summary bar, the criteria row and the verdict pane each say it, as a pill or a block.
+    expect(within(screen.getByTestId("summary-bar")).getByText("False approval")).toBeInTheDocument();
+    const falseRow = document.querySelector("[data-false-approval-row]");
+    expect(falseRow).not.toBeNull();
+    expect(falseRow).toHaveAttribute("data-criterion", "conservative-care-failed");
+    expect(within(falseRow as HTMLElement).getByText("False approval")).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-false-approval-row]")).toHaveLength(1);
+    const panel = screen.getByTestId("verdict-panel");
+    expect(panel.querySelector("[data-false-approval]")).toHaveTextContent(/False approval/);
   });
 
   it("lists criteria the copilot does not judge under their stage", async () => {

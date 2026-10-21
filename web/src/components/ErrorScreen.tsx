@@ -2,7 +2,10 @@ import { IconAlert } from "./icons";
 
 export function ErrorScreen({ title, message }: { title: string; message: string }) {
   return (
-    <section role="alert" className="mx-auto mt-4 max-w-text rounded-lg border border-danger-deep bg-surface p-5 shadow-pop">
+    <section
+      role="alert"
+      className="mx-auto mt-4 max-w-text rounded-lg border border-danger-deep bg-surface p-5 shadow-pop"
+    >
       <h1 className="flex items-center gap-2 text-xl font-bold text-notmet-fg">
         <IconAlert size={20} className="shrink-0 text-danger" />
         {title}

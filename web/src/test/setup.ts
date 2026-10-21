@@ -5,6 +5,7 @@ import { afterEach } from "vitest";
 afterEach(() => {
   cleanup();
   window.location.hash = "";
+  window.matchMedia = wideMatchMedia;
 });
 
 // jsdom has neither of these; the app guards for their absence, and tests replace them when
@@ -16,16 +17,15 @@ if (!Element.prototype.scrollIntoView) {
 window.scrollTo = (() => {}) as typeof window.scrollTo;
 // Tests run at a desktop width (three panes side by side); a test that needs the tabbed layout
 // replaces window.matchMedia with `narrowScreen()` from ./render.
-if (!window.matchMedia) {
-  window.matchMedia = (query: string) =>
-    ({
-      matches: query.includes("min-width: 1024px"),
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }) as MediaQueryList;
-}
+const wideMatchMedia = ((query: string) =>
+  ({
+    matches: query.includes("min-width: 1024px"),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }) as MediaQueryList) as typeof window.matchMedia;
+window.matchMedia = wideMatchMedia;

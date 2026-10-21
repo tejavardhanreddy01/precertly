@@ -11,7 +11,9 @@ const GATE: Record<GateStatus, { text: string; style: string; Icon: typeof IconC
 export function GateMark({ status }: { status: GateStatus }) {
   const { text, style, Icon } = GATE[status];
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold ${style}`}>
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold ${style}`}
+    >
       <Icon size={13} />
       {text}
     </span>

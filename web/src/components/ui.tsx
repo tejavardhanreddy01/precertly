@@ -1,12 +1,5 @@
 import type { ReactNode } from "react";
-import { type Shown } from "../lib/labels";
 import { IconAlert, IconClose, IconTick } from "./icons";
-import { Pill } from "./Pill";
-
-/** The old name for a verdict pill; the case workspace moves to Pill directly. */
-export function OutcomeBadge({ outcome, prefix }: { outcome: Shown; prefix?: string }) {
-  return <Pill state={outcome} prefix={prefix} />;
-}
 
 /** Whether a recorded result agrees with its label, in words and a shape. */
 export function CorrectMark({ correct, what = "" }: { correct: boolean; what?: string }) {
@@ -42,7 +35,7 @@ export function FalseApprovalMarker({ children }: { children: ReactNode }) {
 
 export function LabelsOnlyBadge() {
   return (
-    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-line-strong bg-surface px-2 py-0.5 text-xs font-medium text-ink-2">
+    <span className="inline-flex items-center rounded-full border border-line-strong bg-surface px-2 py-0.5 text-xs font-medium text-ink-2 max-sm:rounded-lg max-sm:leading-snug sm:whitespace-nowrap">
       labels only, not yet scored
     </span>
   );

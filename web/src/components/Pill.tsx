@@ -28,11 +28,14 @@ const PILL_STYLE: Record<PillState, string> = {
 export function Pill({
   state,
   prefix,
+  count,
   large = false,
 }: {
   state: PillState;
   /** Words before the state, such as "Label:". */
   prefix?: string;
+  /** A tally shown after the words, as in the summary bar. */
+  count?: number;
   large?: boolean;
 }) {
   const Icon = PILL_ICON[state];
@@ -48,6 +51,11 @@ export function Pill({
         {prefix ? `${prefix} ` : ""}
         {PILL_TEXT[state]}
       </span>
+      {count === undefined ? null : (
+        <span data-count={state} className="tabular-nums">
+          {count}
+        </span>
+      )}
     </span>
   );
 }

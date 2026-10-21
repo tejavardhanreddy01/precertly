@@ -61,11 +61,11 @@ export const IconBan = (p: IconProps) => (
   </Svg>
 );
 
-/** False approval: a filled octagon with an exclamation mark. */
+/** False approval: an octagon with an exclamation mark. */
 export const IconAlert = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M5.2 1.6h5.6l3.6 3.6v5.6l-3.6 3.6H5.2l-3.6-3.6V5.2z" fill="currentColor" stroke="currentColor" />
-    <path d="M8 4.8v4.1M8 11v.2" stroke="var(--color-on-danger)" />
+    <path d="M5.2 1.6h5.6l3.6 3.6v5.6l-3.6 3.6H5.2l-3.6-3.6V5.2z" />
+    <path d="M8 4.8v4.1M8 11v.2" strokeWidth="1.9" />
   </Svg>
 );
 

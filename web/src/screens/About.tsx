@@ -96,7 +96,9 @@ export function About() {
             aria-label="Release gates table, scrolls sideways on a narrow screen"
           >
             <table className="w-full min-w-[40rem] border-collapse text-left text-sm" data-testid="gates">
-              <caption className="sr-only">Release gates, their thresholds and the current results on the facet cases</caption>
+              <caption className="sr-only">
+                Release gates, their thresholds and the current results on the facet cases
+              </caption>
               <thead>
                 <tr className="border-b border-line-strong bg-sunken">
                   <th scope="col" className="p-2 font-semibold">
