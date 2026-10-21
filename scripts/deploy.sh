@@ -43,6 +43,7 @@ Usage:
   scripts/deploy.sh smoke [--bedrock] [--dry-run]
   scripts/deploy.sh down [--dry-run]
   scripts/deploy.sh tools migrate|load|check [--yes] [--dry-run]
+  scripts/deploy.sh web publish [--yes] [--dry-run]
 
 Commands:
   image        Build the API image for linux/arm64 and push it to ECR as sha-<12 hex of HEAD>.
@@ -87,9 +88,25 @@ Commands:
                timeout or Ctrl-C it stops every precertly-tools task still running and waits
                until none does, then prints the container exit code and the log tail. The exit
                status is non-zero unless the container exited 0.
+  web publish  Build the static site and publish it to the deployed precertly-web stack.
+               Refuses a dirty working tree, a HEAD that is not pushed, and a stack that is
+               not deployed and complete; reads BucketName, DistributionId and SiteUrl from the
+               stack outputs. Builds (uv sync, then in web/: npm ci, npm run prepare-data,
+               npm run build, node scripts/check-dist.mjs), and stops before any upload if a
+               step fails. Shows what `aws s3 sync --dryrun` would change (read-only), then asks
+               "Publish? [y/N]"; --yes does NOT skip that question. Uploads in this order, so a
+               visitor never gets a page that points at missing files:
+                 1. assets/ (content-hashed names), Cache-Control public,max-age=31536000,immutable,
+                    never deleting anything there
+                 2. everything else, public,max-age=300, deleting what the build no longer has
+                    (assets/ and index.html excluded, so never deleted here)
+                 3. index.html, public,max-age=60
+               It then invalidates only /index.html /404.html /favicon.svg /data/* and waits
+               (at most 5 min) for CloudFront; on timeout the publish is still done.
+               To roll back, check out an older commit and run it again (docs/deployment.md).
 
 Options:
-  --yes        Skip the image build confirmation (image, up). tools load ignores it.
+  --yes        Skip the image build confirmation (image, up). tools load and web publish ignore it.
   --bedrock    smoke only: add the real Bedrock call.
   --dry-run    Print the commands, with the email and account id redacted, and run nothing
                that touches AWS or Docker. The git working-tree and push checks are skipped.
@@ -1127,16 +1144,20 @@ tools_steps() {
   fi
 }
 
-# Read one output of the data stack. Dies, with a pointer, if the stack or the output is missing
-# or the value does not look like what it should.
-data_output() {
-  local key="$1" pattern="$2" rc=0
-  probe q_stack_output "$DATA_STACK" "$key" || rc=$?
+# Read one output of a stack. Dies, with a pointer, if the stack or the output is missing or the
+# value does not look like what it should.
+stack_output() {
+  local stack="$1" key="$2" pattern="$3" rc=0
+  probe q_stack_output "$stack" "$key" || rc=$?
   if [[ $rc -ne 0 || -z "$AWS_OUT" || "$AWS_OUT" == "None" ]]; then
-    die "${DATA_STACK} is not deployed (no output ${key}); deploy it first: scripts/deploy.sh up ${DATA_STACK}"
+    die "${stack} is not deployed (no output ${key}); deploy it first: scripts/deploy.sh up ${stack}"
   fi
-  [[ "$AWS_OUT" =~ $pattern ]] || die "output ${key} of ${DATA_STACK} has an unexpected value"
+  [[ "$AWS_OUT" =~ $pattern ]] || die "output ${key} of ${stack} has an unexpected value"
   printf '%s' "$AWS_OUT"
+}
+
+data_output() {
+  stack_output "$DATA_STACK" "$1" "$2"
 }
 
 cmd_tools() {
@@ -1187,6 +1208,252 @@ cmd_tools() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
   tools_steps "$timeout" "$overrides" "$subnets" "$group" || true
+}
+
+# ---------------------------------------------------------------------------------------------
+# web publish: build web/dist and copy it to the precertly-web bucket.
+# ---------------------------------------------------------------------------------------------
+
+# Relative to the repo root, where cmd_web_publish runs.
+readonly WEB_DIST="web/dist"
+# Hashed assets never change under their name; the rest is short-lived; index.html is the entry
+# point that names the hashed assets, so it is the shortest (CloudFront also honors these: the
+# cache policy follows the origin's Cache-Control).
+readonly ASSETS_CACHE_CONTROL="public,max-age=31536000,immutable"
+readonly PAGES_CACHE_CONTROL="public,max-age=300"
+readonly INDEX_CACHE_CONTROL="public,max-age=60"
+# Only the files whose names are not content-hashed. /index.html is also the default root object.
+readonly INVALIDATION_PATHS=(/index.html /404.html /favicon.svg "/data/*")
+
+# The wait for CloudFront is capped at 5 minutes (less if WAIT_TIMEOUT is shorter).
+invalidation_wait() {
+  printf '%s' "$((WAIT_TIMEOUT < 300 ? WAIT_TIMEOUT : 300))"
+}
+
+# Like `run`, from a subdirectory of the repo.
+run_in() {
+  local dir="$1"
+  shift
+  if $DRY_RUN; then
+    printf '+ (cd %q &&' "$dir"
+    printf ' %q' "$@"
+    printf ')\n'
+  else
+    (cd "$dir" && "$@")
+  fi
+}
+
+# build_step LABEL COMMAND...: stop the whole publish, before any upload, if a step fails.
+build_step() {
+  local label="$1"
+  shift
+  echo "==> ${label}"
+  "$@" || die "build step failed: ${label}; nothing was uploaded"
+}
+
+# The sync and copy commands. $1 is the bucket; $2, if given, is --dryrun. The same functions
+# serve the preview and the upload, so the preview is the upload minus the writes.
+s3_sync_assets() {
+  run aws s3 sync "${WEB_DIST}/assets" "s3://$1/assets" --cache-control "$ASSETS_CACHE_CONTROL" ${2:+"$2"}
+}
+
+# Never --delete under assets/: a page cached by a browser may still name an older hashed file.
+# index.html is excluded so it is neither uploaded here nor deleted.
+s3_sync_rest() {
+  run aws s3 sync "$WEB_DIST" "s3://$1" --exclude "assets/*" --exclude "index.html" --delete \
+    --cache-control "$PAGES_CACHE_CONTROL" ${2:+"$2"}
+}
+
+s3_copy_index() {
+  run aws s3 cp "${WEB_DIST}/index.html" "s3://$1/index.html" --cache-control "$INDEX_CACHE_CONTROL"
+}
+
+q_invalidate() {
+  run aws cloudfront create-invalidation --distribution-id "$1" --paths "${INVALIDATION_PATHS[@]}" \
+    --query Invalidation.Id --output text
+}
+
+q_invalidation_status() {
+  run aws cloudfront get-invalidation --distribution-id "$1" --id "$2" \
+    --query Invalidation.Status --output text
+}
+
+q_content_type() {
+  run aws s3api head-object --bucket "$1" --key "$2" --query ContentType --output text
+}
+
+# count_lines PREFIX TEXT: how many lines of TEXT start with PREFIX.
+count_lines() {
+  local n=0 line
+  while IFS= read -r line; do
+    if [[ "$line" == "$1"* ]]; then
+      n=$((n + 1))
+    fi
+  done <<<"$2"
+  printf '%s' "$n"
+}
+
+# The first file under web/dist/DIR with extension EXT, or nothing.
+first_dist_file() {
+  find "${WEB_DIST}/$1" -type f -name "*.$2" 2>/dev/null | LC_ALL=C sort | sed -n '1p'
+}
+
+# check_content_type BUCKET KEY EXPECTED_REGEX: the type S3 holds for KEY must match. The AWS CLI
+# picks a content type from the file extension with Python's mimetypes (the system's mime.types
+# can override the built-in table), so this reads it back instead of assuming.
+check_content_type() {
+  local bucket="$1" key="$2" expected="$3" rc=0 actual
+  probe q_content_type "$bucket" "$key" || rc=$?
+  actual="$AWS_OUT"
+  [[ $rc -eq 0 ]] || die "could not read the content type of ${key}: ${AWS_ERR:-not found}"
+  [[ "$actual" =~ $expected ]] ||
+    die "${key} was uploaded with content type '${actual}', expected ${expected}; the AWS CLI guesses it from the extension (Python mimetypes, which reads the system's mime.types). Fix that and run web publish again. CloudFront was not invalidated."
+}
+
+# After the uploads: one file of each kind the site serves.
+verify_content_types() {
+  local bucket="$1" key
+  check_content_type "$bucket" index.html '^text/html'
+  check_content_type "$bucket" 404.html '^text/html'
+  check_content_type "$bucket" favicon.svg '^image/svg\+xml'
+  key="$(first_dist_file assets js)"
+  check_content_type "$bucket" "${key#"${WEB_DIST}"/}" '^(text|application)/javascript'
+  key="$(first_dist_file assets css)"
+  if [[ -n "$key" ]]; then
+    check_content_type "$bucket" "${key#"${WEB_DIST}"/}" '^text/css'
+  fi
+  key="$(first_dist_file data json)"
+  check_content_type "$bucket" "${key#"${WEB_DIST}"/}" '^application/json'
+}
+
+# True once CloudFront reports the invalidation Completed. A failed query is "not yet": the
+# publish is already done, so the wait must not turn into a fatal error.
+invalidation_is_done() {
+  local fatal="$PROBE_FATAL" rc=0
+  PROBE_FATAL=false
+  probe q_invalidation_status "$1" "$2" || rc=$?
+  PROBE_FATAL="$fatal"
+  [[ $rc -eq 0 && "$AWS_OUT" == "Completed" ]]
+}
+
+# The build, in order. Any failure stops before the first aws call that writes.
+web_build() {
+  build_step "uv sync" run uv sync
+  build_step "npm ci" run_in web npm ci
+  build_step "npm run prepare-data" run_in web npm run prepare-data
+  build_step "npm run build" run_in web npm run build
+  build_step "check-dist" run_in web node scripts/check-dist.mjs
+}
+
+# The build must have produced a site, and must not have touched tracked files (what is published
+# has to match the commit that was checked at the start).
+web_check_build() {
+  local f
+  for f in index.html 404.html favicon.svg; do
+    [[ -f "${WEB_DIST}/${f}" ]] || die "the build did not produce ${WEB_DIST}/${f}; nothing was uploaded"
+  done
+  [[ -n "$(first_dist_file assets js)" && -n "$(first_dist_file data json)" ]] ||
+    die "${WEB_DIST} has no assets/*.js or data/*.json; nothing was uploaded"
+  [[ -z "$(git status --porcelain)" ]] ||
+    die "the build changed tracked files; the site would not match the commit. Nothing was uploaded."
+}
+
+# Show what the two syncs would do, read-only, and set WEB_FILE_COUNT.
+web_preview() {
+  local bucket="$1" assets rest n_assets n_rest_up n_rest_del
+  assets="$(s3_sync_assets "$bucket" --dryrun)" || die "aws s3 sync --dryrun failed (assets/); nothing was uploaded"
+  rest="$(s3_sync_rest "$bucket" --dryrun)" || die "aws s3 sync --dryrun failed (rest of the site); nothing was uploaded"
+  n_assets="$(count_lines "(dryrun) upload:" "$assets")"
+  n_rest_up="$(count_lines "(dryrun) upload:" "$rest")"
+  n_rest_del="$(count_lines "(dryrun) delete:" "$rest")"
+  echo "--- what would change (aws s3 sync --dryrun; a rebuild rewrites every file time, so unchanged files count as uploads) ---"
+  echo "assets/        ${n_assets} to upload, nothing is ever deleted here"
+  echo "everything else ${n_rest_up} to upload, ${n_rest_del} to delete, then index.html last"
+  if [[ "$n_rest_del" -gt 0 ]]; then
+    echo "to delete:"
+    printf '%s\n' "$rest" | sed -n 's/^(dryrun) delete: /  /p' | sed -n '1,50p'
+  fi
+  echo "--- end ---"
+}
+
+cmd_web_publish() {
+  cd "$(repo_root)"
+  local sha bucket dist_id site_url
+  sha="$(git rev-parse --short=12 HEAD)"
+
+  if $DRY_RUN; then
+    echo "dry-run: skipping the git clean and pushed checks; no AWS, npm or uv call is made"
+    echo "commit: ${sha}"
+    echo "dry-run: refuses unless the stack is CREATE_COMPLETE or UPDATE_COMPLETE; reads the outputs:"
+    q_stack_status "$WEB_STACK"
+    q_stack_output "$WEB_STACK" BucketName
+    q_stack_output "$WEB_STACK" DistributionId
+    q_stack_output "$WEB_STACK" SiteUrl
+    bucket="BUCKET_NAME"
+    dist_id="DISTRIBUTION_ID"
+    echo "dry-run: build; any failure stops before the first upload:"
+    web_build
+    echo "dry-run: preview (read-only), then it asks 'Publish? [y/N]' (--yes does not skip it):"
+    s3_sync_assets "$bucket" --dryrun
+    s3_sync_rest "$bucket" --dryrun
+    echo "dry-run: upload, in this order:"
+    s3_sync_assets "$bucket"
+    s3_sync_rest "$bucket"
+    s3_copy_index "$bucket"
+    echo "dry-run: read back the content type of one file of each kind:"
+    q_content_type "$bucket" "KEY"
+    echo "dry-run: invalidate, then wait up to $(invalidation_wait)s for it to complete:"
+    q_invalidate "$dist_id"
+    q_invalidation_status "$dist_id" "INVALIDATION_ID"
+    return 0
+  fi
+
+  require_clean_and_pushed
+  echo "commit: ${sha}"
+
+  local rc=0 state
+  probe q_stack_status "$WEB_STACK" || rc=$?
+  state="$AWS_OUT"
+  [[ $rc -ne 3 ]] || die "${WEB_STACK} is not deployed; deploy it first: scripts/deploy.sh up ${WEB_STACK}"
+  [[ "$state" == "CREATE_COMPLETE" || "$state" == "UPDATE_COMPLETE" ]] ||
+    die "${WEB_STACK} is ${state}, not CREATE_COMPLETE or UPDATE_COMPLETE; wait for it or fix it, then run web publish again"
+  bucket="$(stack_output "$WEB_STACK" BucketName '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$')"
+  dist_id="$(stack_output "$WEB_STACK" DistributionId '^[A-Z0-9]+$')"
+  site_url="$(stack_output "$WEB_STACK" SiteUrl '^https://[a-z0-9.-]+$')"
+
+  web_build
+  web_check_build
+  local file_count
+  file_count="$(find "$WEB_DIST" -type f | wc -l | tr -d '[:space:]')"
+  web_preview "$bucket"
+  confirm "Publish?" || die "not confirmed; nothing uploaded"
+
+  s3_sync_assets "$bucket" ||
+    die "uploading assets/ failed; index.html was not replaced, so visitors still get the previous page. Run web publish again."
+  s3_sync_rest "$bucket" ||
+    die "uploading the rest of the site failed; index.html was not replaced. Run web publish again."
+  s3_copy_index "$bucket" ||
+    die "uploading index.html failed; the rest of the site is already uploaded. Run web publish again."
+  verify_content_types "$bucket"
+
+  local inv_id
+  inv_id="$(q_invalidate "$dist_id")" ||
+    die "the files are uploaded, but the CloudFront invalidation could not be created; visitors may see the old pages for up to 5 minutes (index.html: 1 minute). Run web publish again to retry it."
+  echo "invalidation ${inv_id} created for ${INVALIDATION_PATHS[*]}"
+  if ! wait_for_seconds "$(invalidation_wait)" invalidation_is_done "$dist_id" "$inv_id"; then
+    echo "warning: invalidation ${inv_id} had not completed after $(invalidation_wait)s (last status: ${AWS_OUT:-unknown}). The publish is done; CloudFront finishes it on its own. Check: aws cloudfront get-invalidation --distribution-id ${dist_id} --id ${inv_id}" >&2
+  fi
+
+  echo "published commit ${sha}"
+  echo "files in the build: ${file_count}"
+  echo "site: ${site_url}"
+}
+
+cmd_web() {
+  case "$1" in
+    publish) cmd_web_publish ;;
+    *) die "usage: deploy.sh web publish" ;;
+  esac
 }
 
 # The settings a stack needs: the budget address always, the web domain and certificate only for
@@ -1266,6 +1533,10 @@ main() {
     tools)
       [[ ${#positional[@]} -eq 2 ]] || die "usage: deploy.sh tools migrate|load|check"
       cmd_tools "${positional[1]}"
+      ;;
+    web)
+      [[ ${#positional[@]} -eq 2 ]] || die "usage: deploy.sh web publish"
+      cmd_web "${positional[1]}"
       ;;
     *) die "unknown command '${command}' (see --help)" ;;
   esac
