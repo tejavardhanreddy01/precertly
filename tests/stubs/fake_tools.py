@@ -24,7 +24,8 @@ stub.json keys (all optional):
   health            healthStatus of the task (default HEALTHY)
   health_after_polls   healthStatus is UNKNOWN for the first N describe-tasks health queries,
                     then HEALTHY
-  diff_text         what `cdk diff` prints; {email} is replaced by the budgetEmail context value
+  diff_text         what `cdk diff` prints; {email} and {arn} are replaced by the budgetEmail
+                    and webCertificateArn context values
   diff_fail         `cdk diff` prints this to stderr and fails
   outputs           {output key: value} for the data stack's outputs (defaults below)
   no_outputs        the data stack exists but has no outputs
@@ -55,6 +56,9 @@ DATA_OUTPUTS = {
     "ToolsSubnetIds": "subnet-0a1b2c,subnet-3d4e5f",
     "ToolsSecurityGroupId": "sg-0123abcd",
     "ToolsLogGroupName": "/precertly/tools",
+    # precertly-web's outputs
+    "DistributionId": "E1A2B3C4D5E6F7",
+    "BucketName": "precertly-web-sitebucket397a1860-abc123def456",
 }
 IMAGE = f"{ACCOUNT}.dkr.ecr.us-east-2.amazonaws.com/precertly-api:sha-abc123def456"
 
@@ -82,14 +86,15 @@ def fail(message: str, code: int = 254) -> int:
 
 def npx(args: list[str], config: dict) -> int:
     email = next((a.split("=", 1)[1] for a in args if a.startswith("budgetEmail=")), "")
+    arn = next((a.split("=", 1)[1] for a in args if a.startswith("webCertificateArn=")), "")
     if "diff" in args and "diff_fail" in config:
-        print(config["diff_fail"].replace("{email}", email), file=sys.stderr)
+        print(config["diff_fail"].replace("{email}", email).replace("{arn}", arn), file=sys.stderr)
         return 1
     if "diff" in args:
         text = config.get(
             "diff_text", "Resources\n[~] AWS::Budgets::Budget Budget\n subscriber {email}"
         )
-        print(text.replace("{email}", email))
+        print(text.replace("{email}", email).replace("{arn}", arn))
     return 0
 
 

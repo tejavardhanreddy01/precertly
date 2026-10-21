@@ -24,6 +24,13 @@ SCRIPT = ROOT / "scripts" / "deploy.sh"
 FAKE_TOOLS = ROOT / "tests" / "stubs" / "fake_tools.py"
 FAKE_EMAIL = "fake.owner@secret-domain.test"
 ACCOUNT = "123456789012"
+WEB_DOMAIN = "precertly.example.org"
+WEB_ARN = "arn:aws:acm:us-east-1:210987654321:certificate/aaaabbbb-cccc-4ddd-8eee-ffff00001111"
+WEB_ENV = {"WEB_DOMAIN": WEB_DOMAIN, "WEB_CERTIFICATE_ARN": WEB_ARN}
+PLACEHOLDER_DOMAIN = "site.example.invalid"
+PLACEHOLDER_ARN = (
+    "arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000"
+)
 
 pytestmark = pytest.mark.skipif(
     shutil.which("bash") is None or shutil.which("git") is None or not (ROOT / ".git").exists(),
@@ -64,7 +71,7 @@ def _calls(stub_bin: Path) -> list[str]:
     return log.read_text().splitlines() if log.exists() else []
 
 
-def _env(stub_bin: Path, email: str | None) -> dict[str, str]:
+def _env(stub_bin: Path, email: str | None, extra: dict[str, str] | None = None) -> dict[str, str]:
     env = {
         "PATH": f"{stub_bin}{os.pathsep}{os.environ['PATH']}",
         "HOME": str(stub_bin.parent),
@@ -73,6 +80,7 @@ def _env(stub_bin: Path, email: str | None) -> dict[str, str]:
     }
     if email is not None:
         env["BUDGET_EMAIL"] = email
+    env.update(extra or {})
     return env
 
 
@@ -81,11 +89,12 @@ def _deploy(
     *args: str,
     email: str | None = FAKE_EMAIL,
     stdin: str = "",
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", str(SCRIPT), *args],
         cwd=_repo(stub_bin),
-        env=_env(stub_bin, email),
+        env=_env(stub_bin, email, env),
         input=stdin,
         capture_output=True,
         text=True,
@@ -1129,3 +1138,241 @@ def test_tools_commands_exist_in_the_image() -> None:
     assert (ROOT / "src" / "precertly" / "db" / "check.py").exists()
     assert (ROOT / "src" / "precertly" / "ingest" / "__main__.py").exists()
     assert any((ROOT / "evals" / "bundles").glob("*.json"))
+
+
+# ---------------------------------------------------------------------------------------------
+# precertly-web
+# ---------------------------------------------------------------------------------------------
+
+
+def test_web_stack_dry_run_passes_the_real_domain_and_hides_the_certificate(
+    stub_bin: Path,
+) -> None:
+    result = _deploy(stub_bin, "stack", "precertly-web", "--dry-run", env=WEB_ENV)
+    assert result.returncode == 0, _output(result)
+    tag = _head_tag(stub_bin)
+    assert (
+        f"cdk deploy --exclusively precertly-web -c budgetEmail=REDACTED -c imageTag={tag} "
+        f"-c webDomain={WEB_DOMAIN} -c webCertificateArn=REDACTED"
+    ) in result.stdout
+    assert "is in ECR" not in result.stdout
+    assert WEB_ARN not in _output(result)
+    assert "210987654321" not in _output(result)
+    assert FAKE_EMAIL not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+@pytest.mark.parametrize("name", ["precertly-base", "precertly-app", "precertly-data"])
+def test_the_other_stacks_get_the_placeholders_even_when_web_settings_exist(
+    stub_bin: Path, name: str
+) -> None:
+    result = _deploy(stub_bin, "stack", name, "--dry-run", env=WEB_ENV)
+    assert result.returncode == 0, _output(result)
+    assert f"-c webDomain={PLACEHOLDER_DOMAIN} -c webCertificateArn={PLACEHOLDER_ARN}" in (
+        result.stdout
+    )
+    assert WEB_DOMAIN not in _output(result)
+    assert "210987654321" not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+@pytest.mark.parametrize("name", ["precertly-base", "precertly-app", "precertly-data"])
+def test_the_other_stacks_need_no_web_settings_at_all(stub_bin: Path, name: str) -> None:
+    for command in ("stack", "up"):
+        result = _deploy(stub_bin, command, name, "--dry-run")
+        assert result.returncode == 0, _output(result)
+        assert f"-c webDomain={PLACEHOLDER_DOMAIN}" in result.stdout
+    _assert_no_calls(stub_bin)
+
+
+@pytest.mark.parametrize("command", ["stack", "up"])
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [
+        ({}, "WEB_DOMAIN is not set"),
+        ({"WEB_DOMAIN": WEB_DOMAIN}, "WEB_CERTIFICATE_ARN is not set"),
+        ({"WEB_CERTIFICATE_ARN": WEB_ARN}, "WEB_DOMAIN is not set"),
+        ({**WEB_ENV, "WEB_DOMAIN": PLACEHOLDER_DOMAIN}, "WEB_DOMAIN looks like a placeholder"),
+        ({**WEB_ENV, "WEB_DOMAIN": "other.invalid"}, "WEB_DOMAIN looks like a placeholder"),
+        (
+            {**WEB_ENV, "WEB_CERTIFICATE_ARN": PLACEHOLDER_ARN},
+            "WEB_CERTIFICATE_ARN looks like a placeholder",
+        ),
+        (
+            {**WEB_ENV, "WEB_CERTIFICATE_ARN": WEB_ARN.replace("210987654321", "000000000000")},
+            "WEB_CERTIFICATE_ARN looks like a placeholder",
+        ),
+        ({**WEB_ENV, "WEB_DOMAIN": "Site.Example.org"}, "WEB_DOMAIN is not a plain lowercase"),
+        ({**WEB_ENV, "WEB_DOMAIN": "https://site.example.org"}, "WEB_DOMAIN is not a plain"),
+        ({**WEB_ENV, "WEB_DOMAIN": "site.example.org/"}, "WEB_DOMAIN is not a plain"),
+        ({**WEB_ENV, "WEB_DOMAIN": "1.2.3.4"}, "WEB_DOMAIN is not a plain"),
+        (
+            {**WEB_ENV, "WEB_CERTIFICATE_ARN": WEB_ARN.replace("us-east-1", "us-east-2")},
+            "WEB_CERTIFICATE_ARN is not an ACM certificate ARN in us-east-1",
+        ),
+        ({**WEB_ENV, "WEB_CERTIFICATE_ARN": "nope"}, "WEB_CERTIFICATE_ARN is not an ACM"),
+    ],
+)
+def test_web_stack_refuses_missing_or_placeholder_settings(
+    stub_bin: Path, command: str, env: dict[str, str], message: str
+) -> None:
+    for extra in ([], ["--dry-run"]):
+        result = _deploy(stub_bin, command, "precertly-web", *extra, env=env)
+        assert result.returncode != 0
+        assert message in result.stderr
+        assert WEB_ARN not in _output(result)
+        assert FAKE_EMAIL not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+def test_web_stack_still_needs_the_budget_email(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "stack", "precertly-web", "--dry-run", email=None, env=WEB_ENV)
+    assert result.returncode != 0
+    assert "BUDGET_EMAIL" in result.stderr
+    _assert_no_calls(stub_bin)
+
+
+def test_web_settings_are_read_from_env_local(stub_bin: Path) -> None:
+    (_repo(stub_bin) / ".env.local").write_text(
+        f"# the site\nWEB_DOMAIN={WEB_DOMAIN}\nWEB_CERTIFICATE_ARN='{WEB_ARN}'\nOTHER=x\n"
+    )
+    dry = _deploy(stub_bin, "stack", "precertly-web", "--dry-run")
+    assert dry.returncode == 0, _output(dry)
+    assert f"-c webDomain={WEB_DOMAIN} -c webCertificateArn=REDACTED" in dry.stdout
+    assert WEB_ARN not in _output(dry)
+    _assert_no_calls(stub_bin)
+
+    _configure(stub_bin)
+    live = _deploy(stub_bin, "stack", "precertly-web")
+    assert live.returncode == 0, _output(live)
+    assert WEB_ARN not in _output(live)
+    assert any(f"webCertificateArn={WEB_ARN}" in c and "cdk deploy" in c for c in _calls(stub_bin))
+
+
+def test_web_environment_wins_over_env_local(stub_bin: Path) -> None:
+    (_repo(stub_bin) / ".env.local").write_text("WEB_DOMAIN=file.example.org\n")
+    _configure(stub_bin)
+    result = _deploy(stub_bin, "stack", "precertly-web", env=WEB_ENV)
+    assert result.returncode == 0, _output(result)
+    assert any(f"webDomain={WEB_DOMAIN}" in c for c in _calls(stub_bin))
+    assert not any("file.example.org" in c for c in _calls(stub_bin))
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["WEB_DOMAIN=Not A Domain", f"WEB_CERTIFICATE_ARN={WEB_ARN.replace('us-east-1', 'eu-west-1')}"],
+)
+def test_malformed_web_settings_in_env_local_are_refused_without_echoing_them(
+    stub_bin: Path, line: str
+) -> None:
+    (_repo(stub_bin) / ".env.local").write_text(f"{line}\n")
+    result = _deploy(stub_bin, "stack", "precertly-web", "--dry-run")
+    assert result.returncode != 0
+    assert "in .env.local" in result.stderr
+    assert line.split("=", 1)[1] not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+def test_a_bad_web_line_in_env_local_does_not_block_the_other_stacks(stub_bin: Path) -> None:
+    (_repo(stub_bin) / ".env.local").write_text("WEB_DOMAIN=Not A Domain\n")
+    result = _deploy(stub_bin, "stack", "precertly-base", "--dry-run")
+    assert result.returncode == 0, _output(result)
+    assert f"-c webDomain={PLACEHOLDER_DOMAIN}" in result.stdout
+    _assert_no_calls(stub_bin)
+
+
+def test_up_web_dry_run_has_no_image_step_and_always_asks(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "up", "precertly-web", "--dry-run", "--yes", env=WEB_ENV)
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    assert "docker" not in out
+    assert "describe-images" not in out
+    diff = out.index("cdk diff --exclusively precertly-web")
+    ask = out.index("Deploy? [y/N]")
+    deploy = out.index("cdk deploy --exclusively precertly-web")
+    assert diff < ask < deploy
+    assert WEB_ARN not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+def test_up_web_redacts_the_email_and_certificate_in_the_diff(stub_bin: Path) -> None:
+    _configure(stub_bin, diff_text="[+] distribution\n cert {arn}\n alert {email}")
+    result = _deploy(stub_bin, "up", "precertly-web", stdin="y\n", env=WEB_ENV)
+    assert result.returncode == 0, _output(result)
+    assert "cert REDACTED" in result.stdout
+    assert "alert REDACTED" in result.stdout
+    assert WEB_ARN not in _output(result)
+    assert FAKE_EMAIL not in _output(result)
+    npx = [c for c in _calls(stub_bin) if c.startswith("npx")]
+    assert [c.split()[3] for c in npx] == ["diff", "deploy"]
+    assert all(
+        "--exclusively precertly-web" in c and f"webCertificateArn={WEB_ARN}" in c for c in npx
+    )
+    assert not any(c.startswith("docker") for c in _calls(stub_bin))
+
+
+def test_up_web_stops_when_declined(stub_bin: Path) -> None:
+    _configure(stub_bin)
+    result = _deploy(stub_bin, "up", "precertly-web", "--yes", stdin="n\n", env=WEB_ENV)
+    assert result.returncode != 0
+    assert not any("cdk deploy" in c for c in _calls(stub_bin))
+
+
+def test_up_web_redacts_the_certificate_when_the_diff_fails(stub_bin: Path) -> None:
+    _configure(stub_bin, diff_fail="bad certificate {arn}")
+    result = _deploy(stub_bin, "up", "precertly-web", stdin="y\n", env=WEB_ENV)
+    assert result.returncode != 0
+    assert "bad certificate REDACTED" in result.stderr
+    assert WEB_ARN not in _output(result)
+
+
+def test_there_is_no_publish_command_yet(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "publish", env=WEB_ENV)
+    assert result.returncode != 0
+    assert "unknown command" in result.stderr
+
+
+def test_status_dry_run_lists_the_web_queries(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "status", "--dry-run")
+    assert "describe-stacks --stack-name precertly-web" in result.stdout
+    assert "DistributionId" in result.stdout
+    assert "BucketName" in result.stdout
+    _assert_no_calls(stub_bin)
+
+
+def test_status_reports_the_web_stack(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks={"precertly-web": "CREATE_COMPLETE"})
+    result = _deploy(stub_bin, "status")
+    assert result.returncode == 0, _output(result)
+    assert re.search(r"precertly-web\s+CREATE_COMPLETE", result.stdout)
+    assert (
+        "web site (precertly-web)\n  stack CREATE_COMPLETE, distribution E1A2B3C4D5E6F7, "
+        "bucket precertly-web-sitebucket397a1860-abc123def456"
+    ) in result.stdout
+
+
+def test_status_says_when_the_web_stack_is_not_deployed(stub_bin: Path) -> None:
+    _configure(stub_bin)
+    result = _deploy(stub_bin, "status")
+    assert result.returncode == 0, _output(result)
+    assert "web site (precertly-web)\n  not deployed" in result.stdout
+
+
+def test_placeholders_match_the_cdk_tests_and_ci() -> None:
+    script = SCRIPT.read_text()
+    support = (ROOT / "infra" / "tests" / "support.py").read_text()
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert f'readonly PLACEHOLDER_WEB_DOMAIN="{PLACEHOLDER_DOMAIN}"' in script
+    assert f'readonly PLACEHOLDER_WEB_CERTIFICATE_ARN="{PLACEHOLDER_ARN}"' in script
+    assert f'WEB_DOMAIN = "{PLACEHOLDER_DOMAIN}"' in support
+    assert PLACEHOLDER_ARN in support.replace('"\n    "', "")
+    assert f"-c webDomain={PLACEHOLDER_DOMAIN}" in ci
+    assert f"-c webCertificateArn={PLACEHOLDER_ARN}" in ci
+
+
+def test_web_stack_name_matches_the_cdk_app() -> None:
+    assert "readonly STACKS=(precertly-base precertly-app precertly-data precertly-web)" in (
+        SCRIPT.read_text()
+    )
+    app = (ROOT / "infra" / "app.py").read_text()
+    assert '"precertly-web")' in app

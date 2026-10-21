@@ -11,11 +11,17 @@ export AWS_REGION="${AWS_REGION:-us-east-2}"
 export AWS_DEFAULT_REGION="$AWS_REGION"
 export AWS_PAGER=""
 readonly REPO_NAME="precertly-api"
-readonly STACKS=(precertly-base precertly-app precertly-data)
+readonly STACKS=(precertly-base precertly-app precertly-data precertly-web)
 # Stacks whose deploy needs the image of HEAD in ECR; `up` pushes it first. precertly-data holds
 # the tools task definition, which pins the same image tag.
 readonly IMAGE_STACKS=(precertly-app precertly-data)
 readonly DATA_STACK="precertly-data"
+readonly WEB_STACK="precertly-web"
+# What every stack other than precertly-web is given for webDomain and webCertificateArn: the CDK
+# app requires both for every stack, but only the web stack uses them. They are also what CI and
+# infra/tests/support.py use, and the web stack refuses to deploy with them (a test compares).
+readonly PLACEHOLDER_WEB_DOMAIN="site.example.invalid"
+readonly PLACEHOLDER_WEB_CERTIFICATE_ARN="arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000"
 # Must match infra/names.py (tests/test_deploy_script.py compares them).
 readonly CLUSTER="precertly"
 readonly SERVICE="precertly-api"
@@ -42,21 +48,25 @@ Commands:
   image        Build the API image for linux/arm64 and push it to ECR as sha-<12 hex of HEAD>.
                Refuses a dirty working tree or a HEAD that is not pushed. Tags are immutable,
                so a tag that already exists is skipped.
-  stack <name> Deploy one CDK stack: precertly-base, precertly-app or precertly-data.
-               Needs BUDGET_EMAIL (environment or .env.local; never printed).
+  stack <name> Deploy one CDK stack: precertly-base, precertly-app, precertly-data or
+               precertly-web. Needs BUDGET_EMAIL (environment or .env.local; never printed).
+               precertly-web also needs WEB_DOMAIN and WEB_CERTIFICATE_ARN (same sources) and
+               refuses if they are missing or look like the placeholders; every other stack is
+               given the placeholders, so they need no configuration for base, app or data.
                Passes --exclusively, so a stack's dependencies are never deployed with it
                (deploy precertly-app before precertly-data yourself).
                Passes -c imageTag=sha-<12 hex of HEAD>; precertly-app and precertly-data first
                check that image is in ECR and refuse if it is not.
                --all is refused; the CDK approval prompt for IAM and security changes stays on.
-  up <name>    The usual path: for precertly-app and precertly-data run `image` first, then show
-               `cdk diff --exclusively`
-               (email redacted), ask "Deploy? [y/N]", then run `stack`. --yes only skips the
-               image confirmation: it never skips the diff or the Deploy? question.
+  up <name>    The usual path: for precertly-app and precertly-data run `image` first
+               (precertly-web has no image step), then show `cdk diff --exclusively` (email and
+               certificate ARN redacted), ask "Deploy? [y/N]", then run `stack`. --yes only
+               skips the image confirmation: it never skips the diff or the Deploy? question.
   status       Read-only. Stack status, service counts and rollout, task definition revision,
                image tag and health check, the Aurora cluster (status, engine version, minimum
                and maximum ACU; a paused instance still reports available), available NAT
-               gateways, RDS instances and ECR images.
+               gateways, RDS instances and ECR images, and one line for the web stack (stack
+               state, distribution id, bucket name).
                A missing resource prints "not deployed".
   smoke        Refuses unless the service has no task. Scales to 1, waits (10 min), waits for the
                ECS Exec agent (2 min), runs /health and /policies inside the task with ECS Exec
@@ -91,6 +101,10 @@ Environment:
   BUDGET_EMAIL address for the budget alerts (stack, up). If unset, it is read from the
                gitignored file .env.local at the repo root: a BUDGET_EMAIL=address line,
                parsed and never sourced.
+  WEB_DOMAIN   the site's hostname, for precertly-web only (same sources as BUDGET_EMAIL).
+  WEB_CERTIFICATE_ARN
+               ARN of the ACM certificate in us-east-1, for precertly-web only; redacted in the
+               output.
 EOF
 }
 
@@ -151,17 +165,46 @@ needs_image() {
   return 1
 }
 
-# If BUDGET_EMAIL is unset, read it from the optional, gitignored .env.local at the repo root.
-# The file is parsed, never sourced: blank lines, # comments and KEY=value lines only, no
-# expansion. Only BUDGET_EMAIL is taken. Error messages name a line number, never its content.
+# Settings the stacks need that are never committed. An unset one is read from the optional,
+# gitignored .env.local at the repo root; the environment wins. The file is parsed, never
+# sourced: blank lines, # comments and KEY=value lines only, no expansion, and only the keys
+# asked for are taken. Error messages name a line number or a key, never a value.
+readonly EMAIL_RE='^[^[:space:]@]+@[^[:space:]@]+$'
+readonly DOMAIN_LABEL='[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?'
+readonly DOMAIN_RE="^${DOMAIN_LABEL}(\\.${DOMAIN_LABEL})+\$"
+readonly CERT_ARN_RE='^arn:aws:acm:us-east-1:[0-9]{12}:certificate/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+# check_setting KEY VALUE [WHERE]: die if the value is not shaped like a KEY. WHERE (for example
+# " in .env.local") is added to the message; the value never is.
+check_setting() {
+  local key="$1" value="$2" where="${3:-}"
+  case "$key" in
+    BUDGET_EMAIL) [[ "$value" =~ $EMAIL_RE ]] || die "BUDGET_EMAIL${where} is not an email address" ;;
+    WEB_DOMAIN)
+      [[ "$value" =~ $DOMAIN_RE && ${#value} -le 253 && ! "${value##*.}" =~ ^[0-9]+$ ]] ||
+        die "WEB_DOMAIN${where} is not a plain lowercase hostname (no scheme, port, path or wildcard)"
+      ;;
+    WEB_CERTIFICATE_ARN)
+      [[ "$value" =~ $CERT_ARN_RE ]] ||
+        die "WEB_CERTIFICATE_ARN${where} is not an ACM certificate ARN in us-east-1"
+      ;;
+  esac
+}
+
+# load_env_local KEY...: for each KEY that is unset in the environment, take it from .env.local.
 load_env_local() {
-  if [[ -n "${BUDGET_EMAIL:-}" ]]; then
+  local wanted=() key
+  for key in "$@"; do
+    if [[ -z "${!key:-}" ]]; then
+      wanted+=("$key")
+    fi
+  done
+  if [[ ${#wanted[@]} -eq 0 ]]; then
     return 0
   fi
-  local file line key value found="" n=0
+  local file line name value n=0 found
   local assignment_re='^([A-Za-z_][A-Za-z0-9_]*)=(.*)$'
   local dquoted_re='^"(.*)"$' squoted_re="^'(.*)'\$"
-  local email_re='^[^[:space:]@]+@[^[:space:]@]+$'
   file="$(repo_root)/.env.local"
   if [[ ! -f "$file" ]]; then
     return 0
@@ -173,7 +216,7 @@ load_env_local() {
       continue
     fi
     if [[ "$line" =~ $assignment_re ]]; then
-      key="${BASH_REMATCH[1]}"
+      name="${BASH_REMATCH[1]}"
       value="${BASH_REMATCH[2]}"
     else
       die ".env.local line ${n} is not KEY=value"
@@ -181,16 +224,23 @@ load_env_local() {
     if [[ "$value" =~ $dquoted_re || "$value" =~ $squoted_re ]]; then
       value="${BASH_REMATCH[1]}"
     fi
-    if [[ "$key" == "BUDGET_EMAIL" ]]; then
-      found="$value"
-    fi
+    # Last assignment wins. (No associative array: the script must run on macOS's bash 3.2.)
+    for key in "${wanted[@]}"; do
+      if [[ "$name" == "$key" ]]; then
+        printf -v "found_${key}" '%s' "$value"
+      fi
+    done
   done <"$file"
-  if [[ -z "$found" ]]; then
-    return 0
-  fi
-  [[ "$found" =~ $email_re ]] || die "BUDGET_EMAIL in .env.local is not an email address"
-  BUDGET_EMAIL="$found"
-  export BUDGET_EMAIL
+  for key in "${wanted[@]}"; do
+    name="found_${key}"
+    found="${!name:-}"
+    if [[ -z "$found" ]]; then
+      continue
+    fi
+    check_setting "$key" "$found" " in .env.local"
+    printf -v "$key" '%s' "$found"
+    export "${key?}"
+  done
 }
 
 require_budget_email() {
@@ -198,11 +248,53 @@ require_budget_email() {
     die "BUDGET_EMAIL is not set (the address for the budget alerts): export it or put BUDGET_EMAIL=<address> in .env.local"
 }
 
-# Print text with the budget address replaced, so a CDK diff can be shown and pasted.
+# precertly-web needs a real domain and certificate: refuse when either is missing, malformed or
+# one of the placeholders (an all-zero account or certificate id, or a .invalid hostname).
+require_web_settings() {
+  [[ -n "${WEB_DOMAIN:-}" ]] ||
+    die "WEB_DOMAIN is not set (the site's hostname): export it or put WEB_DOMAIN=<hostname> in .env.local"
+  [[ -n "${WEB_CERTIFICATE_ARN:-}" ]] ||
+    die "WEB_CERTIFICATE_ARN is not set (the ACM certificate in us-east-1): export it or put WEB_CERTIFICATE_ARN=<arn> in .env.local"
+  check_setting WEB_DOMAIN "$WEB_DOMAIN"
+  check_setting WEB_CERTIFICATE_ARN "$WEB_CERTIFICATE_ARN"
+  if [[ "$WEB_DOMAIN" == "$PLACEHOLDER_WEB_DOMAIN" || "$WEB_DOMAIN" == *.invalid ]]; then
+    die "WEB_DOMAIN looks like a placeholder; set the real hostname"
+  fi
+  if [[ "$WEB_CERTIFICATE_ARN" == "$PLACEHOLDER_WEB_CERTIFICATE_ARN" || "$WEB_CERTIFICATE_ARN" == *:000000000000:* ]]; then
+    die "WEB_CERTIFICATE_ARN looks like a placeholder; set the real certificate ARN"
+  fi
+}
+
+# Set CDK_CONTEXT to the -c arguments every stack needs. Only precertly-web gets the real domain
+# and certificate; the others get the placeholders. With redact=true (a dry run) the address and
+# the certificate ARN are replaced, as they are in the diff.
+build_context() {
+  local name="$1" tag="$2" redact="$3" email domain arn
+  email="$BUDGET_EMAIL"
+  domain="$PLACEHOLDER_WEB_DOMAIN"
+  arn="$PLACEHOLDER_WEB_CERTIFICATE_ARN"
+  if [[ "$name" == "$WEB_STACK" ]]; then
+    domain="$WEB_DOMAIN"
+    arn="$WEB_CERTIFICATE_ARN"
+    if [[ "$redact" == true ]]; then
+      arn="REDACTED"
+    fi
+  fi
+  if [[ "$redact" == true ]]; then
+    email="REDACTED"
+  fi
+  CDK_CONTEXT=(-c "budgetEmail=${email}" -c "imageTag=${tag}" -c "webDomain=${domain}" -c "webCertificateArn=${arn}")
+}
+
+# Print text with the budget address and the certificate ARN replaced, so a CDK diff can be
+# shown and pasted.
 redact() {
   local text="$1"
   if [[ -n "${BUDGET_EMAIL:-}" ]]; then
     text="${text//"$BUDGET_EMAIL"/REDACTED}"
+  fi
+  if [[ -n "${WEB_CERTIFICATE_ARN:-}" ]]; then
+    text="${text//"$WEB_CERTIFICATE_ARN"/REDACTED}"
   fi
   printf '%s\n' "$text"
 }
@@ -290,15 +382,17 @@ cmd_stack() {
   local name="$1"
   validate_stack "$name"
   require_budget_email
+  if [[ "$name" == "$WEB_STACK" ]]; then
+    require_web_settings
+  fi
 
   # The tag of HEAD is passed to every stack because the CDK app is built whole, which requires
   # it. Only precertly-app and precertly-data use it, so only they check the image exists.
   local tag
   tag="$(image_tag)"
-  local email_arg="budgetEmail=${BUDGET_EMAIL}"
+  build_context "$name" "$tag" "$DRY_RUN"
   if $DRY_RUN; then
     echo "dry-run: no AWS call is made"
-    email_arg="budgetEmail=REDACTED"
     if needs_image "$name"; then
       echo "dry-run: skipping the check that ${tag} is in ECR"
     fi
@@ -309,7 +403,7 @@ cmd_stack() {
   cd "$(repo_root)/infra"
   # --require-approval is left at the CDK default on purpose. --exclusively: deploying one stack
   # must not also deploy the stacks it depends on (precertly-data depends on precertly-app).
-  run npx --no-install cdk deploy --exclusively "$name" -c "$email_arg" -c "imageTag=${tag}"
+  run npx --no-install cdk deploy --exclusively "$name" "${CDK_CONTEXT[@]}"
 }
 
 # image (where the stack needs it), then the diff, then a question that --yes never skips,
@@ -318,6 +412,9 @@ cmd_up() {
   local name="$1"
   validate_stack "$name"
   require_budget_email
+  if [[ "$name" == "$WEB_STACK" ]]; then
+    require_web_settings
+  fi
   local tag
   tag="$(image_tag)"
 
@@ -325,18 +422,15 @@ cmd_up() {
     cmd_image
   fi
 
-  local email_arg="budgetEmail=${BUDGET_EMAIL}"
-  if $DRY_RUN; then
-    email_arg="budgetEmail=REDACTED"
-  fi
+  build_context "$name" "$tag" "$DRY_RUN"
   cd "$(repo_root)/infra"
   if $DRY_RUN; then
-    run npx --no-install cdk diff --exclusively "$name" -c "$email_arg" -c "imageTag=${tag}"
+    run npx --no-install cdk diff --exclusively "$name" "${CDK_CONTEXT[@]}"
     echo "dry-run: the diff above is always shown, then it asks 'Deploy? [y/N]' (--yes does not skip either)"
   else
-    echo "--- cdk diff ${name} (email redacted) ---"
+    echo "--- cdk diff ${name} (email and certificate ARN redacted) ---"
     local out
-    if ! out="$(npx --no-install cdk diff --exclusively "$name" -c "$email_arg" -c "imageTag=${tag}" 2>&1)"; then
+    if ! out="$(npx --no-install cdk diff --exclusively "$name" "${CDK_CONTEXT[@]}" 2>&1)"; then
       redact "$out" >&2
       die "cdk diff failed; nothing deployed"
     fi
@@ -523,6 +617,8 @@ cmd_status() {
     q_task_definition "TASK_DEFINITION"
     q_stack_output "$DATA_STACK" ClusterIdentifier
     q_aurora_cluster "CLUSTER_ID"
+    q_stack_output "$WEB_STACK" DistributionId
+    q_stack_output "$WEB_STACK" BucketName
     q_nat_gateways
     q_rds_instances
     q_ecr_image_count
@@ -582,6 +678,20 @@ cmd_status() {
       printf '  status %s, engine version %s, capacity %s to %s ACU\n' \
         "$db_status" "$db_version" "$db_min" "$db_max"
     fi
+  fi
+
+  echo "web site (${WEB_STACK})"
+  rc=0
+  probe q_stack_status "$WEB_STACK" || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo "  not deployed"
+  else
+    local web_state="$AWS_OUT" distribution_id bucket_name
+    probe q_stack_output "$WEB_STACK" DistributionId || AWS_OUT="None"
+    distribution_id="$AWS_OUT"
+    probe q_stack_output "$WEB_STACK" BucketName || AWS_OUT="None"
+    bucket_name="$AWS_OUT"
+    printf '  stack %s, distribution %s, bucket %s\n' "$web_state" "$distribution_id" "$bucket_name"
   fi
 
   probe q_nat_gateways || AWS_OUT="unknown"
@@ -1079,6 +1189,17 @@ cmd_tools() {
   tools_steps "$timeout" "$overrides" "$subnets" "$group" || true
 }
 
+# The settings a stack needs: the budget address always, the web domain and certificate only for
+# precertly-web (the other stacks get placeholders, so a bad web line in .env.local cannot block
+# them).
+load_settings() {
+  if [[ "$1" == "$WEB_STACK" ]]; then
+    load_env_local BUDGET_EMAIL WEB_DOMAIN WEB_CERTIFICATE_ARN
+  else
+    load_env_local BUDGET_EMAIL
+  fi
+}
+
 main() {
   local positional=()
   local arg
@@ -1122,12 +1243,12 @@ main() {
       ;;
     stack)
       [[ ${#positional[@]} -eq 2 ]] || die "usage: deploy.sh stack <name>"
-      load_env_local
+      load_settings "${positional[1]}"
       cmd_stack "${positional[1]}"
       ;;
     up)
       [[ ${#positional[@]} -eq 2 ]] || die "usage: deploy.sh up <name>"
-      load_env_local
+      load_settings "${positional[1]}"
       cmd_up "${positional[1]}"
       ;;
     status)
