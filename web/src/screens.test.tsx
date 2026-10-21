@@ -109,22 +109,65 @@ describe("landing", () => {
 });
 
 describe("cases list", () => {
-  it("groups the 29 cases by set and marks the 18 unscored", async () => {
+  const rows = () => [...document.querySelectorAll<HTMLElement>("[data-case-row]")];
+
+  it("lists the 29 cases in a table and marks the 18 unscored", async () => {
     renderAt("#/cases");
     await loaded();
-    const headings = (await screen.findAllByRole("heading", { level: 2 })).map((h) => h.textContent ?? "");
-    expect(headings.map((h) => h.replace(/\s*\(\d+ cases\)$/, ""))).toEqual([
-      "Facet joint interventions",
-      "Positive airway pressure (PAP)",
-      "Bariatric surgery",
-      "Spinal cord stimulators",
+    const table = await screen.findByTestId("cases-table");
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+      "Case",
+      "Policy",
+      "Procedure",
+      "Expected",
+      "Recorded",
     ]);
-    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(29);
+    expect(rows()).toHaveLength(29);
     expect(screen.getAllByText("labels only, not yet scored")).toHaveLength(18);
+    expect(rows().filter((r) => r.dataset.scored === "false")).toHaveLength(18);
     expect(document.querySelectorAll('[data-correct="true"]')).toHaveLength(index.summary.cases_correct);
     expect(document.querySelectorAll('[data-correct="false"]')).toHaveLength(
       index.summary.cases - index.summary.cases_correct,
     );
+  });
+
+  it("makes each row a link to its case that covers the whole row", async () => {
+    renderAt("#/cases");
+    await loaded();
+    await screen.findByTestId("cases-table");
+    const link = within(rows()[0] as HTMLElement).getByRole("link");
+    expect(link).toHaveAttribute("href", "#/cases/facet-01");
+    expect(link.className).toContain("after:absolute");
+    expect(link.className).toContain("after:inset-0");
+    await userEvent.click(link);
+    expect(await screen.findByRole("heading", { level: 1, name: /facet-01/ })).toBeInTheDocument();
+  });
+
+  it("filters by policy with chips and says what it shows", async () => {
+    renderAt("#/cases");
+    await loaded();
+    await screen.findByTestId("cases-table");
+    const group = screen.getByRole("group", { name: "Filter by policy" });
+    const chips = within(group).getAllByRole("button");
+    expect(chips.map((c) => (c.textContent ?? "").replace(/\s+\d+$/, ""))).toEqual([
+      "All",
+      "Facet",
+      "PAP",
+      "Bariatric",
+      "SCS",
+    ]);
+    expect(chips[0]).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(within(group).getByRole("button", { name: /^Facet/ }));
+    expect(rows()).toHaveLength(11);
+    expect(rows().every((r) => r.dataset.scored === "true")).toBe(true);
+    expect(within(group).getByRole("button", { name: /^Facet/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Showing 11 of 29 cases.")).toBeInTheDocument();
+    await userEvent.click(within(group).getByRole("button", { name: /^SCS/ }));
+    expect(rows().length).toBe(index.cases.filter((c) => c.set === "spinal-cord-stimulators").length);
+    expect(rows().every((r) => r.dataset.scored === "false")).toBe(true);
+    // Pressing the chip again clears the filter.
+    await userEvent.click(within(group).getByRole("button", { name: /^SCS/ }));
+    expect(rows()).toHaveLength(29);
   });
 });
 
