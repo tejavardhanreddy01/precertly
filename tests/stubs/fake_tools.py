@@ -38,8 +38,20 @@ stub.json keys (all optional):
   tools_describe_fail  describe-tasks for the tools task fails
   tools_stop_fail   stop-task fails
   tools_log         what the log group holds (default "tools output")
+  build_fail        {"uv sync" | "npm ci" | "npm run build" | ...: stderr}: that uv, npm or node
+                    command (matched as a prefix of "tool args") fails with status 1
+  build_touches     path (relative to web/, where npm runs) that every npm command appends to,
+                    to model a build that changes a tracked file
+  s3_stale          keys already in the bucket that the build does not have; `sync --delete`
+                    reports them as deletions unless an --exclude pattern covers them
+  s3_fail           "assets" | "rest" | "index": that upload fails; "dryrun": the preview fails
+  content_types     {key: type} overriding what head-object reports (default: by extension)
+  invalidate_fail   create-invalidation fails with this stderr
+  inval_polls       get-invalidation reports InProgress for the first N queries, then Completed
+  inval_never       get-invalidation never reports Completed
 """
 
+import fnmatch
 import json
 import sys
 import time
@@ -59,6 +71,7 @@ DATA_OUTPUTS = {
     # precertly-web's outputs
     "DistributionId": "E1A2B3C4D5E6F7",
     "BucketName": "precertly-web-sitebucket397a1860-abc123def456",
+    "SiteUrl": "https://precertly.example.org",
 }
 IMAGE = f"{ACCOUNT}.dkr.ecr.us-east-2.amazonaws.com/precertly-api:sha-abc123def456"
 
@@ -76,6 +89,8 @@ def main() -> int:
         return aws(args, config)
     if tool == "npx":
         return npx(args, config)
+    if tool in ("uv", "npm", "node"):
+        return build_tool(tool, args, config)
     return 0
 
 
@@ -95,6 +110,74 @@ def npx(args: list[str], config: dict) -> int:
             "diff_text", "Resources\n[~] AWS::Budgets::Budget Budget\n subscriber {email}"
         )
         print(text.replace("{email}", email).replace("{arn}", arn))
+    return 0
+
+
+def build_tool(tool: str, args: list[str], config: dict) -> int:
+    command = " ".join([tool, *args])
+    for prefix, message in config.get("build_fail", {}).items():
+        if command.startswith(prefix):
+            return fail(message, 1)
+    touched = config.get("build_touches")
+    if touched and tool == "npm":
+        with Path(touched).open("a") as handle:
+            handle.write("changed by the build\n")
+    return 0
+
+
+CONTENT_TYPES = {
+    ".html": "text/html",
+    ".svg": "image/svg+xml",
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".json": "application/json",
+}
+
+
+def s3(args: list[str], config: dict) -> int:
+    """`aws s3 sync|cp`: lists what a sync would upload or delete (from the local source tree and
+    the stub's s3_stale keys) and fails when asked to. Nothing is stored."""
+    operation = args[1]
+    kind = "index" if operation == "cp" else ("assets" if args[2].endswith("/assets") else "rest")
+    dryrun = "--dryrun" in args
+    if config.get("s3_fail") == ("dryrun" if dryrun else kind):
+        return fail("An error occurred (AccessDenied) when calling the PutObject operation")
+    if operation == "cp":
+        print(f"upload: {args[2]} to {args[3]}")
+        return 0
+    source, target = Path(args[2]), args[3]
+    excludes = [args[i + 1] for i, a in enumerate(args) if a == "--exclude"]
+    prefix = "(dryrun) " if dryrun else ""
+    for path in sorted(source.rglob("*")):
+        relative = path.relative_to(source).as_posix()
+        if path.is_file() and not any(fnmatch.fnmatch(relative, e) for e in excludes):
+            print(f"{prefix}upload: {path} to {target}/{relative}")
+    if "--delete" in args:
+        base = target.removeprefix("s3://").split("/", 1)
+        folder = base[1] + "/" if len(base) > 1 else ""
+        for key in config.get("s3_stale", []):
+            relative = key.removeprefix(folder)
+            if key.startswith(folder) and not any(fnmatch.fnmatch(relative, e) for e in excludes):
+                print(f"{prefix}delete: s3://{base[0]}/{key}")
+    return 0
+
+
+def s3api(args: list[str], config: dict) -> int:
+    key = args[args.index("--key") + 1]
+    overrides = config.get("content_types", {})
+    print(overrides.get(key, CONTENT_TYPES.get(Path(key).suffix, "binary/octet-stream")))
+    return 0
+
+
+def cloudfront(args: list[str], config: dict) -> int:
+    if args[1] == "create-invalidation":
+        if "invalidate_fail" in config:
+            return fail(config["invalidate_fail"])
+        print("I2J3K4L5M6N7")
+    else:
+        polls = bump("invalidation")
+        done = not config.get("inval_never") and polls > config.get("inval_polls", 0)
+        print("Completed" if done else "InProgress")
     return 0
 
 
@@ -134,6 +217,12 @@ def aws(args: list[str], config: dict) -> int:
             print("None" if config.get("no_outputs") else outputs.get(key, "None"))
         else:
             print(stacks[name])
+    elif service == "s3":
+        return s3(args, config)
+    elif service == "s3api":
+        return s3api(args, config)
+    elif service == "cloudfront":
+        return cloudfront(args, config)
     elif tools_call(args):
         return tools(args, config, state)
     elif operation == "describe-db-clusters":

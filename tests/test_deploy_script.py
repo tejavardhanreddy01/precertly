@@ -46,7 +46,7 @@ def stub_bin(tmp_path: Path) -> Path:
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for tool in ("aws", "docker", "npx", "session-manager-plugin"):
+    for tool in ("aws", "docker", "npx", "session-manager-plugin", "uv", "npm", "node"):
         stub = bin_dir / tool
         stub.write_text(f"#!{sys.executable}\n{FAKE_TOOLS.read_text()}")
         stub.chmod(0o755)
@@ -203,6 +203,10 @@ def test_app_stack_dry_run_passes_the_image_tag(stub_bin: Path) -> None:
         ("up", "precertly-base", "--bedrock"),
         ("bogus",),
         ("image", "--bogus"),
+        ("web",),
+        ("web", "bogus"),
+        ("web", "publish", "extra"),
+        ("web", "publish", "--bedrock"),
     ],
 )
 def test_bad_invocations_fail_without_leaking_the_email(
@@ -1334,7 +1338,7 @@ def test_up_web_redacts_the_certificate_when_the_diff_fails(stub_bin: Path) -> N
     assert WEB_ARN not in _output(result)
 
 
-def test_there_is_no_publish_command_yet(stub_bin: Path) -> None:
+def test_publish_is_only_a_web_subcommand(stub_bin: Path) -> None:
     result = _deploy(stub_bin, "publish", env=WEB_ENV)
     assert result.returncode != 0
     assert "unknown command" in result.stderr
@@ -1384,3 +1388,540 @@ def test_web_stack_name_matches_the_cdk_app() -> None:
     )
     app = (ROOT / "infra" / "app.py").read_text()
     assert '"precertly-web")' in app
+
+
+# ---------------------------------------------------------------------------------------------
+# web publish
+# ---------------------------------------------------------------------------------------------
+
+BUCKET = "precertly-web-sitebucket397a1860-abc123def456"
+DIST_FILES = (
+    "index.html",
+    "404.html",
+    "favicon.svg",
+    "assets/index-abc123.js",
+    "assets/index-abc123.css",
+    "data/index.json",
+    "data/policies.json",
+)
+ASSETS_CC = "public,max-age=31536000,immutable"
+REST_CC = "public,max-age=300"
+INDEX_CC = "public,max-age=60"
+WEB_STACK_OK = {"precertly-web": "CREATE_COMPLETE"}
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+@pytest.fixture
+def publish_repo(stub_bin: Path) -> Path:
+    """The throwaway repository with an origin, HEAD pushed, and a built-looking web/dist.
+
+    web/dist is git-ignored, as in the real repository. The stub npm builds nothing, so the
+    files are created here.
+    """
+    repo = _repo(stub_bin)
+    origin = stub_bin.parent / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    (repo / ".gitignore").write_text("web/dist/\n")
+    (repo / "web").mkdir()
+    (repo / "web" / "package.json").write_text("{}\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "web")
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "push", "-q", "origin", "HEAD:refs/heads/main")
+    for name in DIST_FILES:
+        path = repo / "web" / "dist" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{name}\n")
+    return repo
+
+
+def _publish(
+    stub_bin: Path, *args: str, stdin: str = "y\n", env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    # No BUDGET_EMAIL and no web settings: publishing needs neither.
+    return _deploy(stub_bin, "web", "publish", *args, email=None, stdin=stdin, env=env)
+
+
+def _s3_writes(stub_bin: Path) -> list[str]:
+    """The calls that upload: every s3 sync or cp except the --dryrun previews."""
+    return [
+        c
+        for c in _calls(stub_bin)
+        if c.startswith(("aws s3 sync", "aws s3 cp")) and "--dryrun" not in c
+    ]
+
+
+def _index_of(calls: list[str], prefix: str, nth: int = 0) -> int:
+    found = [i for i, c in enumerate(calls) if c.startswith(prefix)]
+    assert len(found) > nth, f"no call starting with {prefix!r}: {calls}"
+    return found[nth]
+
+
+def test_web_publish_is_in_the_usage_text(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "--help")
+    assert "scripts/deploy.sh web publish [--yes] [--dry-run]" in result.stdout
+    assert "Publish? [y/N]" in result.stdout
+    assert "--yes does NOT skip" in result.stdout
+
+
+def test_web_publish_dry_run_prints_every_command_and_calls_nothing(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "web", "publish", "--dry-run", email=None)
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    assert re.search(r"^commit: [0-9a-f]{12}$", out, re.MULTILINE)
+    for command in (
+        "+ uv sync",
+        "+ (cd web && npm ci)",
+        "+ (cd web && npm run prepare-data)",
+        "+ (cd web && npm run build)",
+        "+ (cd web && node scripts/check-dist.mjs)",
+        "aws s3 sync web/dist/assets s3://BUCKET_NAME/assets",
+        "aws s3 sync web/dist s3://BUCKET_NAME --exclude assets/\\* --exclude index.html --delete",
+        "aws s3 cp web/dist/index.html s3://BUCKET_NAME/index.html",
+        "aws cloudfront create-invalidation --distribution-id DISTRIBUTION_ID --paths /index.html "
+        "/404.html /favicon.svg /data/\\*",
+        "aws cloudfront get-invalidation --distribution-id DISTRIBUTION_ID",
+    ):
+        assert command in out, command
+    # in the order the real run uses: build, preview, the question, then the three uploads
+    preview, _, uploads = out.partition("dry-run: upload, in this order:")
+    assert preview.index("node scripts/check-dist.mjs") < preview.index("--dryrun")
+    assert "Publish? [y/N]" in preview
+    positions = [
+        uploads.index(m)
+        for m in (
+            "s3://BUCKET_NAME/assets --cache-control",
+            "--delete --cache-control",
+            "s3 cp",
+            "head-object",
+            "create-invalidation",
+            "get-invalidation",
+        )
+    ]
+    assert positions == sorted(positions)
+    assert "Publish? [y/N]" in out
+    assert "--yes does not skip it" in out
+    assert "DNS" not in out
+    assert ACCOUNT not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+def test_web_publish_dry_run_ignores_a_dirty_or_unpushed_tree(stub_bin: Path) -> None:
+    (_repo(stub_bin) / "untracked.txt").write_text("x")
+    result = _deploy(stub_bin, "web", "publish", "--dry-run", email=None)
+    assert result.returncode == 0, _output(result)
+    assert "skipping the git clean and pushed checks" in result.stdout
+    _assert_no_calls(stub_bin)
+
+
+def test_web_publish_refuses_a_dirty_tree(stub_bin: Path, publish_repo: Path) -> None:
+    (publish_repo / "web" / "package.json").write_text('{"changed": true}\n')
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "working tree is not clean" in result.stderr
+    _assert_no_calls(stub_bin)
+
+
+def test_web_publish_refuses_an_untracked_file(stub_bin: Path, publish_repo: Path) -> None:
+    (publish_repo / "scratch.txt").write_text("x")
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "working tree is not clean" in result.stderr
+    _assert_no_calls(stub_bin)
+
+
+def test_web_publish_refuses_a_head_that_is_not_pushed(stub_bin: Path, publish_repo: Path) -> None:
+    _git(publish_repo, "commit", "-q", "--allow-empty", "-m", "local only")
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "HEAD is not pushed" in result.stderr
+    _assert_no_calls(stub_bin)
+
+
+def test_web_publish_refuses_when_the_stack_is_not_deployed(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin)
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "precertly-web is not deployed" in result.stderr
+    assert "scripts/deploy.sh up precertly-web" in result.stderr
+    calls = _calls(stub_bin)
+    assert all(c.startswith("aws cloudformation") for c in calls), calls
+
+
+@pytest.mark.parametrize(
+    "state",
+    ["CREATE_IN_PROGRESS", "UPDATE_IN_PROGRESS", "UPDATE_ROLLBACK_COMPLETE", "DELETE_FAILED"],
+)
+def test_web_publish_refuses_a_stack_that_is_not_complete(
+    stub_bin: Path, publish_repo: Path, state: str
+) -> None:
+    _configure(stub_bin, stacks={"precertly-web": state})
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert f"precertly-web is {state}" in result.stderr
+    calls = _calls(stub_bin)
+    assert all(c.startswith("aws cloudformation") for c in calls), calls
+
+
+def test_web_publish_accepts_update_complete(stub_bin: Path, publish_repo: Path) -> None:
+    _configure(stub_bin, stacks={"precertly-web": "UPDATE_COMPLETE"})
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+
+
+def test_web_publish_refuses_a_stack_with_no_outputs(stub_bin: Path, publish_repo: Path) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, no_outputs=True)
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "no output BucketName" in result.stderr
+    assert not _s3_writes(stub_bin)
+    assert not any(c.startswith(("uv", "npm")) for c in _calls(stub_bin))
+
+
+def test_web_publish_refuses_a_malformed_output(stub_bin: Path, publish_repo: Path) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, outputs={"SiteUrl": "http://x y"})
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "output SiteUrl of precertly-web has an unexpected value" in result.stderr
+    assert not any(c.startswith(("uv", "npm")) for c in _calls(stub_bin))
+
+
+@pytest.mark.parametrize(
+    "step, label",
+    [
+        ("uv sync", "uv sync"),
+        ("npm ci", "npm ci"),
+        ("npm run prepare-data", "npm run prepare-data"),
+        ("npm run build", "npm run build"),
+        ("node scripts/check-dist.mjs", "check-dist"),
+    ],
+)
+def test_a_failing_build_step_aborts_before_any_s3_call(
+    stub_bin: Path, publish_repo: Path, step: str, label: str
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, build_fail={step: "boom"})
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert f"build step failed: {label}; nothing was uploaded" in result.stderr
+    calls = _calls(stub_bin)
+    assert not any(c.startswith(("aws s3", "aws cloudfront")) for c in calls), calls
+    # and nothing after the failing step ran
+    order = [
+        "uv sync",
+        "npm ci",
+        "npm run prepare-data",
+        "npm run build",
+        "node scripts/check-dist",
+    ]
+    later = order[order.index(next(o for o in order if step.startswith(o))) + 1 :]
+    assert not any(c.startswith(tuple(later)) for c in calls), calls
+
+
+def test_the_build_uses_npm_ci_and_never_npm_install(stub_bin: Path, publish_repo: Path) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    npm = [c for c in _calls(stub_bin) if c.startswith("npm")]
+    assert npm == ["npm ci", "npm run prepare-data", "npm run build"]
+
+
+def test_a_build_that_changes_a_tracked_file_aborts(stub_bin: Path, publish_repo: Path) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, build_touches="package.json")
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "the build changed tracked files" in result.stderr
+    assert not _s3_writes(stub_bin)
+    assert not any(c.startswith("aws s3") for c in _calls(stub_bin))
+
+
+def test_a_build_with_no_index_html_aborts(stub_bin: Path, publish_repo: Path) -> None:
+    (publish_repo / "web" / "dist" / "index.html").unlink()
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "did not produce web/dist/index.html" in result.stderr
+    assert not any(c.startswith("aws s3") for c in _calls(stub_bin))
+
+
+def test_web_publish_runs_in_order_and_ends_with_the_invalidation(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    calls = _calls(stub_bin)
+    order = [
+        _index_of(
+            calls,
+            "aws cloudformation describe-stacks --stack-name precertly-web --query "
+            "Stacks[0].StackStatus",
+        ),
+        _index_of(calls, "uv sync"),
+        _index_of(calls, "npm ci"),
+        _index_of(calls, "npm run prepare-data"),
+        _index_of(calls, "npm run build"),
+        _index_of(calls, "node scripts/check-dist.mjs"),
+        _index_of(calls, "aws s3 sync web/dist/assets", 0),  # preview
+        _index_of(calls, "aws s3 sync web/dist s3://", 0),  # preview
+        _index_of(calls, "aws s3 sync web/dist/assets", 1),  # upload
+        _index_of(calls, "aws s3 sync web/dist s3://", 1),
+        _index_of(calls, "aws s3 cp web/dist/index.html"),
+        _index_of(calls, "aws s3api head-object"),
+        _index_of(calls, "aws cloudfront create-invalidation"),
+        _index_of(calls, "aws cloudfront get-invalidation"),
+    ]
+    assert order == sorted(order), order
+    assert "--dryrun" in calls[order[6]] and "--dryrun" in calls[order[7]]
+    assert "--dryrun" not in calls[order[8]] and "--dryrun" not in calls[order[9]]
+    assert len(_s3_writes(stub_bin)) == 3
+
+
+def test_web_publish_uses_these_cache_control_values_and_only_these(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    assets, rest, index = _s3_writes(stub_bin)
+    assert assets == (
+        f"aws s3 sync web/dist/assets s3://{BUCKET}/assets --cache-control {ASSETS_CC}"
+    )
+    assert rest == (
+        f"aws s3 sync web/dist s3://{BUCKET} --exclude assets/* --exclude index.html "
+        f"--delete --cache-control {REST_CC}"
+    )
+    assert (
+        index
+        == f"aws s3 cp web/dist/index.html s3://{BUCKET}/index.html --cache-control {INDEX_CC}"
+    )
+    # the previews carry the same values, so they show the real command minus the writes
+    for call in _calls(stub_bin):
+        if call.startswith("aws s3 sync") and "--dryrun" in call:
+            assert call.removesuffix(" --dryrun") in (assets, rest)
+
+
+def test_delete_is_never_applied_to_assets(stub_bin: Path, publish_repo: Path) -> None:
+    _configure(
+        stub_bin,
+        stacks=WEB_STACK_OK,
+        s3_stale=["assets/index-old999.js", "data/retired.json", "old-page.html"],
+    )
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    s3_calls = [c for c in _calls(stub_bin) if c.startswith("aws s3 ")]
+    for call in s3_calls:
+        if "--delete" in call:
+            # the only sync that may delete leaves assets/ and index.html alone
+            assert "--exclude assets/*" in call and "--exclude index.html" in call
+            assert "web/dist/assets" not in call
+        if "web/dist/assets" in call or f"s3://{BUCKET}/assets" in call:
+            assert "--delete" not in call
+    # the preview lists what would go, and an old hashed asset is not among it
+    assert "data/retired.json" in result.stdout
+    assert "old-page.html" in result.stdout
+    assert "index-old999.js" not in result.stdout
+    assert "2 to delete" in result.stdout
+
+
+def test_web_publish_invalidates_only_the_files_that_are_not_hashed(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    invalidations = [c for c in _calls(stub_bin) if "create-invalidation" in c]
+    assert invalidations == [
+        "aws cloudfront create-invalidation --distribution-id E1A2B3C4D5E6F7 "
+        "--paths /index.html /404.html /favicon.svg /data/* "
+        "--query Invalidation.Id --output text"
+    ]
+    assert "/assets" not in invalidations[0]
+    assert "/*" not in invalidations[0].replace("/data/*", "")
+
+
+def test_web_publish_reads_back_the_content_type_of_each_kind(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    keys = [
+        c.split("--key ")[1].split(" ")[0]
+        for c in _calls(stub_bin)
+        if c.startswith("aws s3api head-object")
+    ]
+    assert keys == [
+        "index.html",
+        "404.html",
+        "favicon.svg",
+        "assets/index-abc123.js",
+        "assets/index-abc123.css",
+        "data/index.json",
+    ]
+
+
+@pytest.mark.parametrize(
+    "key, wrong",
+    [
+        ("data/index.json", "text/plain"),
+        ("favicon.svg", "text/xml"),
+        ("assets/index-abc123.js", "text/plain"),
+        ("assets/index-abc123.css", "application/octet-stream"),
+        ("index.html", "binary/octet-stream"),
+    ],
+)
+def test_a_wrong_content_type_stops_before_the_invalidation(
+    stub_bin: Path, publish_repo: Path, key: str, wrong: str
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, content_types={key: wrong})
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert f"{key} was uploaded with content type '{wrong}'" in result.stderr
+    assert "CloudFront was not invalidated" in result.stderr
+    assert not any("cloudfront" in c for c in _calls(stub_bin))
+
+
+def test_web_publish_prints_the_commit_the_file_count_and_the_site_url(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    sha = _git(publish_repo, "rev-parse", "--short=12", "HEAD").strip()
+    assert f"commit: {sha}" in result.stdout
+    assert f"published commit {sha}" in result.stdout
+    assert f"files in the build: {len(DIST_FILES)}" in result.stdout
+    assert "site: https://precertly.example.org" in result.stdout
+    assert "DNS" not in _output(result)
+    # the bucket, the distribution and the account are for the AWS calls, not for the summary
+    assert BUCKET not in result.stdout.split("published commit")[1]
+    assert ACCOUNT not in _output(result)
+
+
+def test_web_publish_asks_and_yes_does_not_answer_for_you(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin, "--yes", stdin="")
+    assert result.returncode != 0
+    assert "Publish? [y/N]" in result.stderr
+    assert "not confirmed; nothing uploaded" in result.stderr
+    assert not _s3_writes(stub_bin)
+    assert not any("cloudfront" in c for c in _calls(stub_bin))
+
+
+@pytest.mark.parametrize("answer", ["n\n", "\n", "yes\n", "Y es\n"])
+def test_web_publish_stops_on_anything_but_y(
+    stub_bin: Path, publish_repo: Path, answer: str
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin, stdin=answer)
+    assert result.returncode != 0
+    assert not _s3_writes(stub_bin)
+
+
+def test_web_publish_with_yes_still_goes_ahead_when_you_answer_y(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin, "--yes", stdin="y\n")
+    assert result.returncode == 0, _output(result)
+    assert len(_s3_writes(stub_bin)) == 3
+
+
+def test_the_question_comes_after_the_preview_and_the_build(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin, stdin="n\n")
+    calls = _calls(stub_bin)
+    assert _index_of(calls, "node scripts/check-dist.mjs") < _index_of(calls, "aws s3 sync")
+    assert "what would change" in result.stdout
+    assert re.search(r"assets/\s+\d+ to upload, nothing is ever deleted here", result.stdout)
+
+
+@pytest.mark.parametrize("failing", ["assets", "rest", "index"])
+def test_a_failed_upload_stops_the_later_steps(
+    stub_bin: Path, publish_repo: Path, failing: str
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, s3_fail=failing)
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert len(_s3_writes(stub_bin)) == ["assets", "rest", "index"].index(failing) + 1
+    assert not any("cloudfront" in c for c in _calls(stub_bin))
+    if failing != "index":
+        assert "index.html was not replaced" in result.stderr
+
+
+def test_a_failed_preview_uploads_nothing(stub_bin: Path, publish_repo: Path) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, s3_fail="dryrun")
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "nothing was uploaded" in result.stderr
+    assert not _s3_writes(stub_bin)
+
+
+def test_a_slow_invalidation_is_waited_for(stub_bin: Path, publish_repo: Path) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, inval_polls=3)
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    assert len([c for c in _calls(stub_bin) if "get-invalidation" in c]) == 4
+    assert "warning" not in result.stderr
+
+
+def test_an_invalidation_that_does_not_finish_is_a_warning_not_a_failure(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, inval_never=True)
+    started = time.monotonic()
+    result = _publish(stub_bin)
+    assert time.monotonic() - started < 30
+    assert result.returncode == 0, _output(result)
+    assert "had not completed after 2s" in result.stderr
+    assert "last status: InProgress" in result.stderr
+    assert "The publish is done" in result.stderr
+    # the summary still prints
+    assert "published commit" in result.stdout
+    assert "site: https://precertly.example.org" in result.stdout
+
+
+def test_an_invalidation_that_cannot_be_created_says_the_files_are_uploaded(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK, invalidate_fail="AccessDenied")
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "the files are uploaded, but the CloudFront invalidation could not be created" in (
+        result.stderr
+    )
+    assert len(_s3_writes(stub_bin)) == 3
+
+
+def test_publishing_never_touches_the_service_or_the_other_stacks(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    calls = _calls(stub_bin)
+    assert not any(c.startswith(("aws ecs", "aws ecr", "aws rds", "docker", "npx")) for c in calls)
+    stack_names = {m.group(1) for c in calls if (m := re.search(r"--stack-name (\S+)", c))}
+    assert stack_names == {"precertly-web"}
+
+
+def test_status_is_unchanged_by_the_web_publish_command() -> None:
+    script = SCRIPT.read_text()
+    status = script[script.index("cmd_status() {") : script.index("cmd_down() {")]
+    assert "web site (${WEB_STACK})" in status
+    assert "s3" not in status.replace("s3_", "")
