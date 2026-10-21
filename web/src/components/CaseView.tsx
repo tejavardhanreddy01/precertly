@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { TOUR } from "../content/tour";
+import { useIndex } from "../lib/index-context";
 import { shownOutcome, STAGE_TEXT, stageTitle } from "../lib/labels";
 import { wholeSpan, type Span } from "../lib/highlight";
 import { href, replaceHash, type Route } from "../lib/router";
+import { shownView } from "../lib/shown";
 import type { CaseCriterion, CaseFile, CaseRow, ExpectedLabel, Verdict } from "../lib/types";
 import { ChartViewer, type Target } from "./ChartViewer";
 import { LabelPanel } from "./LabelPanel";
@@ -234,6 +236,8 @@ export function CaseView({ file, row, route }: { file: CaseFile; row: CaseRow; r
   const activeResource = selected ? resource : null;
   const highlights = buildHighlights(file, verdict, label, activeResource);
   const target = findTarget(file, verdict, highlights, cite, activeResource);
+  const topK = useIndex().run.retrieval.top_k;
+  const shown = shownView(verdict, file.chart, topK);
 
   return (
     <article className="space-y-4">
@@ -298,12 +302,18 @@ export function CaseView({ file, row, route }: { file: CaseFile; row: CaseRow; r
           <p className="mb-2 text-sm text-slate-800">
             Synthetic chart text, grouped by resource. {selected ? "Highlighted text is cited or labeled for the selected criterion." : ""}
           </p>
+          {shown ? (
+            <p className="mb-2 text-sm text-slate-800" data-testid="shown-line">
+              {shown.line}
+            </p>
+          ) : null}
           <ChartViewer
             key={`${selected?.criterion ?? ""}|${resource ?? ""}`}
             chart={file.chart}
             highlights={highlights}
             target={target}
             requestKey={cite === null ? "" : String(cite)}
+            shown={shown?.kind === "badges" ? shown.shown : null}
           />
         </section>
       </div>

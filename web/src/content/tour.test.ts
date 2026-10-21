@@ -1,6 +1,6 @@
 import { allCases, readIndex } from "../test/fixtures";
 import type { CaseFile, Verdict } from "../lib/types";
-import { TOUR, tourHref } from "./tour";
+import { TOUR, tourHref, tourUnseenHref } from "./tour";
 
 const cases = allCases(); // sorted by id
 const index = readIndex();
@@ -66,6 +66,29 @@ describe("the tour", () => {
     const records = file.chart.filter((k) => k.text.includes("attended 2 of the 12 sessions"));
     expect(records.length).toBeGreaterThan(0);
     for (const r of records) expect(verdict.shown_chunk_ids).not.toContain(r.chunk_id);
+  });
+
+  it("step 3 links to the therapy records, a resource in the chart that the model was not shown", () => {
+    const { s, file, verdict } = step(3);
+    const resource = s.unseen?.resource ?? "";
+    expect(resource).not.toBe("");
+    const chunks = file.chart.filter((k) => `${k.resource_type}/${k.resource_id}` === resource);
+    expect(chunks.length).toBeGreaterThan(0); // the id exists in the case's chart
+    for (const k of chunks) expect(verdict.shown_chunk_ids).not.toContain(k.chunk_id);
+    // It is the resource whose text the caption describes: 2 of 12 sessions.
+    expect(chunks.some((k) => k.text.includes("attended 2 of the 12 sessions"))).toBe(true);
+    expect(s.caption).toContain("2 of 12 sessions");
+    expect(s.caption).toContain("not shown");
+    expect(s.caption.split(/(?<=[.!?])\s+/)).toHaveLength(1);
+    expect(s.unseen?.label).toBe("See the therapy records the model was not shown");
+    expect(tourUnseenHref(3)).toBe(
+      `#/cases/facet-11?c=conservative-care-failed&tour=3&res=${encodeURIComponent(resource)}`,
+    );
+  });
+
+  it("only step 3 has a second link", () => {
+    expect(TOUR.map((s) => s.unseen !== undefined)).toEqual([false, false, true, false]);
+    expect(tourUnseenHref(1)).toBeNull();
   });
 
   it("step 4 is the first invalidated verdict: met by the model, insufficient after verification", () => {

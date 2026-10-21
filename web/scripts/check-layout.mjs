@@ -26,7 +26,8 @@ const unscored = readCase("pap-01");
 const unscoredCriterion = unscored.criteria.find((c) => c.judged)?.criterion;
 if (!unscoredCriterion) throw new Error("pap-01 has no judged criterion in public/data");
 
-// `wait` is a selector that is present once the route has rendered what is being measured.
+// `wait` is a selector that is present once the route has rendered what is being measured;
+// `scrollChunk` names the chunk whose first mark the page should have scrolled to.
 const ROUTES = [
   { name: "landing (redirect target)", hash: "", wait: '[aria-label="Tour"]' },
   { name: "cases", hash: "#/cases", wait: "h3" },
@@ -39,6 +40,12 @@ const ROUTES = [
     name: "false approval open (tour step 3)",
     hash: "#/cases/facet-11?c=conservative-care-failed&tour=3",
     wait: '[data-testid="verdict-panel"]',
+  },
+  {
+    name: "unseen resource (tour link)",
+    hash: "#/cases/facet-11?c=conservative-care-failed&tour=3&res=DocumentReference%2Fnote-pt-records",
+    wait: '[data-chunk-id="DocumentReference/note-pt-records#0"] mark',
+    scrollChunk: "DocumentReference/note-pt-records#0",
   },
   {
     name: "rule-decided verdict",
@@ -57,7 +64,7 @@ const ROUTES = [
 ];
 
 // What to run in the page: the widths, and which elements stick out past the viewport edge.
-function measure() {
+function measure(scrollChunk) {
   const viewport = document.documentElement.clientWidth;
   const scrollWidth = document.documentElement.scrollWidth;
   const label = (el) => {
@@ -98,7 +105,11 @@ function measure() {
   // heading, unless the content is too short to scroll that far.
   let scroll = null;
   const viewer = document.querySelector('[data-testid="chart-viewer"]');
-  const mark = viewer?.querySelector('mark[data-active="true"]') ?? viewer?.querySelector("mark");
+  // The mark the page scrolled to: the active citation, or the first mark of the named chunk.
+  const scope = scrollChunk
+    ? [...(viewer?.querySelectorAll("[data-chunk-id]") ?? [])].find((el) => el.dataset.chunkId === scrollChunk)
+    : viewer;
+  const mark = scope?.querySelector('mark[data-active="true"]') ?? scope?.querySelector("mark");
   if (viewer && mark) {
     const box = viewer.getBoundingClientRect();
     const rect = mark.getBoundingClientRect();
@@ -160,7 +171,7 @@ async function main() {
           // Let fonts, the smooth scroll and any layout after the first paint settle.
           await page.evaluate(() => document.fonts?.ready);
           await page.waitForTimeout(400);
-          const m = await page.evaluate(measure);
+          const m = await page.evaluate(measure, route.scrollChunk ?? null);
           const badScroll = m.scroll !== null && scrollProblem(m.scroll) !== null;
           const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.falseApprovalBeside || badScroll;
           const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.falseApprovalBeside ? " BESIDE" : badScroll ? " SCROLL" : "";

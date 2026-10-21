@@ -23,6 +23,8 @@ export interface TourStep {
   criterion: string;
   title: string;
   caption: string;
+  /** A second link in the step's bar: a chart resource the model was not shown for this criterion. */
+  unseen?: { resource: string; label: string };
 }
 
 export const TOUR: readonly TourStep[] = [
@@ -49,6 +51,10 @@ export const TOUR: readonly TourStep[] = [
     title: "The mistake in the run",
     caption:
       "The one false approval: the model marked this met from a note claiming 12 weeks of physical therapy, while the therapy records, which it was not shown, say 2 of 12 sessions.",
+    unseen: {
+      resource: "DocumentReference/note-pt-records",
+      label: "See the therapy records the model was not shown",
+    },
   },
   {
     kind: "invalidated",
@@ -59,6 +65,13 @@ export const TOUR: readonly TourStep[] = [
       "The model said met, but its quote was not found in the text it cited, so the verdict became insufficient instead of an approval.",
   },
 ];
+
+/** The link to a step's unseen resource: the same case and criterion with that resource selected. */
+export function tourUnseenHref(step: number): string | null {
+  const s = TOUR[step - 1];
+  if (!s?.unseen) return null;
+  return href(["cases", s.caseId], { c: s.criterion, tour: String(step), res: s.unseen.resource });
+}
 
 export function tourHref(step: number): string {
   const s = TOUR[step - 1];

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { highlight, type Span } from "../lib/highlight";
 import { targetScrollTop } from "../lib/scroll";
+import { NOT_SHOWN_BADGE, SHOWN_BADGE } from "../lib/shown";
 import type { ChartChunk } from "../lib/types";
 
 /** What the viewer should scroll to: a chunk, and optionally one citation's first mark in it. */
@@ -91,6 +92,20 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
+/** Words and a border style, never colour alone: solid for given to the model, dashed for not. */
+function ShownBadge({ shown }: { shown: boolean }) {
+  return (
+    <span
+      data-shown={shown}
+      className={`shrink-0 rounded border px-1 text-xs font-medium ${
+        shown ? "border-slate-900 bg-white text-slate-900" : "border-dashed border-slate-600 bg-slate-100 text-slate-800"
+      }`}
+    >
+      {shown ? SHOWN_BADGE : NOT_SHOWN_BADGE}
+    </span>
+  );
+}
+
 function ChunkRow({
   chunk,
   index,
@@ -98,6 +113,7 @@ function ChunkRow({
   onToggle,
   spans,
   activeKey,
+  shown,
 }: {
   chunk: ChartChunk;
   index: number;
@@ -105,6 +121,8 @@ function ChunkRow({
   onToggle: () => void;
   spans: readonly Span[] | undefined;
   activeKey: number | undefined;
+  /** Whether the model was given this chunk, or null when nothing is badged. */
+  shown: boolean | null;
 }) {
   const cited = !!spans && spans.length > 0;
   const bodyId = `chunk-body-${index}`;
@@ -117,7 +135,7 @@ function ChunkRow({
         aria-expanded={open}
         aria-controls={bodyId}
         onClick={onToggle}
-        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-slate-100"
+        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 text-left text-sm hover:bg-slate-100"
       >
         <Chevron open={open} />
         <span className="shrink-0 font-medium">{name}</span>
@@ -126,7 +144,8 @@ function ChunkRow({
             highlighted
           </span>
         ) : null}
-        {!open ? <span className="truncate text-slate-700">{preview}</span> : null}
+        {shown === null ? null : <ShownBadge shown={shown} />}
+        {!open ? <span className="min-w-0 flex-1 basis-40 truncate text-slate-700">{preview}</span> : null}
       </button>
       {open ? (
         <pre id={bodyId} className="whitespace-pre-wrap wrap-anywhere px-2 pb-2 pl-7 font-sans text-sm leading-relaxed">
@@ -147,12 +166,15 @@ export function ChartViewer({
   highlights,
   target,
   requestKey = "",
+  shown = null,
 }: {
   chart: readonly ChartChunk[];
   highlights: ReadonlyMap<string, readonly Span[]>;
   target: Target;
   /** Changes each time the reader asks to see the target, even when the target itself is the same. */
   requestKey?: string;
+  /** Ids of the chunks the model was given for the selected criterion; null badges nothing. */
+  shown?: ReadonlySet<string> | null;
 }) {
   const groups = useMemo(() => groupChunks(chart), [chart]);
   const [toggled, setToggled] = useState<ReadonlyMap<string, boolean>>(new Map());
@@ -218,6 +240,7 @@ export function ChartViewer({
                 open={open}
                 spans={spans}
                 activeKey={chunk.chunk_id === target.chunkId ? target.citeKey : undefined}
+                shown={shown === null ? null : shown.has(chunk.chunk_id)}
                 onToggle={() => setToggled((prev) => new Map(prev).set(chunk.chunk_id, !open))}
               />
             );

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { DataStore } from "./lib/data";
@@ -206,6 +206,73 @@ describe("selecting a criterion", () => {
   });
 });
 
+describe("what the model was shown", () => {
+  const topK = index.run.retrieval.top_k;
+  const shownBadges = () => [...document.querySelectorAll('[data-testid="chart-viewer"] [data-shown="true"]')];
+  const notShownBadges = () => [...document.querySelectorAll('[data-testid="chart-viewer"] [data-shown="false"]')];
+
+  it("badges every chunk for a selected verdict and says what the badges mean", async () => {
+    const file = readCase("facet-11");
+    const verdict = file.result?.verdicts.find((v) => v.criterion === "conservative-care-failed");
+    renderAt("#/cases/facet-11?c=conservative-care-failed");
+    await screen.findByTestId("verdict-panel");
+    expect(screen.getByTestId("shown-line")).toHaveTextContent(
+      `Badges show what the model was given for the selected criterion (the top ${topK} retrieved chunks plus the request fields).`,
+    );
+    expect(shownBadges()).toHaveLength(verdict?.shown_chunk_ids.length ?? -1);
+    expect(notShownBadges()).toHaveLength(file.chart.length - (verdict?.shown_chunk_ids.length ?? 0));
+    expect(shownBadges()[0]).toHaveTextContent("shown to the model");
+    expect(notShownBadges()[0]).toHaveTextContent("not shown to the model");
+    // The therapy records are in the chart but were not given to the model.
+    const records = document.querySelector('[data-chunk-id="DocumentReference/note-pt-records#0"]');
+    expect(records?.querySelector("[data-shown]")).toHaveTextContent("not shown to the model");
+    const cited = document.querySelector('[data-chunk-id="DocumentReference/note-pain-clinic-eval#0"]');
+    expect(cited?.querySelector("[data-shown]")?.textContent).toBe("shown to the model");
+  });
+
+  it("says a rule decided it, and badges nothing, for a rule-only verdict", async () => {
+    renderAt("#/cases/facet-02?c=two-mbbs-80pct-sustained-relief");
+    await screen.findByTestId("verdict-panel");
+    expect(screen.getByTestId("shown-line")).toHaveTextContent(/model was not called/);
+    expect(shownBadges()).toHaveLength(0);
+    expect(notShownBadges()).toHaveLength(0);
+  });
+
+  it("shows no badge and no line on an unscored case or with nothing selected", async () => {
+    const label = readCase("pap-01").expected[0];
+    renderAt(`#/cases/pap-01?c=${label?.criterion}`);
+    await screen.findByTestId("label-panel");
+    expect(screen.queryByTestId("shown-line")).toBeNull();
+    expect(document.querySelectorAll("[data-shown]")).toHaveLength(0);
+    cleanup();
+    renderAt("#/cases/facet-11");
+    await screen.findByRole("heading", { level: 1, name: /facet-11/ });
+    expect(screen.queryByTestId("shown-line")).toBeNull();
+    expect(document.querySelectorAll("[data-shown]")).toHaveLength(0);
+  });
+
+  it("gives the tour step 3 a second link to the records the model was not shown", async () => {
+    renderAt("#/cases/facet-11?c=conservative-care-failed&tour=3");
+    await screen.findByTestId("verdict-panel");
+    const bar = screen.getByRole("navigation", { name: "Tour" });
+    const link = within(bar).getByRole("link", { name: "See the therapy records the model was not shown" });
+    expect(link.getAttribute("href")).toContain("res=DocumentReference%2Fnote-pt-records");
+    await userEvent.click(link);
+    expect(window.location.hash).toContain("res=DocumentReference%2Fnote-pt-records");
+    await waitFor(() => {
+      const records = document.querySelector('[data-chunk-id="DocumentReference/note-pt-records#0"]');
+      expect(records?.querySelector("mark")).not.toBeNull();
+      expect(records?.querySelector("[data-shown]")).toHaveTextContent("not shown to the model");
+    });
+  });
+
+  it("offers that second link on step 3 only", async () => {
+    renderAt("#/cases/facet-03?c=chronic-axial-pain-functional-deficit&tour=1");
+    await screen.findByTestId("verdict-panel");
+    expect(screen.queryByRole("link", { name: /therapy records/ })).toBeNull();
+  });
+});
+
 describe("policy view", () => {
   it("shows quotes, sources, stages and nested logic", async () => {
     const policy = readPolicy("facet-joint-interventions");
@@ -277,6 +344,8 @@ describe("accessibility (axe, colour contrast excluded: jsdom cannot compute it)
     "#/cases/facet-01?c=no-non-facet-pathology",
     "#/cases/facet-03?c=chronic-axial-pain-functional-deficit&tour=1",
     "#/cases/facet-11?c=conservative-care-failed",
+    "#/cases/facet-11?c=conservative-care-failed&tour=3&res=DocumentReference%2Fnote-pt-records",
+    "#/cases/facet-02?c=two-mbbs-80pct-sustained-relief",
     "#/cases/pap-01",
     "#/policies",
     "#/policies/facet-joint-interventions",
