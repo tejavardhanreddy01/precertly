@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { PILL_TEXT, Pill, type PillState } from "./Pill";
+import { PILL_TEXT, type PillState } from "../lib/pill-text";
+import { Pill } from "./Pill";
 
 const STATES = Object.keys(PILL_TEXT) as PillState[];
 

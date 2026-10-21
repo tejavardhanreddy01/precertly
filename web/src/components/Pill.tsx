@@ -1,23 +1,6 @@
 import type { ComponentType } from "react";
+import { PILL_TEXT, type PillState } from "../lib/pill-text";
 import { IconAlert, IconBan, IconCheck, IconCross, IconNotApplicable, IconWarning, type IconProps } from "./icons";
-
-/** Every state a pill can show. Each has its own words, its own icon silhouette and its own colors. */
-export type PillState =
-  | "met"
-  | "not_met"
-  | "insufficient"
-  | "invalidated"
-  | "false_approval"
-  | "not_applicable";
-
-export const PILL_TEXT: Record<PillState, string> = {
-  met: "Met",
-  not_met: "Not met",
-  insufficient: "Insufficient",
-  invalidated: "Invalidated",
-  false_approval: "False approval",
-  not_applicable: "Not applicable",
-};
 
 const PILL_ICON: Record<PillState, ComponentType<IconProps>> = {
   met: IconCheck,

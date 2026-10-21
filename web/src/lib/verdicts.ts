@@ -1,4 +1,4 @@
-import type { PillState } from "../components/Pill";
+import type { PillState } from "./pill-text";
 import { shownOutcome } from "./labels";
 import type { Verdict } from "./types";
 
