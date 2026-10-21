@@ -6,15 +6,15 @@
 // The label is the last part of each file name (landing-390-before.png), so a redesign can be
 // compared with the screen it replaced. Without --url it starts the Vite dev server on a free local
 // port and stops it afterwards. Each shot is one viewport (not the whole page) and must stay
-// under 300 KB.
+// under 300 KB (300,000 bytes).
 import { mkdirSync, statSync } from "node:fs";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 
-const LIMIT = 300 * 1024;
+const LIMIT = 300_000;
 const SIZES = [
   { width: 390, height: 844 },
-  { width: 1280, height: 800 },
+  { width: 1280, height: 720 },
 ];
 
 const SHOTS = [
