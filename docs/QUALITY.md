@@ -22,7 +22,7 @@ These hold for every code path. A change that weakens one is a bug, whatever els
 
 ## Definition of done (every PR)
 
-- Tests added or updated for the change; ruff, ruff format and pytest pass in the pre-commit hook, and the CI jobs `lint`, `typecheck`, `test` and `security` pass.
+- Tests added or updated for the change; ruff, ruff format and pytest pass in the pre-commit hook, and every CI job passes (`lint`, `typecheck`, `test`, `security`, `docker-build`, `pas-validate`, `infra-synth`, `web`).
 - No invariant above is weakened.
 - Any change to prompts, retrieval, models or policies runs the eval suite and reports the delta in the PR.
 - Any change to a policy file passes the quote verifier. It needs network access, so it runs locally after policy edits, not in CI.
@@ -49,7 +49,7 @@ These hold for every code path. A change that weakens one is a bug, whatever els
 | LLM02 Sensitive information disclosure | Note text in logs, traces, error messages or stored eval results | Logs record ids, counts and timings, not chart text; synthetic data only. Results files store each model call's prompt hash and raw response, and every verdict's rationale and quotes, all of which contain chart text: a deployment with real data needs them behind access controls and retention limits | Planned for logging and stored results; data rule done |
 | LLM03 Supply chain | Compromised or drifting dependencies, data generator or model | `uv.lock`, Synthea jar sha256, pinned model id, GitHub Actions pinned to commit SHAs; `pip-audit` on the lockfile in CI, Dependabot, CodeQL | Done |
 | LLM04 Data and model poisoning | Tampered policy files or fixtures | Quote verifier; fixtures regenerated and checked against `build_cases.py`; no fine-tuning | Done |
-| LLM05 Improper output handling | Model output trusted or rendered unescaped | Pydantic validation; citations verified; UI escapes all model and chart text | Validation done; UI planned |
+| LLM05 Improper output handling | Model output trusted or rendered unescaped | Pydantic validation; citations verified; UI escapes all model and chart text. The recorded-mode site renders text through React and has no `dangerouslySetInnerHTML` in `web/src` (searched 2026-10-21) | Validation done; recorded-mode site done as of 2026-10-21; live UI planned |
 | LLM06 Excessive agency | Model takes actions | No tools that write, send or decide | Done |
 | LLM07 System prompt leakage | Prompt reveals secrets | Prompts contain no secrets and are public in the repo | Done |
 | LLM08 Vector and embedding weaknesses | Retrieval crosses cases | `case_id` isolation in queries | Done; test planned |
@@ -69,7 +69,7 @@ Out of scope, stated openly: a chart that is falsified at the source (for exampl
 | Transport and storage | TLS everywhere; RDS and S3 encrypted with KMS; database not public. **True and verified:** the Aurora connection uses TLS (owner-confirmed 2026-10-20, measured with `pg_stat_ssl` through `tools check`). **True in code** (`infra/data_stack.py`, `infra/app_stack.py`, assertion tests; not re-checked against the running cluster): the cluster has `storage_encrypted=True` with no key given, so storage encryption is on with the default AWS-managed RDS key, not a key made in this repo; the writer has `publicly_accessible=False`, sits in isolated subnets with no route out at all, and its security group takes port 5432 from the tools task's security group only and sends nothing. **Not true yet:** the server certificate is not verified (the asyncpg default); nothing is served over TLS because there is no public path; S3 does not exist | Partial: TLS to the database and storage encryption done; certificate verification, TLS to clients and S3 planned |
 | Audit | Every case read, verdict and export written to `audit_log` with the actor | Table done; writes planned |
 | Least privilege | One IAM role per service, scoped to what it calls | Planned |
-| Dependencies | `pip-audit` on every locked dependency in the CI `security` job, failing on any known vulnerability; Dependabot weekly, grouped, for uv and GitHub Actions; actions pinned to full commit SHAs; CodeQL, GitHub default setup, extended query suite, blocking merges on high or critical alerts; container image scanning | Done, except image scanning: ECR scans on push, one image scanned so far (next row); no scan in CI |
+| Dependencies | `pip-audit` on every locked dependency in the CI `security` job, failing on any known vulnerability; Dependabot weekly, grouped, for uv (root and `infra/`), npm (`infra/` and `web/`), Docker and GitHub Actions, with semver-major `@types/node` ignored in `web/`; actions pinned to full commit SHAs; CodeQL, GitHub default setup, extended query suite, blocking merges on high or critical alerts; container image scanning | Done, except image scanning: ECR scans on push, one image scanned so far (next row); no scan in CI |
 | VPC default security group | The `precertly-app` VPC's default security group keeps its default rules. Restricting it with the CDK adds a custom-resource Lambda and its role to a stack that has none, nothing uses the default group, and the API task has its own group with no inbound rules and all outbound | Left unrestricted on purpose |
 | Known image scan findings | ECR scan on push of `sha-951a31b14a9a` (2026-10-18): 3 HIGH, 9 MEDIUM, 3 LOW. The 3 HIGH are Debian 13 (trixie) base packages, none fixed in trixie as of 2026-10-18: glibc 2.41-12+deb13u4 (CVE-2026-19499 and CVE-2026-5435, both "no-dsa, minor" per the Debian security tracker; fixed only in forky/sid, 2.43) and zlib 1.3.dfsg+really1.3.1-1 (CVE-2026-85091, unfixed, Debian bug 1146895). Not claimed to be unreachable: not yet checked against our code. Image pushed 2026-10-18, 88 MB, arm64, plain manifest (no attestations) | Open; rescan after Dependabot base-digest bumps |
 
@@ -157,6 +157,14 @@ Kept current and published with results.
 - `prior-rfa-50pct-6-months` is decided by code only with at least two coded scores in the six-month window. That minimum is a conservative routing choice, not a policy threshold.
 - Absence-based `met` on the partial path (a session count within the limit, resting on no further session being found) depends on retrieval recall: the model sees the retrieved chunks, not the whole chart, so a session documented only in a chunk that was not retrieved goes unseen.
 - For same-day blocks (`same-day-blocks-justified`), the requirement that `met` document the medical necessity of each listed block is stated in the prompt only. The verifier requires at least one verified chart citation, not one per block.
+
+Recorded-mode site (`web/`). Observed, not fixed; each was seen or measured on 2026-10-21 unless a bullet says otherwise:
+
+- On a very wide screen the page content is capped at about 1170 px and centered, leaving wide empty margins (seen on an external monitor, 2026-10-21). The case workspace could use more width.
+- On a policy page each variant card shows its "All of" group wrapped in another "All of" (a group with one child renders its label twice), and each variant lists nearly the same criteria again. Every link points to the same criteria listed below (observed 2026-10-21).
+- On a policy page, a criterion link scrolls to the criterion once. After scrolling back up, clicking the same link again does nothing, because the link target equals the current hash, so no hash change happens (observed 2026-10-21). The same may be true of "Show in the chart" on a case page; that was not verified.
+- In the exported case files, `shown_chunk_ids` lists 16 chunks for each of the 38 verdicts decided by a rule alone, although no model call was made for them (`prompt_sha256` is null; counted from the export on 2026-10-21). The site treats `decided_by` "rule" as nothing shown, so it does not mislead, but the field itself does. The export should be fixed or the field documented later.
+- The chart panel's scroll uses the first resource heading's height as the sticky-heading inset. At 390 px the headings are 49 or 69 px tall, so a mark with no spare room under a taller heading could end up up to 20 px under it. No mark in the current data is affected (measured 2026-10-20).
 
 ## Sources
 
