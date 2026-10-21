@@ -18,7 +18,7 @@ export function RequestPanel({ request }: { request: Request }) {
         {entries.map(([key, value]) => (
           <div key={key} className="contents">
             <dt className="text-slate-700">{humanize(key)}</dt>
-            <dd className="break-words font-medium">{show(value)}</dd>
+            <dd className="font-medium wrap-anywhere">{show(value)}</dd>
           </div>
         ))}
       </dl>

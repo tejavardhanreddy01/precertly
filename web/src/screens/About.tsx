@@ -109,7 +109,7 @@ export function About() {
           </a>
           .
         </p>
-        <div className="mt-2 overflow-x-auto">
+        <div className="mt-2 overflow-x-auto" tabIndex={0} role="region" aria-label="Release gates table, scrolls sideways on a narrow screen">
           <table className="w-full min-w-[40rem] border-collapse text-left text-sm" data-testid="gates">
             <caption className="sr-only">Release gates, their thresholds and the current results on the facet cases</caption>
             <thead>

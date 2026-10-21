@@ -17,7 +17,10 @@ export function LabelPanel({
   tour: string | undefined;
 }) {
   return (
-    <div className="mt-2 space-y-2 rounded border border-slate-300 bg-slate-50 p-3 text-sm" data-testid="label-panel">
+    <div
+      className="mt-2 space-y-2 rounded border border-slate-300 bg-slate-50 p-3 text-sm wrap-anywhere"
+      data-testid="label-panel"
+    >
       <h3 className="text-base font-semibold">Label (not yet scored by the model)</h3>
       {label ? (
         <>

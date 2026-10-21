@@ -94,9 +94,11 @@ function CriterionRow({
           <span className="block break-all text-xs text-slate-700">{criterion.criterion}</span>
         </span>
         {verdict?.false_approval ? (
-          <span className="text-xs font-bold uppercase text-red-950">False approval</span>
+          <span className="w-full text-xs font-bold uppercase text-red-950 sm:w-auto">False approval</span>
         ) : verdict && !verdict.correct ? (
-          <CorrectMark correct={false} />
+          <span className="w-full sm:w-auto">
+            <CorrectMark correct={false} />
+          </span>
         ) : null}
       </button>
       {selected ? (
@@ -258,13 +260,13 @@ export function CaseView({ file, row, route }: { file: CaseFile; row: CaseRow; r
 
       {tourStep !== null && tourStep >= 1 && tourStep <= TOUR.length ? <TourBar step={tourStep} /> : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <OverallPanel file={file} row={row} />
         <RequestPanel request={file.request} />
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <section aria-labelledby="criteria-h">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <section aria-labelledby="criteria-h" className="min-w-0">
           <h2 id="criteria-h" className="text-lg font-semibold">
             Criteria <span className="text-sm font-normal text-slate-700">({judged.length} judged)</span>
           </h2>
@@ -289,7 +291,7 @@ export function CaseView({ file, row, route }: { file: CaseFile; row: CaseRow; r
           {notJudged.length > 0 ? <NotJudged criteria={notJudged} /> : null}
         </section>
 
-        <section aria-labelledby="chart-h" className="lg:sticky lg:top-2">
+        <section aria-labelledby="chart-h" className="min-w-0 lg:sticky lg:top-2">
           <h2 id="chart-h" className="text-lg font-semibold">
             Chart
           </h2>

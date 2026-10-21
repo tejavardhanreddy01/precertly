@@ -115,7 +115,7 @@ function ChunkRow({
         {!open ? <span className="truncate text-slate-700">{preview}</span> : null}
       </button>
       {open ? (
-        <pre id={bodyId} className="whitespace-pre-wrap break-words px-2 pb-2 pl-7 font-sans text-sm leading-relaxed">
+        <pre id={bodyId} className="whitespace-pre-wrap wrap-anywhere px-2 pb-2 pl-7 font-sans text-sm leading-relaxed">
           <Highlighted text={chunk.text} spans={spans ?? []} activeKey={activeKey} />
         </pre>
       ) : null}
