@@ -31,6 +31,14 @@ Every command takes `--dry-run`, which prints the commands with the account id a
 
 `image` and `stack <name>` still exist as the two halves of `up`: `scripts/deploy.sh image [--yes]` builds and pushes, and `scripts/deploy.sh stack <name>` deploys without a diff or question. `precertly-app` needs the image from `image`: the script passes `-c imageTag=<tag of HEAD>` and refuses if that tag is not in ECR.
 
+## Before the next up
+
+**Not done as of this PR (2026-10-21).** The images pushed so far (`sha-951a31b14a9a` and `sha-30bc9a4e4f79` among them) predate two changes on `main`: the certifi 2026.10.19 lockfile bump (PR #47, which fixed the pip-audit advisory GHSA-6q48-6c7w-9gw2) and the uv 0.13.4 base image bump (PR #51). Before the next `up`:
+
+1. Build and push an image from current `main` (`scripts/deploy.sh image`), which gives a new `sha-` tag.
+2. Scan it on push and record the scan result here with the date.
+3. Re-run `smoke` after the task definition changes: it has only passed on revision 2 and has not been run on revision 3 or later.
+
 ## Database and tools
 
 `precertly-data` was deployed by the owner on 2026-10-20 (owner-confirmed from their CLI output, not checked by Claude): `precertly-app` first (additions only), then `precertly-data`; the Aurora cluster scales to zero and the service stays at zero tasks. `scripts/deploy.sh tools` works on the database:
