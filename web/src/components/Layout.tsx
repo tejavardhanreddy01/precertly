@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { parseHash, useHash } from "../lib/router";
+import { isKnownRoute, parseHash, useHash } from "../lib/router";
 import { IconCode } from "./icons";
 import { RunChip } from "./RunChip";
 
@@ -12,7 +12,9 @@ const NAV: { label: string; path: string; href: string }[] = [
 ];
 
 function TopBar({ withRun }: { withRun: boolean }) {
-  const current = parseHash(useHash()).path[0];
+  const path = parseHash(useHash()).path;
+  // An address with no page (#/nope, #/policies/a/b) highlights nothing.
+  const current = isKnownRoute(path) ? path[0] : undefined;
   return (
     <header className="sticky top-0 z-30 h-(--size-topbar) shrink-0 border-b border-line bg-surface">
       <div className="mx-auto flex h-full max-w-page items-center gap-2 px-3 sm:gap-4 sm:px-6">

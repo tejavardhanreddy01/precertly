@@ -3,7 +3,8 @@ import { ErrorScreen, Loading } from "./components/ErrorScreen";
 import { Layout } from "./components/Layout";
 import { DataStore, StoreContext, useLoaded, useStore } from "./lib/data";
 import { IndexContext } from "./lib/index-context";
-import { parseHash, useHash } from "./lib/router";
+import { isKnownRoute, parseHash, useHash } from "./lib/router";
+import { useTitle } from "./lib/title";
 import { About } from "./screens/About";
 import { CaseScreen } from "./screens/CaseScreen";
 import { CasesList } from "./screens/CasesList";
@@ -11,6 +12,7 @@ import { Landing } from "./screens/Landing";
 import { PolicyIndex, PolicyScreen } from "./screens/PolicyScreen";
 
 function NotFound() {
+  useTitle("Page not found");
   return (
     <ErrorScreen
       title="Page not found"
@@ -26,17 +28,11 @@ function Routes() {
     window.scrollTo?.({ top: 0 });
   }, [first, second]);
 
-  if (route.path.length === 0) return <Landing />;
-  if (first === "cases" && route.path.length === 1) return <CasesList />;
-  if (first === "cases" && second && route.path.length === 2) {
-    return <CaseScreen key={second} id={second} route={route} />;
-  }
-  if (first === "policies" && route.path.length === 1) return <PolicyIndex />;
-  if (first === "policies" && second && route.path.length === 2) {
-    return <PolicyScreen key={second} id={second} route={route} />;
-  }
-  if (first === "about" && route.path.length === 1) return <About />;
-  return <NotFound />;
+  if (!isKnownRoute(route.path)) return <NotFound />;
+  if (first === undefined) return <Landing />;
+  if (first === "cases") return second ? <CaseScreen key={second} id={second} route={route} /> : <CasesList />;
+  if (first === "policies") return second ? <PolicyScreen key={second} id={second} route={route} /> : <PolicyIndex />;
+  return <About />;
 }
 
 function Shell() {

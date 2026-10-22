@@ -22,6 +22,14 @@ export function parseHash(hash: string): Route {
   return { path, query: new URLSearchParams(queryPart) };
 }
 
+/** True for the address shapes the app has a page for; an unknown id under a known shape is still known. */
+export function isKnownRoute(path: readonly string[]): boolean {
+  const [first] = path;
+  if (path.length === 0) return true;
+  if (first === "cases" || first === "policies") return path.length <= 2;
+  return first === "about" && path.length === 1;
+}
+
 export function href(path: string[], query?: Record<string, string | undefined>): string {
   const base = "#/" + path.map(encodeURIComponent).join("/");
   const params = new URLSearchParams();

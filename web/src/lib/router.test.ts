@@ -1,4 +1,4 @@
-import { href, parseHash } from "./router";
+import { href, isKnownRoute, parseHash } from "./router";
 
 describe("hash routes", () => {
   it("parses a path and a query", () => {
@@ -26,5 +26,19 @@ describe("hash routes", () => {
 
   it("does not throw on a malformed escape", () => {
     expect(parseHash("#/cases/%E0%A4%A").path).toEqual(["cases", "%E0%A4%A"]);
+  });
+});
+
+describe("isKnownRoute", () => {
+  it("accepts the shapes the app has a page for, whatever the ids", () => {
+    for (const path of [[], ["cases"], ["cases", "facet-01"], ["cases", "nope"], ["policies"], ["policies", "x"], ["about"]]) {
+      expect(isKnownRoute(path)).toBe(true);
+    }
+  });
+
+  it("rejects anything else", () => {
+    for (const path of [["nope"], ["policies", "a", "b"], ["cases", "a", "b"], ["about", "x"], ["Cases"]]) {
+      expect(isKnownRoute(path)).toBe(false);
+    }
   });
 });

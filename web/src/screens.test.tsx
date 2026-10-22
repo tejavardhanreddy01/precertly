@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { DataStore } from "./lib/data";
 import { normalizeWhitespace } from "./lib/highlight";
+import type { Logic } from "./lib/types";
 import { allCases, diskFetch, readCase, readIndex, readPolicy } from "./test/fixtures";
 import { loaded, renderAt } from "./test/render";
 
@@ -439,6 +440,33 @@ describe("failure screens", () => {
   });
 });
 
+describe("not found", () => {
+  const current = () => screen.queryAllByRole("link", { current: "page" }).map((a) => a.textContent);
+
+  it("sets the title and highlights no section at an address with no page", async () => {
+    for (const hash of ["#/policies/a/b", "#/nope", "#/cases/a/b/c", "#/about/x"]) {
+      cleanup();
+      renderAt(hash);
+      await loaded();
+      expect(await screen.findByText("Page not found")).toBeInTheDocument();
+      expect(document.title).toBe("Page not found · Precertly recorded runs");
+      expect(current()).toEqual([]);
+    }
+  });
+
+  it("keeps the section highlighted for an unknown id, whose page says so", async () => {
+    renderAt("#/policies/nope");
+    await loaded();
+    expect(await screen.findByText("Policy not found", { selector: "h1, h2" })).toBeInTheDocument();
+    expect(current()).toEqual(["Policies"]);
+    cleanup();
+    renderAt("#/cases/nope");
+    await loaded();
+    await screen.findByRole("alert");
+    expect(current()).toEqual(["Cases"]);
+  });
+});
+
 describe("accessibility (axe, colour contrast excluded: jsdom cannot compute it)", () => {
   const routes = [
     "#/cases",
@@ -466,6 +494,7 @@ describe("accessibility (axe, colour contrast excluded: jsdom cannot compute it)
 
 describe("policy page: shared criteria and criterion links", () => {
   const POLICY = "facet-joint-interventions";
+  const EXACT_CAPTION = "As encoded in the policy file; the list above merges nested “All of” groups.";
   const idsIn = (root: Element) =>
     [...root.querySelectorAll("li > span.font-mono")].map((s) => (s.textContent ?? "").replace(/^\(|\)$/g, ""));
   let scrollIntoView: ReturnType<typeof vi.fn>;
@@ -517,6 +546,7 @@ describe("policy page: shared criteria and criterion links", () => {
     // The own lists never print the label twice in a row.
     const own = document.querySelector("[data-own-criteria]")!;
     expect(within(own as HTMLElement).queryAllByText("All of:")).toHaveLength(0);
+    expect(within(details).getByText(EXACT_CAPTION)).toBeInTheDocument();
     await userEvent.click(summaries[0]!);
     expect(details).toHaveAttribute("open");
   });
@@ -577,5 +607,83 @@ describe("policy page: shared criteria and criterion links", () => {
     for (const card of document.querySelectorAll("[data-variant]")) {
       expect(idsIn(card.querySelector("[data-own-criteria]")!)).toHaveLength(4);
     }
+  });
+
+  it("hoists the PAP AHI any_of into the shared block once and out of every procedure", async () => {
+    const policy = readPolicy("pap-sleep-apnea");
+    renderAt("#/policies/pap-sleep-apnea");
+    const shared = await screen.findByTestId("shared-criteria");
+    const ids = idsIn(shared);
+    expect(ids).toHaveLength(8 + 3); // eight plain ids, then the group's three members
+    expect(ids.slice(-3)).toEqual(["ahi-15-plus", "ahi-5-to-14", "osa-symptom-or-condition"]);
+    expect(within(shared).getAllByText("Any of:")).toHaveLength(1);
+    expect(within(shared).getAllByText("All of:")).toHaveLength(1); // the group's own all_of
+    for (const v of policy.variants) {
+      const own = document.querySelector(`[data-variant="${v.id}"] [data-own-criteria]`) as HTMLElement;
+      expect(within(own).queryByText("Any of:")).toBeNull();
+      for (const id of ids) expect(idsIn(own)).not.toContain(id);
+    }
+  });
+
+  it("shows the shared block when only a group is shared", async () => {
+    const real = diskFetch();
+    const group: Logic = { any_of: ["nationally-covered-procedure", "bmi-35-plus"] };
+    const store = new DataStore(async (input) => {
+      if (!input.includes("policies/bariatric-surgery")) return real(input);
+      const policy = readPolicy("bariatric-surgery");
+      policy.variants = [
+        { ...policy.variants[0]!, logic: { all_of: [group, "obesity-comorbidity"] } },
+        { ...policy.variants[1]!, logic: { all_of: ["failed-medical-treatment", { any_of: ["bmi-35-plus", "nationally-covered-procedure"] }] } },
+      ];
+      return new Response(JSON.stringify(policy));
+    });
+    renderAt("#/policies/bariatric-surgery", store);
+    const shared = await screen.findByTestId("shared-criteria");
+    expect(within(shared).getByRole("heading", { level: 3, name: "Required for every procedure" })).toBeInTheDocument();
+    expect(within(shared).getByText("Any of:")).toBeInTheDocument();
+    expect(idsIn(shared)).toEqual(["nationally-covered-procedure", "bmi-35-plus"]);
+    const cards = [...document.querySelectorAll<HTMLElement>("[data-variant]")];
+    expect(cards.map((c) => idsIn(c.querySelector("[data-own-criteria]")!))).toEqual([
+      ["obesity-comorbidity"],
+      ["failed-medical-treatment"],
+    ]);
+    // Something is shared, so the exact logic stays available.
+    expect(screen.getAllByText("Show exact logic")).toHaveLength(2);
+  });
+
+  it("hides 'Show exact logic' where the list already shows it, and captions it where it does not", async () => {
+    renderAt("#/policies/bariatric-surgery");
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByText("Show exact logic")).toBeNull();
+    expect(screen.queryByText(EXACT_CAPTION)).toBeNull();
+    cleanup();
+    renderAt(`#/policies/${POLICY}`);
+    await screen.findByTestId("shared-criteria");
+    expect(screen.getAllByText("Show exact logic")).toHaveLength(5);
+    expect(screen.getAllByText(EXACT_CAPTION)).toHaveLength(5);
+  });
+
+  it("does not stretch a short variant card to the height of its neighbour", async () => {
+    renderAt(`#/policies/${POLICY}`);
+    await screen.findByTestId("shared-criteria");
+    const grid = document.querySelector("[data-variant]")!.parentElement!;
+    expect(grid).toHaveClass("items-start");
+  });
+
+  it("lets ids break at separators and keeps each variant code whole", async () => {
+    renderAt("#/policies/bariatric-surgery");
+    await screen.findByRole("heading", { level: 1 });
+    const card = document.querySelector<HTMLElement>('[data-variant="sleeve-gastrectomy"]')!;
+    const line = card.querySelector("p.font-mono")!;
+    expect(line.textContent).toBe("sleeve-gastrectomy · codes 43775");
+    expect(line.querySelectorAll("wbr")).toHaveLength(1); // after "sleeve-"
+    expect(line).not.toHaveClass("break-all");
+    const bariatric = document.querySelector<HTMLElement>('[data-variant="bariatric"] p.font-mono')!;
+    expect(bariatric.textContent).toBe("bariatric · codes 43644, 43770, 43846");
+    const codes = [...bariatric.querySelectorAll("span.whitespace-nowrap")].map((c) => c.textContent);
+    expect(codes).toEqual(["43644", "43770", "43846"]);
+    const criterionCard = document.querySelector<HTMLElement>('[data-criterion="bmi-35-plus"]')!;
+    expect(criterionCard.querySelector("p.font-mono")!.textContent).toBe("bmi-35-plus");
+    expect(criterionCard.querySelectorAll("p.font-mono wbr")).toHaveLength(2);
   });
 });

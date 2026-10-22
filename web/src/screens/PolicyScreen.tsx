@@ -1,9 +1,16 @@
-import { useEffect, useRef, type MouseEvent } from "react";
+import { Fragment, useEffect, useRef, type MouseEvent } from "react";
 import { ErrorScreen, Loading } from "../components/ErrorScreen";
 import { useLoaded, useStore } from "../lib/data";
 import { useIndex } from "../lib/index-context";
 import { stageTitle } from "../lib/labels";
-import { kindOf, ownCriteria, sharedCriteria, type LogicItem } from "../lib/policyLogic";
+import {
+  kindOf,
+  listShowsExactLogic,
+  ownCriteria,
+  sharedCriteria,
+  sharedGroups,
+  type LogicItem,
+} from "../lib/policyLogic";
 import { reveal } from "../lib/reveal";
 import { href, parseHash, type Route } from "../lib/router";
 import { useTitle } from "../lib/title";
@@ -13,6 +20,21 @@ const VARIANTS_ID = "variants-h";
 
 function criterionElement(id: string): Element | undefined {
   return [...document.querySelectorAll("[data-criterion]")].find((el) => el instanceof HTMLElement && el.dataset.criterion === id);
+}
+
+/** An identifier that may break after "-", "_" and "." first, and anywhere only when it must. */
+function BreakableId({ id }: { id: string }) {
+  const parts = id.split(/(?<=[-_.])/);
+  return (
+    <>
+      {parts.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 ? <wbr /> : null}
+          {part}
+        </Fragment>
+      ))}
+    </>
+  );
 }
 
 /** Source links come from the data; only https links are rendered as anchors. */
@@ -66,7 +88,9 @@ function CriterionLink({ id, policyId, criteria }: { id: string; policyId: strin
       <a className="text-accent underline underline-offset-2" href={target} onClick={onClick}>
         {criteria.get(id)?.text ?? id}
       </a>{" "}
-      <span className="break-all font-mono text-xs text-ink-3">({id})</span>
+      <span className="font-mono text-xs wrap-anywhere text-ink-3">
+        (<BreakableId id={id} />)
+      </span>
     </>
   );
 }
@@ -114,7 +138,9 @@ function CriterionCard({ c, policy, selected }: { c: PolicyCriterion; policy: Po
       className={`rounded-lg border bg-surface p-4 ${selected ? "border-2 border-accent" : "border-line"}`}
     >
       <h3 className="font-semibold">{c.text}</h3>
-      <p className="break-all font-mono text-xs text-ink-3">{c.id}</p>
+      <p className="font-mono text-xs wrap-anywhere text-ink-3">
+        <BreakableId id={c.id} />
+      </p>
       <p className="mt-1 text-sm">
         <span className="rounded-full border border-line-strong bg-sunken px-2 py-0.5 text-xs font-semibold text-ink-2">
           Stage: {stageTitle(c.evidence_stage)}
@@ -172,6 +198,8 @@ export function PolicyScreen({ id, route }: { id: string; route: Route }) {
   const byId = new Map(policy.criteria.map((c) => [c.id, c]));
   const selected = route.query.get("c");
   const shared = sharedCriteria(policy.variants, policy.criteria.map((c) => c.id));
+  const groups = sharedGroups(policy.variants);
+  const hasShared = shared.length > 0 || groups.length > 0;
   return (
     <article className="space-y-6">
       <header>
@@ -211,7 +239,7 @@ export function PolicyScreen({ id, route }: { id: string; route: Route }) {
           Which criteria must hold depends on the kind of request. This logic is code, not model output; a criterion
           that does not apply counts as satisfied.
         </p>
-        {shared.length > 0 ? (
+        {hasShared ? (
           <>
             <p className="mt-1 text-sm text-ink-2">
               The criteria under “Required for every procedure” apply to each procedure below, in addition to the
@@ -219,36 +247,51 @@ export function PolicyScreen({ id, route }: { id: string; route: Route }) {
             </p>
             <div data-testid="shared-criteria" className="mt-2 rounded-lg border border-line bg-surface p-4 text-sm">
               <h3 className="font-semibold">Required for every procedure</h3>
-              <ItemList items={shared} policyId={policy.id} criteria={byId} />
+              <ItemList items={[...shared, ...groups]} policyId={policy.id} criteria={byId} />
             </div>
           </>
         ) : null}
-        <div className="mt-2 grid gap-3 md:grid-cols-2">
+        <div className="mt-2 grid items-start gap-3 md:grid-cols-2">
           {policy.variants.map((v) => {
-            const own = ownCriteria(v, shared);
+            const own = ownCriteria(v, shared, groups);
             return (
               <div key={v.id} data-variant={v.id} className="rounded-lg border border-line bg-surface p-4 text-sm">
                 <h3 className="font-semibold">{v.title}</h3>
-                <p className="break-all font-mono text-xs text-ink-3">
-                  {v.id}
-                  {v.codes.length > 0 ? ` · codes ${v.codes.join(", ")}` : ""}
+                <p className="font-mono text-xs wrap-anywhere text-ink-3">
+                  <BreakableId id={v.id} />
+                  {v.codes.length > 0 ? (
+                    <>
+                      {" · codes "}
+                      {v.codes.map((code, i) => (
+                        <Fragment key={code}>
+                          {i > 0 ? ", " : null}
+                          <span className="whitespace-nowrap">{code}</span>
+                        </Fragment>
+                      ))}
+                    </>
+                  ) : null}
                 </p>
                 <div className="mt-2" data-own-criteria>
-                  {shared.length > 0 ? <h4 className="font-semibold">Specific to this procedure</h4> : null}
+                  {hasShared ? <h4 className="font-semibold">Specific to this procedure</h4> : null}
                   {own.length > 0 ? (
                     <ItemList items={own} policyId={policy.id} criteria={byId} />
                   ) : (
                     <p className="text-ink-2">
-                      {shared.length > 0 ? "Nothing beyond the criteria required for every procedure." : "No criteria."}
+                      {hasShared ? "Nothing beyond the criteria required for every procedure." : "No criteria."}
                     </p>
                   )}
                 </div>
-                <details className="mt-3">
-                  <summary className="cursor-pointer font-semibold text-accent">Show exact logic</summary>
-                  <div className="mt-2">
-                    <LogicList logic={v.logic} policyId={policy.id} criteria={byId} />
-                  </div>
-                </details>
+                {listShowsExactLogic(v, hasShared) ? null : (
+                  <details className="mt-3">
+                    <summary className="cursor-pointer font-semibold text-accent">Show exact logic</summary>
+                    <div className="mt-2">
+                      <p className="mb-2 text-ink-2">
+                        As encoded in the policy file; the list above merges nested “All of” groups.
+                      </p>
+                      <LogicList logic={v.logic} policyId={policy.id} criteria={byId} />
+                    </div>
+                  </details>
+                )}
               </div>
             );
           })}
