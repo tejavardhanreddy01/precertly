@@ -263,7 +263,7 @@ Measured on 2026-10-21: 238 web tests in 16 files pass.
 - [x] CDK bootstrapped and `precertly-base` (annual budget and the immutable ECR repository) deployed from the owner's Mac; image `sha-951a31b14a9a` pushed (checked 2026-10-18)
 - [x] `precertly-app` (public-subnet VPC, cluster, API service) deployed at desired count 0 and smoke-tested once through ECS Exec: `/health` and `/policies` returned 200 and one real Bedrock call succeeded; scaled back to zero (owner-confirmed 2026-10-18)
 - [x] `precertly-data` deployed (Aurora Serverless v2 at minimum capacity 0, secret, tools task); migrations applied, all 29 bundles ingested with 237 Titan calls; the database holds only the last bundle (owner-confirmed 2026-10-20)
-- [ ] AWS deployment, rest (a path to reach the API, a database-enabled API service, AgentCore): the API task has no database and there is no inbound path, so the API is not reachable (the public site serves recorded files only)
+- [ ] AWS deployment, rest (a path to reach the API, a database-enabled API service): the API task has no database and there is no inbound path, so the API is not reachable (the public site serves recorded files only)
 - [x] Recorded-mode static export script and tests (files only; served as part of the published site since 2026-10-21; checked 2026-10-20)
 - [x] Recorded-mode site in `web/` (static; reads the export; published at https://precertly.tejaavuthu.com since 2026-10-21; redesigned as an application on 2026-10-21: app shell, landing tiles, case workspace)
 - [x] `precertly-web` stack (private S3 bucket, CloudFront with origin access control, security headers) defined, tested, synthesized and deployed by the owner (2026-10-21, owner-confirmed)
