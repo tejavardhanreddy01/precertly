@@ -463,3 +463,116 @@ describe("accessibility (axe, colour contrast excluded: jsdom cannot compute it)
     });
   }
 });
+
+describe("policy page: shared criteria and criterion links", () => {
+  const POLICY = "facet-joint-interventions";
+  const idsIn = (root: Element) =>
+    [...root.querySelectorAll("li > span.font-mono")].map((s) => (s.textContent ?? "").replace(/^\(|\)$/g, ""));
+  let scrollIntoView: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView as unknown as typeof Element.prototype.scrollIntoView;
+  });
+
+  afterEach(() => {
+    // @ts-expect-error jsdom has no scrollIntoView; remove the stand-in again
+    delete Element.prototype.scrollIntoView;
+  });
+
+  it("lists the 15 shared criteria once and each procedure's own only", async () => {
+    const policy = readPolicy(POLICY);
+    renderAt(`#/policies/${POLICY}`);
+    const shared = await screen.findByTestId("shared-criteria");
+    expect(within(shared).getByRole("heading", { level: 3, name: "Required for every procedure" })).toBeInTheDocument();
+    const sharedIds = idsIn(shared);
+    expect(sharedIds).toHaveLength(15);
+    expect(new Set(sharedIds).size).toBe(15);
+    const own: Record<string, string[]> = {};
+    for (const v of policy.variants) {
+      const card = document.querySelector<HTMLElement>(`[data-variant="${v.id}"]`)!;
+      expect(within(card).getByRole("heading", { level: 4, name: "Specific to this procedure" })).toBeInTheDocument();
+      own[v.id] = idsIn(card.querySelector("[data-own-criteria]")!);
+      for (const id of sharedIds) expect(own[v.id]).not.toContain(id);
+    }
+    expect(Object.fromEntries(Object.entries(own).map(([id, ids]) => [id, ids.length]))).toEqual({
+      "first-diagnostic": 4,
+      "second-diagnostic": 8,
+      "therapeutic-injection": 6,
+      "initial-rfa": 4,
+      "repeat-rfa": 4,
+    });
+    expect(screen.getByText(/apply to each procedure below/)).toBeInTheDocument();
+  });
+
+  it("keeps the real nested logic behind a closed 'Show exact logic'", async () => {
+    renderAt(`#/policies/${POLICY}`);
+    await screen.findByTestId("shared-criteria");
+    const summaries = screen.getAllByText("Show exact logic");
+    expect(summaries).toHaveLength(5);
+    const details = summaries[0]!.closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    expect(details.querySelector("ul ul")).not.toBeNull();
+    expect(within(details).getAllByText("All of:")).toHaveLength(2); // the exact, nested structure
+    // The own lists never print the label twice in a row.
+    const own = document.querySelector("[data-own-criteria]")!;
+    expect(within(own as HTMLElement).queryAllByText("All of:")).toHaveLength(0);
+    await userEvent.click(summaries[0]!);
+    expect(details).toHaveAttribute("open");
+  });
+
+  it("scrolls to the card on every click of a link, including a second click on the same one", async () => {
+    renderAt(`#/policies/${POLICY}`);
+    const shared = await screen.findByTestId("shared-criteria");
+    const link = within(shared).getAllByRole("link")[0]!;
+    const id = idsIn(shared)[0]!;
+    scrollIntoView.mockClear();
+    await userEvent.click(link);
+    await waitFor(() => expect(window.location.hash).toContain(`c=${id}`));
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+    expect(scrollIntoView.mock.instances[0]).toHaveAttribute("data-criterion", id);
+    // The same link again: the hash is unchanged, so the effect does not run; the click scrolls.
+    await userEvent.click(link);
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    expect(scrollIntoView.mock.instances[1]).toHaveAttribute("data-criterion", id);
+    expect(window.location.hash).toContain(`c=${id}`);
+    await userEvent.click(link);
+    expect(scrollIntoView).toHaveBeenCalledTimes(3);
+  });
+
+  it("highlights the selected card and sends 'Back to variants' to the heading without changing the route", async () => {
+    renderAt(`#/policies/${POLICY}?c=pain-minimum-3-months`);
+    await screen.findByTestId("shared-criteria");
+    const card = document.querySelector<HTMLElement>('[data-criterion="pain-minimum-3-months"]')!;
+    expect(card).toHaveClass("border-accent");
+    const before = window.location.hash;
+    scrollIntoView.mockClear();
+    await userEvent.click(within(card).getByRole("button", { name: "Back to variants" }));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.instances[0]).toHaveAttribute("id", "variants-h");
+    expect(window.location.hash).toBe(before);
+    expect(document.querySelector('a[href="#variants-h"]')).toBeNull();
+  });
+
+  it("does not use smooth scrolling when the visitor prefers reduced motion", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ matches: query.includes("reduce"), media: query })) as typeof window.matchMedia;
+    try {
+      renderAt(`#/policies/${POLICY}?c=pain-minimum-3-months`);
+      await screen.findByTestId("shared-criteria");
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+      expect(scrollIntoView.mock.calls.at(-1)?.[0]).toMatchObject({ behavior: "auto" });
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("shows no shared block for the bariatric policy, whose procedures share nothing", async () => {
+    renderAt("#/policies/bariatric-surgery");
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByTestId("shared-criteria")).toBeNull();
+    for (const card of document.querySelectorAll("[data-variant]")) {
+      expect(idsIn(card.querySelector("[data-own-criteria]")!)).toHaveLength(4);
+    }
+  });
+});
