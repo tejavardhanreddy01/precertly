@@ -1,11 +1,19 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import { ErrorScreen, Loading } from "../components/ErrorScreen";
 import { useLoaded, useStore } from "../lib/data";
 import { useIndex } from "../lib/index-context";
 import { stageTitle } from "../lib/labels";
-import { href, type Route } from "../lib/router";
+import { kindOf, ownCriteria, sharedCriteria, type LogicItem } from "../lib/policyLogic";
+import { reveal } from "../lib/reveal";
+import { href, parseHash, type Route } from "../lib/router";
 import { useTitle } from "../lib/title";
 import type { Logic, PolicyCriterion, PolicyFile } from "../lib/types";
+
+const VARIANTS_ID = "variants-h";
+
+function criterionElement(id: string): Element | undefined {
+  return [...document.querySelectorAll("[data-criterion]")].find((el) => el instanceof HTMLElement && el.dataset.criterion === id);
+}
 
 /** Source links come from the data; only https links are rendered as anchors. */
 function safeUrl(url: string): string | undefined {
@@ -40,35 +48,55 @@ export function PolicyIndex() {
   );
 }
 
-function LogicList({
-  logic,
-  policyId,
-  criteria,
-}: {
-  logic: Logic;
-  policyId: string;
-  criteria: Map<string, PolicyCriterion>;
-}) {
-  const [kind, items] = logic.all_of ? (["All of", logic.all_of] as const) : (["Any of", logic.any_of ?? []] as const);
+/**
+ * A link to a criterion card on this page. Following a link whose target is already the address
+ * changes no hash, so nothing would re-render or scroll: that click scrolls the card directly.
+ */
+function CriterionLink({ id, policyId, criteria }: { id: string; policyId: string; criteria: Map<string, PolicyCriterion> }) {
+  const target = href(["policies", policyId], { c: id });
+  const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    const now = parseHash(window.location.hash);
+    if (now.path.join("/") === `policies/${policyId}` && now.query.get("c") === id) {
+      event.preventDefault();
+      reveal(criterionElement(id));
+    }
+  };
+  return (
+    <>
+      <a className="text-accent underline underline-offset-2" href={target} onClick={onClick}>
+        {criteria.get(id)?.text ?? id}
+      </a>{" "}
+      <span className="break-all font-mono text-xs text-ink-3">({id})</span>
+    </>
+  );
+}
+
+type Shared = { policyId: string; criteria: Map<string, PolicyCriterion> };
+
+function ItemList({ items, policyId, criteria }: { items: LogicItem[] } & Shared) {
+  return (
+    <ul className="ml-4 list-disc space-y-1">
+      {items.map((item, i) =>
+        typeof item === "string" ? (
+          <li key={item}>
+            <CriterionLink id={item} policyId={policyId} criteria={criteria} />
+          </li>
+        ) : (
+          <li key={i} className="list-none">
+            <LogicList logic={item} policyId={policyId} criteria={criteria} />
+          </li>
+        ),
+      )}
+    </ul>
+  );
+}
+
+function LogicList({ logic, policyId, criteria }: { logic: Logic } & Shared) {
+  const kind = kindOf(logic) === "all_of" ? "All of" : "Any of";
   return (
     <div>
       <p className="font-semibold">{kind}:</p>
-      <ul className="ml-4 list-disc space-y-1">
-        {items.map((item, i) =>
-          typeof item === "string" ? (
-            <li key={item}>
-              <a className="text-accent underline underline-offset-2" href={href(["policies", policyId], { c: item })}>
-                {criteria.get(item)?.text ?? item}
-              </a>{" "}
-              <span className="break-all font-mono text-xs text-ink-3">({item})</span>
-            </li>
-          ) : (
-            <li key={i} className="list-none">
-              <LogicList logic={item} policyId={policyId} criteria={criteria} />
-            </li>
-          ),
-        )}
-      </ul>
+      <ItemList items={logic.all_of ?? logic.any_of ?? []} policyId={policyId} criteria={criteria} />
     </div>
   );
 }
@@ -76,7 +104,7 @@ function LogicList({
 function CriterionCard({ c, policy, selected }: { c: PolicyCriterion; policy: PolicyFile; selected: boolean }) {
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
-    if (selected) ref.current?.scrollIntoView?.({ block: "center" });
+    if (selected) reveal(ref.current);
   }, [selected]);
   const source = policy.sources.find((s) => s.document === c.source_document);
   return (
@@ -115,6 +143,15 @@ function CriterionCard({ c, policy, selected }: { c: PolicyCriterion; policy: Po
         ) : null}
       </p>
       {c.note ? <p className="mt-1 text-sm text-ink-2">Note: {c.note}</p> : null}
+      <p className="mt-2 text-sm">
+        <button
+          type="button"
+          className="text-accent underline underline-offset-2"
+          onClick={() => reveal(document.getElementById(VARIANTS_ID))}
+        >
+          Back to variants
+        </button>
+      </p>
     </li>
   );
 }
@@ -134,6 +171,7 @@ export function PolicyScreen({ id, route }: { id: string; route: Route }) {
   const policy = loaded.value;
   const byId = new Map(policy.criteria.map((c) => [c.id, c]));
   const selected = route.query.get("c");
+  const shared = sharedCriteria(policy.variants, policy.criteria.map((c) => c.id));
   return (
     <article className="space-y-6">
       <header>
@@ -165,27 +203,55 @@ export function PolicyScreen({ id, route }: { id: string; route: Route }) {
         </p>
       </header>
 
-      <section aria-labelledby="variants-h">
-        <h2 id="variants-h" className="text-lg font-semibold">
+      <section aria-labelledby={VARIANTS_ID}>
+        <h2 id={VARIANTS_ID} className="text-lg font-semibold">
           Variants and their logic
         </h2>
         <p className="text-sm text-ink-2">
           Which criteria must hold depends on the kind of request. This logic is code, not model output; a criterion
           that does not apply counts as satisfied.
         </p>
-        <div className="mt-2 grid gap-3 md:grid-cols-2">
-          {policy.variants.map((v) => (
-            <div key={v.id} className="rounded-lg border border-line bg-surface p-4 text-sm">
-              <h3 className="font-semibold">{v.title}</h3>
-              <p className="break-all font-mono text-xs text-ink-3">
-                {v.id}
-                {v.codes.length > 0 ? ` · codes ${v.codes.join(", ")}` : ""}
-              </p>
-              <div className="mt-2">
-                <LogicList logic={v.logic} policyId={policy.id} criteria={byId} />
-              </div>
+        {shared.length > 0 ? (
+          <>
+            <p className="mt-1 text-sm text-ink-2">
+              The criteria under “Required for every procedure” apply to each procedure below, in addition to the
+              ones listed for that procedure.
+            </p>
+            <div data-testid="shared-criteria" className="mt-2 rounded-lg border border-line bg-surface p-4 text-sm">
+              <h3 className="font-semibold">Required for every procedure</h3>
+              <ItemList items={shared} policyId={policy.id} criteria={byId} />
             </div>
-          ))}
+          </>
+        ) : null}
+        <div className="mt-2 grid gap-3 md:grid-cols-2">
+          {policy.variants.map((v) => {
+            const own = ownCriteria(v, shared);
+            return (
+              <div key={v.id} data-variant={v.id} className="rounded-lg border border-line bg-surface p-4 text-sm">
+                <h3 className="font-semibold">{v.title}</h3>
+                <p className="break-all font-mono text-xs text-ink-3">
+                  {v.id}
+                  {v.codes.length > 0 ? ` · codes ${v.codes.join(", ")}` : ""}
+                </p>
+                <div className="mt-2" data-own-criteria>
+                  {shared.length > 0 ? <h4 className="font-semibold">Specific to this procedure</h4> : null}
+                  {own.length > 0 ? (
+                    <ItemList items={own} policyId={policy.id} criteria={byId} />
+                  ) : (
+                    <p className="text-ink-2">
+                      {shared.length > 0 ? "Nothing beyond the criteria required for every procedure." : "No criteria."}
+                    </p>
+                  )}
+                </div>
+                <details className="mt-3">
+                  <summary className="cursor-pointer font-semibold text-accent">Show exact logic</summary>
+                  <div className="mt-2">
+                    <LogicList logic={v.logic} policyId={policy.id} criteria={byId} />
+                  </div>
+                </details>
+              </div>
+            );
+          })}
         </div>
       </section>
 
