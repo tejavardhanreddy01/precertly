@@ -1621,7 +1621,8 @@ expect_status() {
 
 # expect_header WHAT HEADER REGEX EXPECTED: the header is present and its lower-cased value
 # matches REGEX. expect_header_lacks is the same with the match reversed (a missing header still
-# fails, so it cannot pass for the wrong reason).
+# fails, so it cannot pass for the wrong reason). A PASS line names the sub-check by EXPECTED; a FAIL
+# line already does, in "expected EXPECTED".
 expect_header() {
   header_check "$1" "$2" "$3" "$4" true
 }
@@ -1640,7 +1641,7 @@ header_check() {
   if [[ -z "$value" ]]; then
     smoke_fail "${what} ${name}" "$expected" "no ${name} header"
   elif [[ "$matched" == "$want_match" ]]; then
-    smoke_pass "${what} ${name}" "$value"
+    smoke_pass "${what} ${name}: ${expected}" "$value"
   else
     smoke_fail "${what} ${name}" "$expected" "$value"
   fi

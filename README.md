@@ -246,7 +246,7 @@ npm run dev
 
 `npm test` fails, never skips, if `web/public/data` is missing. CI runs it as the job `web`, which also builds the site and scans the output for URL hosts outside a short allowlist and for anything a strict Content Security Policy would block (inline script or style, a style or event-handler attribute, a `data:` URI in CSS). As of 2026-10-21 the build is written to work under `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'` and has a static `404.html`; the web stack's response headers policy sets a policy of that shape. On 2026-10-22 `web smoke` confirmed the real response carries a policy with `default-src 'none'` and `frame-ancestors 'none'`, and the owner checked the policy page, phone widths from 320 to 1024 px and both 404 pages in a browser (owner-confirmed); no browser console was inspected for policy violations by us.
 
-Measured on 2026-10-21: 238 web tests in 16 files pass.
+Measured on 2026-10-22: 279 web tests in 17 files pass.
 
 `web/scripts/check-layout.mjs` is a manual layout check, not part of CI (it needs a downloaded browser): run `npx playwright install chromium` once, then `node scripts/check-layout.mjs` from `web/`. It starts the dev server, opens every kind of route (13 routes) at 360, 390, 768 and 1280 px in headless Chromium, and fails if the page scrolls sideways, if any container scrolls sideways on its own, if a case page scrolls itself or its tour bar leaves the viewport, if a false-approval pill is clipped by the criteria pane, or if the first highlight is not centered in the chart panel (when the chart is on screen).
 

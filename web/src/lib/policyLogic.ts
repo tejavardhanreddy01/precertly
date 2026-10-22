@@ -65,15 +65,57 @@ export function sharedCriteria(variants: readonly PolicyVariant[], order?: reado
   return [...common].sort((a, b) => rank(a) - rank(b)); // Array.sort is stable
 }
 
+/** A canonical text for a collapsed item, with the members of every group sorted, so order never matters. */
+function canon(item: LogicItem): string {
+  if (typeof item === "string") return JSON.stringify(item);
+  const members = itemsOf(item).map(canon).sort();
+  return `${kindOf(item)}(${members.join(",")})`;
+}
+
 /**
- * The variant's items that are not in `shared`: plain criterion ids and any groups (an any_of, or
- * a group that cannot be merged), each group with redundant wrappers collapsed. A variant whose top
- * level is an any_of is returned as that one group.
+ * The any_of groups every variant requires as a top-level item (nested all_ofs merged in) and that
+ * are equal in all of them: same members, in any order, compared recursively after redundant
+ * wrappers are collapsed. A group that differs in one member in one variant is not shared. Nothing
+ * is shared by a policy with one variant, or when any variant's top level is an any_of (it has no
+ * required items). Each group comes once, in the first variant's order.
  */
-export function ownCriteria(variant: PolicyVariant, shared: readonly string[]): LogicItem[] {
+export function sharedGroups(variants: readonly PolicyVariant[]): Logic[] {
+  if (variants.length < 2) return [];
+  const lists = variants.map((v) => requiredItems(v));
+  const groupsOf = (items: LogicItem[]) =>
+    items.filter((i): i is Logic => typeof i !== "string").map((g) => collapseLogic(g));
+  const [first, ...rest] = lists;
+  if (!first || rest.some((r) => r === null)) return [];
+  const others = rest.map((r) => new Set(groupsOf(r ?? []).map(canon)));
+  const seen = new Set<string>();
+  return groupsOf(first).filter((g) => {
+    const key = canon(g);
+    if (seen.has(key) || !others.every((o) => o.has(key))) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * The variant's items that are not in `shared` (plain ids) or `groups` (see sharedGroups): plain
+ * criterion ids and any groups (an any_of, or a group that cannot be merged), each group with
+ * redundant wrappers collapsed. A variant whose top level is an any_of is returned as that one group.
+ */
+export function ownCriteria(variant: PolicyVariant, shared: readonly string[], groups: readonly Logic[] = []): LogicItem[] {
   const items = requiredItems(variant);
   if (items === null) return [collapseLogic(variant.logic)];
+  const hoisted = new Set(groups.map((g) => canon(collapseLogic(g))));
   return items
-    .filter((item) => typeof item !== "string" || !shared.includes(item))
-    .map((item) => (typeof item === "string" ? item : collapseLogic(item)));
+    .map((item) => (typeof item === "string" ? item : collapseLogic(item)))
+    .filter((item) => (typeof item === "string" ? !shared.includes(item) : !hoisted.has(canon(item))));
+}
+
+/**
+ * True when the visible list of a variant (its own items, nothing hoisted) already shows the logic
+ * exactly: a top-level all_of with no all_of directly inside it to merge and no wrapper to collapse.
+ */
+export function listShowsExactLogic(variant: PolicyVariant, hasShared: boolean): boolean {
+  if (hasShared || kindOf(variant.logic) !== "all_of") return false;
+  const nestedAllOf = itemsOf(variant.logic).some((i) => typeof i !== "string" && kindOf(i) === "all_of");
+  return !nestedAllOf && JSON.stringify(collapseLogic(variant.logic)) === JSON.stringify(variant.logic);
 }
