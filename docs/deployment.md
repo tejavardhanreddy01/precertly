@@ -11,6 +11,7 @@ Deploys run from the owner's Mac with `scripts/deploy.sh`. GitHub Actions never 
 - For stacks: `cd infra && uv sync --locked && npm ci` once, and the account bootstrapped for the CDK.
 - For `web publish`: `uv` and Node with `npm` on the Mac (the script runs `uv sync`, then `npm ci` in `web/`; it never runs `npm install`, so `package-lock.json` is not rewritten). `web/package.json` pins Node 24.x in `engines`; the repository sets no `engine-strict`, so npm only warns on Node 22 (a user-level `.npmrc` that sets it would make it an error). It needs no `BUDGET_EMAIL`, `WEB_DOMAIN` or `WEB_CERTIFICATE_ARN`: it reads the bucket and distribution from the deployed stack's outputs.
 - For `smoke`: the AWS `session-manager-plugin`, which ECS Exec needs on your machine.
+- For `web smoke`: `curl` (the macOS one is enough) and network access to the site; nothing else.
 - A clean working tree with `HEAD` pushed, for `image` (and so for `up precertly-app` and `up precertly-data`, which also check that the image is in ECR) and for `web publish`.
 
 ## Runbook
@@ -38,7 +39,7 @@ Every command takes `--dry-run`, which prints the commands with the account id a
 `precertly-web` (`infra/web_stack.py`) was **deployed by the owner on 2026-10-21** (owner-confirmed from their CLI output, us-east-2, not checked by Claude). **Nothing has been published to its bucket, and the domain has no DNS record, so the site is not hosted and has no URL.** It holds a private S3 bucket (all public access blocked, TLS enforced, S3-managed encryption, versioned; old versions expire after 30 days and incomplete multipart uploads after 1 day), a CloudFront distribution that reads it through an origin access control (the bucket policy lets that one distribution call `s3:GetObject` and nothing else), a cache policy, and a response headers policy. It has no cross-stack references and does not depend on the other stacks.
 
 - **Inputs, never committed:** CDK context `webDomain` (a plain lowercase hostname) and `webCertificateArn` (an ACM certificate in us-east-1; the stack rejects any other region). The CDK app requires both for every stack, like `imageTag`, because one `cdk deploy <name>` still builds the whole app; CI and the tests pass the placeholders `site.example.invalid` and a certificate ARN made of zeros, and `scripts/deploy.sh` passes the same ones to the other stacks. The certificate already exists (the owner created it with the CLI); this stack creates no certificate and no DNS record, so the owner points the domain at the `DistributionDomainName` output by hand; that has not been done.
-- **Deploy:** `scripts/deploy.sh up precertly-web` (redacted diff, "Deploy? [y/N]", `--exclusively`, no image step); `stack precertly-web` is the same without the diff. `WEB_DOMAIN` and `WEB_CERTIFICATE_ARN` go in the environment or `.env.local`. Publishing is `web publish` (below); there is no smoke command for the site yet.
+- **Deploy:** `scripts/deploy.sh up precertly-web` (redacted diff, "Deploy? [y/N]", `--exclusively`, no image step); `stack precertly-web` is the same without the diff. `WEB_DOMAIN` and `WEB_CERTIFICATE_ARN` go in the environment or `.env.local`. Publishing is `web publish` and checking the result is `web smoke` (both below).
 - **Outputs:** `BucketName`, `DistributionId`, `DistributionDomainName`, `SiteUrl`.
 - **Errors:** a 403 or 404 from S3 (S3 answers 403 for a missing key when the caller cannot list the bucket) is returned as a 404 with `/404.html`, cached for 10 seconds. The file `web/public/404.html` exists in the web build; it is the path the stack names (`ERROR_PAGE_PATH`).
 - **Caching:** a custom cache policy honors the origin's `Cache-Control` (minimum 0, default 300 seconds when the origin sends none, maximum one year), with gzip and brotli. GET and HEAD only, compressed, price class 100, no access logging.
@@ -64,6 +65,24 @@ Builds the static site from a commit and copies it to the stack's bucket. Nothin
 A failure during the uploads stops there and says which step failed. Because of the order, the page visitors get is never left pointing at missing files: if `assets/` or the rest fails, `index.html` was not replaced; if only `index.html` fails, everything else is already up. Run the command again.
 
 **Rolling back.** The bucket is versioned and every publish comes from a commit, so a rollback is a publish of an older commit: `git checkout <older commit>`, then `scripts/deploy.sh web publish` (the clean tree and pushed `HEAD` checks still apply, so the commit must have been pushed), then `git checkout main`. The hashed files of newer builds stay in `assets/` and are harmless. Bucket versions (`aws s3api list-object-versions`) are a last resort for a single file; they expire 30 days after being replaced.
+
+### Checking the published site: `scripts/deploy.sh web smoke [--dry-run]`
+
+A read-only check of the site `web publish` uploaded, so the same checks can be repeated after every publish and during a launch window. **Added 2026-10-22; tested with stub `aws` and `curl` programs and with `--dry-run` only, and not yet run against the real site.** It changes nothing anywhere: no AWS write, no upload, no invalidation, and no cache-busting query string. It takes no confirmation, and `--yes` has no effect.
+
+- **AWS:** two `describe-stacks` reads of `precertly-web` and nothing else. It refuses, before any request, unless the stack is `CREATE_COMPLETE` or `UPDATE_COMPLETE` (the same guard as `web publish`) and `SiteUrl` is `https://<hostname>` with no path.
+- **Requests:** `curl --disable --silent --show-error --max-time 20 --proto =https` (`=http` for the one plain-HTTP request). `--disable` ignores `~/.curlrc`; it never uses `--insecure`, cookies, credentials or `--location`. A request that cannot complete (timeout, DNS, TLS) is one failed check, not an abort, and the summary still prints.
+- **Checks**, one `PASS` or `FAIL <what>: expected X, got Y` line each:
+  - `GET /`: status 200; `content-type` `text/html`; `cache-control` has `max-age=60` (the `index.html` setting; `max-age=600` fails); `content-security-policy` is present and has `default-src 'none'` and `frame-ancestors 'none'`; `strict-transport-security` has `max-age=31536000` and neither `includeSubDomains` nor `preload`; `x-content-type-options: nosniff`; `x-frame-options: DENY`; `referrer-policy` and `permissions-policy` are present. Header names are case-insensitive.
+  - The first `assets/*.js` and first `assets/*.css` named in the body of `/`: status 200, a JavaScript or CSS `content-type`, `cache-control` has `immutable`. If the body names none, that is a failed check.
+  - `/data/index.json`, `/data/schema.json`, `/data/policies/facet-joint-interventions.json` and `/data/cases/facet-01.json`: status 200 and `application/json`.
+  - `/favicon.svg`: 200 and `image/svg+xml`.
+  - `/nope`: 404 (not 200), `text/html`, and a body containing `This page does not exist` (the CloudFront error response serving `/404.html`).
+  - `http://<host>/`: one of 301, 302, 307, 308, with a `Location` starting `https://<host>/`, not followed. The stack's viewer protocol policy is `REDIRECT_TO_HTTPS`, which CloudFront answers with a 301 for GET.
+  - TLS: every HTTPS request must verify the certificate without `-k`; the result (`ssl_verify_result`) is printed once, on the first request.
+- **Output:** a body is never printed except, after the first failed check on a response, its first 200 characters (control characters removed; anything shaped like an account id, a distribution id or a bucket name, and the settings `redact()` knows, replaced). The stack is read for `SiteUrl` only, so the bucket name and distribution id are never read. The summary is `N passed, M failed`, the failed lines again, and `result: PASS` or `result: FAIL` (exit 1).
+- **When:** after every `web publish`, once the invalidation has completed (the script waits for it); and on a schedule during a launch window. A failure on `/` right after a publish may only mean the old `index.html` is still cached (`max-age=60`); run it again before assuming a problem.
+- **`--dry-run`:** prints the two AWS reads and each request (method, URL with `SITE_HOST` for the hostname, what it asserts) and makes no call.
 
 ## Before the next up
 
@@ -96,7 +115,7 @@ To remove the database: `cd infra && npx --no-install cdk destroy precertly-data
 
 ## What is verified
 
-`up`, `status`, `smoke`, `down`, `tools` and `web publish` are tested with stub `aws`, `npx` and `docker` programs and with `--dry-run` (`tests/test_deploy_script.py`), and CI shellchecks the script (it was not run locally for the `tools` change: shellcheck was not installed). On 2026-10-20 the owner ran `status`, `tools check`, `tools migrate` and `tools load` against real AWS and they worked (results above). `smoke` passed against real AWS on 2026-10-18, on task definition revision 2, after the fix for the first failed run (PR 43), and `smoke --bedrock` also passed once that day (owner-confirmed from their CLI output): service stable, Exec agent running, `/health` 200, `/policies` 200 through ECS Exec, ECS health HEALTHY, scaled back to 0. That passing run shows the `--query` expressions and the quoting of the ECS Exec command worked against real AWS. `smoke` has not been re-run on revision 3. The one thing still unconfirmed is that a Ctrl-C during an Exec session reaches the trap. `web publish` has only run against stubs and with `--dry-run`: no real `aws s3`, `aws s3api` or `aws cloudfront` call has been made by it, so the `--query` expressions and the content types the real CLI picks are unconfirmed until the owner's first run.
+`up`, `status`, `smoke`, `down`, `tools`, `web publish` and `web smoke` (the last also with a stub `curl`; never run against the real site as of 2026-10-22) are tested with stub `aws`, `npx` and `docker` programs and with `--dry-run` (`tests/test_deploy_script.py`), and CI shellchecks the script (it was not run locally for the `tools` change: shellcheck was not installed). On 2026-10-20 the owner ran `status`, `tools check`, `tools migrate` and `tools load` against real AWS and they worked (results above). `smoke` passed against real AWS on 2026-10-18, on task definition revision 2, after the fix for the first failed run (PR 43), and `smoke --bedrock` also passed once that day (owner-confirmed from their CLI output): service stable, Exec agent running, `/health` 200, `/policies` 200 through ECS Exec, ECS health HEALTHY, scaled back to 0. That passing run shows the `--query` expressions and the quoting of the ECS Exec command worked against real AWS. `smoke` has not been re-run on revision 3. The one thing still unconfirmed is that a Ctrl-C during an Exec session reaches the trap. `web publish` has only run against stubs and with `--dry-run`: no real `aws s3`, `aws s3api` or `aws cloudfront` call has been made by it, so the `--query` expressions and the content types the real CLI picks are unconfirmed until the owner's first run.
 
 ## Manual fallback
 
@@ -139,6 +158,9 @@ aws s3 sync web/dist/assets s3://<bucket>/assets --cache-control "public,max-age
 aws s3 sync web/dist s3://<bucket> --exclude "assets/*" --exclude index.html --delete --cache-control "public,max-age=300"
 aws s3 cp web/dist/index.html s3://<bucket>/index.html --cache-control "public,max-age=60"
 aws cloudfront create-invalidation --distribution-id <id> --paths /index.html /404.html /favicon.svg "/data/*"
+
+# checking the site (what `web smoke` runs for the first request; the rest are in its dry run)
+curl --disable --silent --show-error --max-time 20 --proto '=https' --dump-header - --output /dev/null https://<hostname>/
 ```
 
 ## Why tags are immutable

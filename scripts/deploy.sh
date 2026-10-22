@@ -44,6 +44,7 @@ Usage:
   scripts/deploy.sh down [--dry-run]
   scripts/deploy.sh tools migrate|load|check [--yes] [--dry-run]
   scripts/deploy.sh web publish [--yes] [--dry-run]
+  scripts/deploy.sh web smoke [--dry-run]
 
 Commands:
   image        Build the API image for linux/arm64 and push it to ECR as sha-<12 hex of HEAD>.
@@ -104,9 +105,18 @@ Commands:
                It then invalidates only /index.html /404.html /favicon.svg /data/* and waits
                (at most 5 min) for CloudFront; on timeout the publish is still done.
                To roll back, check out an older commit and run it again (docs/deployment.md).
+  web smoke    Read-only check of the published site: 2 describe-stacks reads (the stack must be
+               CREATE_COMPLETE or UPDATE_COMPLETE; SiteUrl must be https://<hostname>), then GET
+               requests with curl (never --insecure, no cookies, redirects not followed): /, the
+               security headers, the first assets/*.js and *.css named in /, four /data/ files,
+               /favicon.svg, /nope (404 page) and http:// (redirect to https). One PASS or FAIL
+               line per check, a summary, and a non-zero exit if any check failed; a request that
+               cannot complete is a failed check, not an abort. Uploads, invalidates and changes
+               nothing. Run it after every publish.
 
 Options:
-  --yes        Skip the image build confirmation (image, up). tools load and web publish ignore it.
+  --yes        Skip the image build confirmation (image, up). tools load, web publish and web
+               smoke ignore it.
   --bedrock    smoke only: add the real Bedrock call.
   --dry-run    Print the commands, with the email and account id redacted, and run nothing
                that touches AWS or Docker. The git working-tree and push checks are skipped.
@@ -1376,6 +1386,17 @@ web_preview() {
   echo "--- end ---"
 }
 
+# Die unless the web stack exists and is CREATE_COMPLETE or UPDATE_COMPLETE. $* names the command
+# to run again, for the message.
+require_web_stack_complete() {
+  local rc=0 state
+  probe q_stack_status "$WEB_STACK" || rc=$?
+  state="$AWS_OUT"
+  [[ $rc -ne 3 ]] || die "${WEB_STACK} is not deployed; deploy it first: scripts/deploy.sh up ${WEB_STACK}"
+  [[ "$state" == "CREATE_COMPLETE" || "$state" == "UPDATE_COMPLETE" ]] ||
+    die "${WEB_STACK} is ${state}, not CREATE_COMPLETE or UPDATE_COMPLETE; wait for it or fix it, then run $* again"
+}
+
 cmd_web_publish() {
   cd "$(repo_root)"
   local sha bucket dist_id site_url
@@ -1411,12 +1432,7 @@ cmd_web_publish() {
   require_clean_and_pushed
   echo "commit: ${sha}"
 
-  local rc=0 state
-  probe q_stack_status "$WEB_STACK" || rc=$?
-  state="$AWS_OUT"
-  [[ $rc -ne 3 ]] || die "${WEB_STACK} is not deployed; deploy it first: scripts/deploy.sh up ${WEB_STACK}"
-  [[ "$state" == "CREATE_COMPLETE" || "$state" == "UPDATE_COMPLETE" ]] ||
-    die "${WEB_STACK} is ${state}, not CREATE_COMPLETE or UPDATE_COMPLETE; wait for it or fix it, then run web publish again"
+  require_web_stack_complete web publish
   bucket="$(stack_output "$WEB_STACK" BucketName '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$')"
   dist_id="$(stack_output "$WEB_STACK" DistributionId '^[A-Z0-9]+$')"
   site_url="$(stack_output "$WEB_STACK" SiteUrl '^https://[a-z0-9.-]+$')"
@@ -1449,10 +1465,347 @@ cmd_web_publish() {
   echo "site: ${site_url}"
 }
 
+# ---------------------------------------------------------------------------------------------
+# web smoke: read-only checks of the published site, over HTTPS, with curl.
+# The only AWS calls are two describe-stacks reads; nothing is uploaded, invalidated or changed,
+# and no request carries a cache-busting query string.
+# ---------------------------------------------------------------------------------------------
+
+readonly SMOKE_CURL_TIMEOUT=20
+# What a dry run prints for the hostname, which it does not read.
+readonly DRY_RUN_HOST="SITE_HOST"
+# What infra/web_stack.py (the response headers policy) and web/public/404.html promise.
+readonly HSTS_MAX_AGE_SECONDS=31536000
+readonly NOT_FOUND_TEXT="This page does not exist"
+# CloudFront answers a plain-HTTP GET with a 301 (viewer protocol policy redirect-to-https); the
+# others are accepted because any of them is a redirect that keeps the method.
+readonly REDIRECT_STATUSES=(301 302 307 308)
+
+WEB_SMOKE_HOST=""
+WEB_SMOKE_TMP=""
+WEB_SMOKE_COUNT=0
+WEB_SMOKE_TLS_DONE=false
+WEB_SMOKE_PASSED=0
+WEB_SMOKE_FAILED=0
+WEB_SMOKE_FAILURES=""
+ROOT_BODY=""
+# The last response, set by fetch.
+FETCH_STATUS=""
+FETCH_VERIFY=""
+FETCH_HEADERS=""
+FETCH_BODY=""
+FETCH_SHOWN=true
+
+web_smoke_cleanup() {
+  if [[ -n "$WEB_SMOKE_TMP" ]]; then
+    rm -rf "$WEB_SMOKE_TMP"
+  fi
+}
+
+# Text from the network made safe to print: control characters, then anything that looks like an
+# account id, a distribution id or a bucket name, and the settings redact() knows, are replaced.
+printable() {
+  local text
+  text="$(printf '%s' "$1" | LC_ALL=C tr -c '[:print:]' ' ')"
+  redact "$text" | sed -E \
+    -e 's/[0-9]{12}/REDACTED/g' \
+    -e 's/E[A-Z0-9]{12,13}/REDACTED/g' \
+    -e 's/precertly-web-[a-z0-9-]+/REDACTED/g'
+}
+
+lowercase() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+# PASS WHAT [DETAIL]
+smoke_pass() {
+  WEB_SMOKE_PASSED=$((WEB_SMOKE_PASSED + 1))
+  if [[ -n "${2:-}" ]]; then
+    printf 'PASS %s (%s)\n' "$1" "$(printable "${2:0:100}")"
+  else
+    printf 'PASS %s\n' "$1"
+  fi
+}
+
+# FAIL WHAT EXPECTED GOT. After the first failure on a response, its first 200 characters follow
+# (once per response); a body is never printed otherwise.
+smoke_fail() {
+  local line
+  line="$1: expected $2, got $(printable "${3:0:200}")"
+  WEB_SMOKE_FAILED=$((WEB_SMOKE_FAILED + 1))
+  WEB_SMOKE_FAILURES+="  ${line}"$'\n'
+  printf 'FAIL %s\n' "$line"
+  if ! $FETCH_SHOWN; then
+    FETCH_SHOWN=true
+    if [[ -s "$FETCH_BODY" ]]; then
+      printf '     response body starts: %s\n' "$(printable "$(head -c 200 "$FETCH_BODY")")"
+    else
+      printf '     response body: empty\n'
+    fi
+  fi
+}
+
+# fetch WHAT URL ASSERTS: one GET. Returns 0 with the response in FETCH_*. A dry run prints the
+# request and what it asserts and returns 1; so does a request curl could not complete, after
+# recording it as a failed check: a network error never aborts the run.
+fetch() {
+  local what="$1" url="$2" asserts="$3" scheme="${2%%://*}" rc=0 out="" err=""
+  if $DRY_RUN; then
+    printf 'GET %s\n    asserts: %s\n' "$url" "$asserts"
+    return 1
+  fi
+  WEB_SMOKE_COUNT=$((WEB_SMOKE_COUNT + 1))
+  FETCH_HEADERS="${WEB_SMOKE_TMP}/headers.${WEB_SMOKE_COUNT}"
+  FETCH_BODY="${WEB_SMOKE_TMP}/body.${WEB_SMOKE_COUNT}"
+  : >"$FETCH_HEADERS"
+  : >"$FETCH_BODY"
+  FETCH_STATUS=""
+  FETCH_VERIFY=""
+  FETCH_SHOWN=true
+  # --disable (first) ignores ~/.curlrc; no --insecure, no cookies, no --location.
+  out="$(curl --disable --silent --show-error --max-time "$SMOKE_CURL_TIMEOUT" --proto "=${scheme}" \
+    --dump-header "$FETCH_HEADERS" --output "$FETCH_BODY" \
+    --write-out '%{http_code} %{ssl_verify_result}' "$url" 2>"${WEB_SMOKE_TMP}/stderr")" || rc=$?
+  err="$(head -c 200 "${WEB_SMOKE_TMP}/stderr")"
+  read -r FETCH_STATUS FETCH_VERIFY <<<"$out" || true
+
+  if [[ "$scheme" == "https" ]] && ! $WEB_SMOKE_TLS_DONE; then
+    WEB_SMOKE_TLS_DONE=true
+    if [[ $rc -eq 0 && "$FETCH_VERIFY" == "0" ]]; then
+      smoke_pass "TLS certificate for ${WEB_SMOKE_HOST} verified by curl's own trust store, no --insecure" \
+        "ssl_verify_result 0"
+    else
+      smoke_fail "TLS certificate for ${WEB_SMOKE_HOST}" "ssl_verify_result 0 without --insecure" \
+        "curl exit ${rc}, ssl_verify_result ${FETCH_VERIFY:-none}: ${err}"
+    fi
+  fi
+  if [[ $rc -ne 0 ]]; then
+    smoke_fail "$what" "a response" "curl exit ${rc}: ${err:-no message}"
+    return 1
+  fi
+  FETCH_SHOWN=false
+  return 0
+}
+
+# The value of the first response header called $1 (lower case), trimmed; empty if there is none.
+header_value() {
+  awk -v want="$1" '
+    { sub(/\r$/, "") }
+    index($0, ":") > 0 {
+      if (tolower(substr($0, 1, index($0, ":") - 1)) == want) {
+        value = substr($0, index($0, ":") + 1)
+        sub(/^[ \t]+/, "", value)
+        sub(/[ \t]+$/, "", value)
+        print value
+        exit
+      }
+    }' "$FETCH_HEADERS"
+}
+
+# expect_status WHAT CODE...: the status is one of the codes given.
+expect_status() {
+  local what="$1" code expected
+  shift
+  expected="$1"
+  if [[ $# -gt 1 ]]; then
+    expected="one of $*"
+  fi
+  for code in "$@"; do
+    if [[ "$FETCH_STATUS" == "$code" ]]; then
+      smoke_pass "${what} status" "$FETCH_STATUS"
+      return 0
+    fi
+  done
+  smoke_fail "${what} status" "$expected" "${FETCH_STATUS:-none}"
+}
+
+# expect_header WHAT HEADER REGEX EXPECTED: the header is present and its lower-cased value
+# matches REGEX. expect_header_lacks is the same with the match reversed (a missing header still
+# fails, so it cannot pass for the wrong reason).
+expect_header() {
+  header_check "$1" "$2" "$3" "$4" true
+}
+
+expect_header_lacks() {
+  header_check "$1" "$2" "$3" "$4" false
+}
+
+header_check() {
+  local what="$1" name="$2" regex="$3" expected="$4" want_match="$5" value lower matched=false
+  value="$(header_value "$name")"
+  lower="$(lowercase "$value")"
+  if [[ -n "$value" ]] && [[ "$lower" =~ $regex ]]; then
+    matched=true
+  fi
+  if [[ -z "$value" ]]; then
+    smoke_fail "${what} ${name}" "$expected" "no ${name} header"
+  elif [[ "$matched" == "$want_match" ]]; then
+    smoke_pass "${what} ${name}" "$value"
+  else
+    smoke_fail "${what} ${name}" "$expected" "$value"
+  fi
+}
+
+# expect_header_present WHAT HEADER
+expect_header_present() {
+  expect_header "$1" "$2" '.' "the header to be present"
+}
+
+# A comma-separated Cache-Control or a semicolon-separated HSTS value, token by token.
+readonly CACHE_MAX_AGE_60_RE='(^|,)[[:space:]]*max-age=60[[:space:]]*(,|$)'
+readonly CACHE_IMMUTABLE_RE='(^|,)[[:space:]]*immutable[[:space:]]*(,|$)'
+readonly HSTS_RE="(^|;)[[:space:]]*max-age=${HSTS_MAX_AGE_SECONDS}[[:space:]]*(;|\$)"
+readonly HSTS_EXTRAS_RE='includesubdomains|preload'
+
+# expect_body_contains WHAT TEXT
+expect_body_contains() {
+  if grep -Fq -- "$2" "$FETCH_BODY"; then
+    smoke_pass "$1 body contains \"$2\""
+  else
+    smoke_fail "$1 body" "text containing \"$2\"" "a body without it"
+  fi
+}
+
+smoke_root() {
+  local base="https://${WEB_SMOKE_HOST}" what="GET /"
+  ROOT_BODY=""
+  fetch "$what" "${base}/" "200; content-type text/html; cache-control max-age=60; content-security-policy with default-src 'none' and frame-ancestors 'none'; strict-transport-security max-age=${HSTS_MAX_AGE_SECONDS} without includeSubDomains or preload; x-content-type-options nosniff; x-frame-options DENY; referrer-policy and permissions-policy present" ||
+    return 0
+  ROOT_BODY="$FETCH_BODY"
+  expect_status "$what" 200
+  expect_header "$what" content-type '^text/html' "text/html"
+  expect_header "$what" cache-control "$CACHE_MAX_AGE_60_RE" "max-age=60"
+  expect_header_present "$what" content-security-policy
+  expect_header "$what" content-security-policy "default-src 'none'" "default-src 'none'"
+  expect_header "$what" content-security-policy "frame-ancestors 'none'" "frame-ancestors 'none'"
+  expect_header "$what" strict-transport-security "$HSTS_RE" "max-age=${HSTS_MAX_AGE_SECONDS}"
+  expect_header_lacks "$what" strict-transport-security "$HSTS_EXTRAS_RE" "no includeSubDomains and no preload"
+  expect_header "$what" x-content-type-options '^nosniff$' "nosniff"
+  expect_header "$what" x-frame-options '^deny$' "DENY"
+  expect_header_present "$what" referrer-policy
+  expect_header_present "$what" permissions-policy
+}
+
+# smoke_asset EXT TYPE_REGEX TYPE_NAME: the first assets/*.EXT file named in the body of /.
+smoke_asset() {
+  local ext="$1" name=""
+  local asserts="200; content-type ${3}; cache-control immutable"
+  if $DRY_RUN; then
+    fetch "GET /assets/*.${ext}" "https://${WEB_SMOKE_HOST}/assets/<first .${ext} file named in the body of />" "$asserts" || true
+    return 0
+  fi
+  if [[ -n "$ROOT_BODY" ]]; then
+    name="$(grep -Eo 'assets/[A-Za-z0-9._-]+\.'"$ext"'([^A-Za-z0-9._-]|$)' "$ROOT_BODY" |
+      sed -n '1p' | sed 's/[^A-Za-z0-9._-]$//' || true)"
+  fi
+  if [[ -z "$name" ]]; then
+    smoke_fail "first .${ext} file under assets/ named in the body of /" "a name like assets/<file>.${ext}" \
+      "$([[ -n "$ROOT_BODY" ]] && echo "none in the body" || echo "no body of / to read")"
+    return 0
+  fi
+  fetch "GET /${name}" "https://${WEB_SMOKE_HOST}/${name}" "$asserts" || return 0
+  expect_status "GET /${name}" 200
+  expect_header "GET /${name}" content-type "$2" "$3"
+  expect_header "GET /${name}" cache-control "$CACHE_IMMUTABLE_RE" "immutable"
+}
+
+# smoke_json PATH: a data file, 200 and a JSON content type.
+smoke_json() {
+  fetch "GET $1" "https://${WEB_SMOKE_HOST}$1" "200; content-type application/json" || return 0
+  expect_status "GET $1" 200
+  expect_header "GET $1" content-type '^application/json' "application/json"
+}
+
+smoke_favicon() {
+  fetch "GET /favicon.svg" "https://${WEB_SMOKE_HOST}/favicon.svg" "200; content-type image/svg+xml" || return 0
+  expect_status "GET /favicon.svg" 200
+  expect_header "GET /favicon.svg" content-type '^image/svg\+xml' "image/svg+xml"
+}
+
+# A path that is not in the bucket: CloudFront turns S3's 403 or 404 into a 404 with /404.html.
+smoke_not_found() {
+  local what="GET /nope"
+  fetch "$what" "https://${WEB_SMOKE_HOST}/nope" "404 (not 200); content-type text/html; body contains \"${NOT_FOUND_TEXT}\"" ||
+    return 0
+  expect_status "$what" 404
+  expect_header "$what" content-type '^text/html' "text/html"
+  expect_body_contains "$what" "$NOT_FOUND_TEXT"
+}
+
+# The distribution's viewer protocol policy is redirect-to-https (infra/web_stack.py), which
+# CloudFront answers with a 301 for GET. Not followed: the first response is the one checked.
+smoke_http_redirect() {
+  local what="GET http://${WEB_SMOKE_HOST}/" location lower
+  fetch "$what" "http://${WEB_SMOKE_HOST}/" "one of ${REDIRECT_STATUSES[*]}; location starting with https://${WEB_SMOKE_HOST}/ (not followed)" ||
+    return 0
+  expect_status "$what" "${REDIRECT_STATUSES[@]}"
+  location="$(header_value location)"
+  lower="$(lowercase "$location")"
+  if [[ -z "$location" ]]; then
+    smoke_fail "$what location" "https://${WEB_SMOKE_HOST}/..." "no location header"
+  elif [[ "$lower" == "https://${WEB_SMOKE_HOST}/"* ]]; then
+    smoke_pass "$what location" "$location"
+  else
+    smoke_fail "$what location" "https://${WEB_SMOKE_HOST}/..." "$location"
+  fi
+}
+
+web_smoke_checks() {
+  smoke_root
+  smoke_asset js '^(text|application)/javascript' "text/javascript or application/javascript"
+  smoke_asset css '^text/css' "text/css"
+  smoke_json /data/index.json
+  smoke_json /data/schema.json
+  smoke_json /data/policies/facet-joint-interventions.json
+  smoke_json /data/cases/facet-01.json
+  smoke_favicon
+  smoke_not_found
+  smoke_http_redirect
+}
+
+cmd_web_smoke() {
+  local site_url=""
+  if $DRY_RUN; then
+    echo "dry-run: no AWS call and no request is made. Read-only: nothing is uploaded, invalidated or changed."
+    echo "dry-run: refuses unless the stack is CREATE_COMPLETE or UPDATE_COMPLETE; reads the site URL (the only AWS calls):"
+    q_stack_status "$WEB_STACK"
+    q_stack_output "$WEB_STACK" SiteUrl
+    echo "dry-run: refuses unless it is https://<hostname>. Then these requests, in this order (curl --disable --silent --show-error --max-time ${SMOKE_CURL_TIMEOUT}, --proto =https or =http, never --insecure, no cookies, redirects not followed):"
+    WEB_SMOKE_HOST="$DRY_RUN_HOST"
+    web_smoke_checks
+    return 0
+  fi
+
+  require_web_stack_complete web smoke
+  site_url="$(stack_output "$WEB_STACK" SiteUrl '.*')"
+  [[ "$site_url" =~ ^https://[a-z0-9.-]+$ ]] ||
+    die "the SiteUrl output of ${WEB_STACK} is '$(printable "$site_url")', not https://<hostname>; web smoke sends nothing to a site that is not https"
+  WEB_SMOKE_HOST="${site_url#https://}"
+  WEB_SMOKE_TMP="$(mktemp -d)"
+  trap web_smoke_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  echo "web smoke: ${site_url} (read-only; the AWS calls were two describe-stacks reads)"
+  web_smoke_checks
+
+  echo
+  echo "web smoke summary: ${site_url}"
+  echo "${WEB_SMOKE_PASSED} passed, ${WEB_SMOKE_FAILED} failed"
+  if [[ "$WEB_SMOKE_FAILED" -gt 0 ]]; then
+    echo "failed checks:"
+    printf '%s' "$WEB_SMOKE_FAILURES"
+    echo "result: FAIL"
+    exit 1
+  fi
+  echo "result: PASS"
+}
+
 cmd_web() {
   case "$1" in
     publish) cmd_web_publish ;;
-    *) die "usage: deploy.sh web publish" ;;
+    smoke) cmd_web_smoke ;;
+    *) die "usage: deploy.sh web publish|smoke" ;;
   esac
 }
 
@@ -1535,7 +1888,7 @@ main() {
       cmd_tools "${positional[1]}"
       ;;
     web)
-      [[ ${#positional[@]} -eq 2 ]] || die "usage: deploy.sh web publish"
+      [[ ${#positional[@]} -eq 2 ]] || die "usage: deploy.sh web publish|smoke"
       cmd_web "${positional[1]}"
       ;;
     *) die "unknown command '${command}' (see --help)" ;;

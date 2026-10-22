@@ -1,4 +1,4 @@
-"""Stand-in for aws, npx, docker and session-manager-plugin, used by tests/test_deploy_script.py.
+"""Stand-in for aws, curl, npx, docker and session-manager-plugin, used by the deploy tests.
 
 Installed on PATH under each tool's name. Every call is appended to calls.log next to the bin
 directory. Without a stub.json next to it the tool fails with status 97, so a dry-run test proves
@@ -49,6 +49,13 @@ stub.json keys (all optional):
   invalidate_fail   create-invalidation fails with this stderr
   inval_polls       get-invalidation reports InProgress for the first N queries, then Completed
   inval_never       get-invalidation never reports Completed
+  site              {key: override} for curl, which by default serves a healthy site. The key is
+                    the URL path ("/", "/nope", "/assets/index-abc123.js") or, for plain HTTP,
+                    "http:" plus the path. An override may hold status, headers ({name: value};
+                    null removes the header), body, exit (curl exits with this code, stderr says
+                    why and the write-out is "000 0"). The key "*" applies to every request.
+  site_lowercase_headers  send every header name in lower case (as over HTTP/2)
+  tls_verify        ssl_verify_result for https requests (default 0)
 """
 
 import fnmatch
@@ -91,6 +98,8 @@ def main() -> int:
         return npx(args, config)
     if tool in ("uv", "npm", "node"):
         return build_tool(tool, args, config)
+    if tool == "curl":
+        return curl(args, config)
     return 0
 
 
@@ -122,6 +131,106 @@ def build_tool(tool: str, args: list[str], config: dict) -> int:
     if touched and tool == "npm":
         with Path(touched).open("a") as handle:
             handle.write("changed by the build\n")
+    return 0
+
+
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+        "font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'none'; "
+        "frame-ancestors 'none'; object-src 'none'"
+    ),
+    "Strict-Transport-Security": "max-age=31536000",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+}
+INDEX_BODY = (
+    "<!doctype html><html><head><title>Precertly</title>"
+    '<script type="module" crossorigin src="./assets/index-abc123.js"></script>'
+    '<link rel="stylesheet" crossorigin href="./assets/index-abc123.css"></head>'
+    '<body><div id="root"></div></body></html>'
+)
+NOT_FOUND_BODY = "<!doctype html><title>Not found</title><h1>This page does not exist</h1>"
+
+
+def site_response(path: str, scheme: str, host: str) -> dict:
+    """What the healthy site answers; tests override single parts through stub.json "site"."""
+    if scheme == "http":
+        return {"status": 301, "headers": {"Location": f"https://{host}{path}"}, "body": ""}
+    secure = {**SECURITY_HEADERS}
+    if path == "/":
+        return {
+            "status": 200,
+            "headers": {
+                "Content-Type": "text/html",
+                "Cache-Control": "public,max-age=60",
+                **secure,
+            },
+            "body": INDEX_BODY,
+        }
+    if path == "/assets/index-abc123.js":
+        kind, cache = "text/javascript", "public,max-age=31536000,immutable"
+    elif path == "/assets/index-abc123.css":
+        kind, cache = "text/css", "public,max-age=31536000,immutable"
+    elif path == "/favicon.svg":
+        kind, cache = "image/svg+xml", "public,max-age=300"
+    elif path.startswith("/data/") and path.endswith(".json"):
+        kind, cache = "application/json", "public,max-age=300"
+    else:
+        return {
+            "status": 404,
+            "headers": {
+                "Content-Type": "text/html",
+                "Cache-Control": "public,max-age=10",
+                **secure,
+            },
+            "body": NOT_FOUND_BODY,
+        }
+    return {
+        "status": 200,
+        "headers": {"Content-Type": kind, "Cache-Control": cache, **secure},
+        "body": f"contents of {path}",
+    }
+
+
+def curl(args: list[str], config: dict) -> int:
+    """A read-only HTTP client: writes the headers and body files the script asks for and prints
+    the --write-out text. Nothing leaves the machine."""
+    url = args[-1]
+    scheme, _, rest = url.partition("://")
+    host, _, tail = rest.partition("/")
+    path = "/" + tail
+    sites = config.get("site", {})
+    key = path if scheme == "https" else f"http:{path}"
+    response = site_response(path, scheme, host)
+    for override in (sites.get("*", {}), sites.get(key, {})):
+        response["status"] = override.get("status", response["status"])
+        response["body"] = override.get("body", response["body"])
+        response["headers"] = {**response["headers"], **override.get("headers", {})}
+        if "exit" in override:
+            response = {**response, "exit": override["exit"], "stderr": override.get("stderr", "")}
+    if "exit" in response:
+        print(response["stderr"] or f"curl: ({response['exit']}) failed", file=sys.stderr)
+        print("000 0", end="")
+        return int(response["exit"])
+    lines = [f"HTTP/2 {response['status']}"]
+    for name, value in response["headers"].items():
+        if value is not None:
+            lines.append(
+                f"{name.lower() if config.get('site_lowercase_headers') else name}: {value}"
+            )
+    option = {a: args[i + 1] for i, a in enumerate(args[:-1]) if a.startswith("--")}
+    Path(option["--dump-header"]).write_text("\r\n".join(lines) + "\r\n\r\n")
+    Path(option["--output"]).write_text(response["body"])
+    verify = config.get("tls_verify", 0) if scheme == "https" else 0
+    print(
+        option["--write-out"]
+        .replace("%{http_code}", str(response["status"]))
+        .replace("%{ssl_verify_result}", str(verify)),
+        end="",
+    )
     return 0
 
 
