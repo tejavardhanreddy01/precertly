@@ -1984,14 +1984,23 @@ def test_web_smoke_passes_on_a_healthy_site(stub_bin: Path) -> None:
     # every kind of check ran
     for expected in (
         "PASS GET / status (200)",
-        "PASS GET / content-type (text/html)",
-        "PASS GET / cache-control (public,max-age=60)",
-        "PASS GET / strict-transport-security (max-age=31536000)",
-        "PASS GET / x-frame-options (DENY)",
-        f"PASS GET {ASSET_JS} content-type (text/javascript)",
-        f"PASS GET {ASSET_JS} cache-control (public,max-age=31536000,immutable)",
-        f"PASS GET {ASSET_CSS} content-type (text/css)",
-        "PASS GET /favicon.svg content-type (image/svg+xml)",
+        "PASS GET / content-type: text/html (text/html)",
+        "PASS GET / cache-control: max-age=60 (public,max-age=60)",
+        "PASS GET / strict-transport-security: max-age=31536000 (max-age=31536000)",
+        "PASS GET / strict-transport-security: no includeSubDomains and no preload "
+        "(max-age=31536000)",
+        "PASS GET / content-security-policy: default-src 'none' (",
+        "PASS GET / content-security-policy: frame-ancestors 'none' (",
+        "PASS GET / content-security-policy: the header to be present (",
+        "PASS GET / referrer-policy: the header to be present (",
+        "PASS GET / permissions-policy: the header to be present (",
+        "PASS GET / x-content-type-options: nosniff (nosniff)",
+        "PASS GET / x-frame-options: DENY (DENY)",
+        f"PASS GET {ASSET_JS} content-type: text/javascript or application/javascript "
+        "(text/javascript)",
+        f"PASS GET {ASSET_JS} cache-control: immutable (public,max-age=31536000,immutable)",
+        f"PASS GET {ASSET_CSS} content-type: text/css (text/css)",
+        "PASS GET /favicon.svg content-type: image/svg+xml (image/svg+xml)",
         "PASS GET /nope status (404)",
         'PASS GET /nope body contains "This page does not exist"',
         f"PASS GET http://{HOST}/ status (301)",
@@ -1999,7 +2008,7 @@ def test_web_smoke_passes_on_a_healthy_site(stub_bin: Path) -> None:
     ):
         assert expected in result.stdout, expected
     for path in DATA_PATHS:
-        assert f"PASS GET {path} content-type (application/json)" in result.stdout
+        assert f"PASS GET {path} content-type: application/json (application/json)" in result.stdout
     assert _curl_urls(stub_bin) == [
         f"{SITE_URL}/",
         f"{SITE_URL}{ASSET_JS}",
@@ -2008,6 +2017,18 @@ def test_web_smoke_passes_on_a_healthy_site(stub_bin: Path) -> None:
         f"{SITE_URL}/favicon.svg",
         f"{SITE_URL}/nope",
         f"http://{HOST}/",
+    ]
+
+
+def test_web_smoke_pass_lines_name_each_header_check_once(stub_bin: Path) -> None:
+    result = _smoke(stub_bin)
+    passes = [line.split(" (", 1)[0] for line in _lines(result, "PASS")]
+    assert len(passes) == len(set(passes)), "two PASS lines carry the same label"
+    csp = [p for p in passes if p.startswith("PASS GET / content-security-policy")]
+    assert csp == [
+        "PASS GET / content-security-policy: the header to be present",
+        "PASS GET / content-security-policy: default-src 'none'",
+        "PASS GET / content-security-policy: frame-ancestors 'none'",
     ]
 
 
