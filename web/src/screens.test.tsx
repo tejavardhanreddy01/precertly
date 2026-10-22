@@ -545,6 +545,8 @@ describe("policy page: shared criteria and criterion links", () => {
     await screen.findByTestId("shared-criteria");
     const card = document.querySelector<HTMLElement>('[data-criterion="pain-minimum-3-months"]')!;
     expect(card).toHaveClass("border-accent");
+    // The selected card scrolls into view once after mount; let that happen before counting.
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     const before = window.location.hash;
     scrollIntoView.mockClear();
     await userEvent.click(within(card).getByRole("button", { name: "Back to variants" }));
