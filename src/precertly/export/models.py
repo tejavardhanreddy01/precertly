@@ -13,7 +13,7 @@ SCHEMA_VERSION = 1
 # Shown on every page of the site; fixed text, never computed.
 BANNERS = [
     "All patient data is synthetic (Synthea); no real patient information.",
-    "Recorded run of the date and prompt hash shown; nothing runs when you open this site.",
+    "Recorded run; its date and prompt hash are shown below. Nothing runs when you open this site.",
     "Single annotator; not clinically validated.",
     "Scored on the 11 facet cases only; the other 18 cases show labels, not yet scored.",
     "The copilot never denies a request; a human reviewer decides.",
