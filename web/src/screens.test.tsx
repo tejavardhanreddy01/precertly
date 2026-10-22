@@ -571,6 +571,7 @@ describe("policy page: shared criteria and criterion links", () => {
     renderAt("#/policies/bariatric-surgery");
     await screen.findByRole("heading", { level: 1 });
     expect(screen.queryByTestId("shared-criteria")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Specific to this procedure" })).toBeNull();
     for (const card of document.querySelectorAll("[data-variant]")) {
       expect(idsIn(card.querySelector("[data-own-criteria]")!)).toHaveLength(4);
     }

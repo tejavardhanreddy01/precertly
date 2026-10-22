@@ -234,7 +234,7 @@ export function PolicyScreen({ id, route }: { id: string; route: Route }) {
                   {v.codes.length > 0 ? ` · codes ${v.codes.join(", ")}` : ""}
                 </p>
                 <div className="mt-2" data-own-criteria>
-                  <h4 className="font-semibold">Specific to this procedure</h4>
+                  {shared.length > 0 ? <h4 className="font-semibold">Specific to this procedure</h4> : null}
                   {own.length > 0 ? (
                     <ItemList items={own} policyId={policy.id} criteria={byId} />
                   ) : (
