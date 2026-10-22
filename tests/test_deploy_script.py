@@ -46,7 +46,7 @@ def stub_bin(tmp_path: Path) -> Path:
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for tool in ("aws", "docker", "npx", "session-manager-plugin", "uv", "npm", "node"):
+    for tool in ("aws", "curl", "docker", "npx", "session-manager-plugin", "uv", "npm", "node"):
         stub = bin_dir / tool
         stub.write_text(f"#!{sys.executable}\n{FAKE_TOOLS.read_text()}")
         stub.chmod(0o755)
@@ -207,6 +207,8 @@ def test_app_stack_dry_run_passes_the_image_tag(stub_bin: Path) -> None:
         ("web", "bogus"),
         ("web", "publish", "extra"),
         ("web", "publish", "--bedrock"),
+        ("web", "smoke", "extra"),
+        ("web", "smoke", "--bedrock"),
     ],
 )
 def test_bad_invocations_fail_without_leaking_the_email(
@@ -1925,3 +1927,560 @@ def test_status_is_unchanged_by_the_web_publish_command() -> None:
     status = script[script.index("cmd_status() {") : script.index("cmd_down() {")]
     assert "web site (${WEB_STACK})" in status
     assert "s3" not in status.replace("s3_", "")
+
+
+# ---------------------------------------------------------------------------------------------
+# web smoke
+# ---------------------------------------------------------------------------------------------
+
+SITE_URL = "https://precertly.example.org"
+HOST = "precertly.example.org"
+ASSET_JS = "/assets/index-abc123.js"
+ASSET_CSS = "/assets/index-abc123.css"
+# /, the script and the stylesheet, four data files, the favicon, /nope and the plain-HTTP request.
+REQUESTS = 10
+DATA_PATHS = (
+    "/data/index.json",
+    "/data/schema.json",
+    "/data/policies/facet-joint-interventions.json",
+    "/data/cases/facet-01.json",
+)
+
+
+def _smoke(stub_bin: Path, *args: str, **config: Any) -> subprocess.CompletedProcess[str]:
+    """web smoke against a complete stack, with the site as the stub serves it unless `site`
+    (and the other stub keys) say otherwise. Needs no budget email and no git state."""
+    config.setdefault("stacks", WEB_STACK_OK)
+    _configure(stub_bin, **config)
+    return _deploy(stub_bin, "web", "smoke", *args, email=None)
+
+
+def _curl_calls(stub_bin: Path) -> list[str]:
+    return [c for c in _calls(stub_bin) if c.startswith("curl ")]
+
+
+def _curl_urls(stub_bin: Path) -> list[str]:
+    return [c.split()[-1] for c in _curl_calls(stub_bin)]
+
+
+def _lines(result: subprocess.CompletedProcess[str], prefix: str) -> list[str]:
+    return [line for line in result.stdout.splitlines() if line.startswith(prefix)]
+
+
+def test_web_smoke_is_in_the_usage_text(stub_bin: Path) -> None:
+    out = _deploy(stub_bin, "--help").stdout
+    assert "scripts/deploy.sh web smoke [--dry-run]" in out
+    assert "Read-only check of the published site" in out
+    assert _deploy(stub_bin, "web", "bogus").stderr.count("web publish|smoke") == 1
+    assert _deploy(stub_bin, "web").stderr.count("web publish|smoke") == 1
+
+
+def test_web_smoke_passes_on_a_healthy_site(stub_bin: Path) -> None:
+    result = _smoke(stub_bin)
+    assert result.returncode == 0, _output(result)
+    assert _lines(result, "FAIL") == []
+    assert "result: PASS" in result.stdout
+    assert re.search(r"^\d+ passed, 0 failed$", result.stdout, re.MULTILINE)
+    # every kind of check ran
+    for expected in (
+        "PASS GET / status (200)",
+        "PASS GET / content-type (text/html)",
+        "PASS GET / cache-control (public,max-age=60)",
+        "PASS GET / strict-transport-security (max-age=31536000)",
+        "PASS GET / x-frame-options (DENY)",
+        f"PASS GET {ASSET_JS} content-type (text/javascript)",
+        f"PASS GET {ASSET_JS} cache-control (public,max-age=31536000,immutable)",
+        f"PASS GET {ASSET_CSS} content-type (text/css)",
+        "PASS GET /favicon.svg content-type (image/svg+xml)",
+        "PASS GET /nope status (404)",
+        'PASS GET /nope body contains "This page does not exist"',
+        f"PASS GET http://{HOST}/ status (301)",
+        f"PASS GET http://{HOST}/ location (https://{HOST}/)",
+    ):
+        assert expected in result.stdout, expected
+    for path in DATA_PATHS:
+        assert f"PASS GET {path} content-type (application/json)" in result.stdout
+    assert _curl_urls(stub_bin) == [
+        f"{SITE_URL}/",
+        f"{SITE_URL}{ASSET_JS}",
+        f"{SITE_URL}{ASSET_CSS}",
+        *(f"{SITE_URL}{p}" for p in DATA_PATHS),
+        f"{SITE_URL}/favicon.svg",
+        f"{SITE_URL}/nope",
+        f"http://{HOST}/",
+    ]
+
+
+def test_web_smoke_prints_the_tls_result_once(stub_bin: Path) -> None:
+    result = _smoke(stub_bin)
+    tls = [line for line in result.stdout.splitlines() if "TLS" in line]
+    assert len(tls) == 1, tls  # a pass is printed once and is not repeated in the summary
+    assert tls[0].startswith(f"PASS TLS certificate for {HOST} verified")
+    assert "ssl_verify_result 0" in tls[0]
+
+
+def test_web_smoke_never_prints_a_body_on_success(stub_bin: Path) -> None:
+    result = _smoke(stub_bin)
+    assert "<!doctype" not in _output(result)
+    assert "This page does not exist" not in result.stdout.replace(
+        'body contains "This page does not exist"', ""
+    )
+    assert "contents of" not in _output(result)
+
+
+def test_web_smoke_header_names_are_case_insensitive(stub_bin: Path) -> None:
+    result = _smoke(stub_bin, site_lowercase_headers=True)
+    assert result.returncode == 0, _output(result)
+    assert _lines(result, "FAIL") == []
+
+
+def test_web_smoke_asks_nothing_and_yes_has_no_effect(stub_bin: Path) -> None:
+    result = _smoke(stub_bin, "--yes")
+    assert result.returncode == 0, _output(result)
+    assert "[y/N]" not in _output(result)
+
+
+def _site(path: str, **override: Any) -> dict[str, Any]:
+    return {"site": {path: override}}
+
+
+FAILURES: list[tuple[str, dict[str, Any], str]] = [
+    ("wrong status", _site("/", status=500), "FAIL GET / status: expected 200, got 500"),
+    (
+        "wrong content type",
+        _site("/", headers={"Content-Type": "application/json"}),
+        "FAIL GET / content-type: expected text/html, got application/json",
+    ),
+    (
+        "no max-age=60",
+        _site("/", headers={"Cache-Control": "public,max-age=300"}),
+        "FAIL GET / cache-control: expected max-age=60, got public,max-age=300",
+    ),
+    (
+        "max-age=600 is not max-age=60",
+        _site("/", headers={"Cache-Control": "public,max-age=600"}),
+        "FAIL GET / cache-control: expected max-age=60, got public,max-age=600",
+    ),
+    (
+        "no csp",
+        _site("/", headers={"Content-Security-Policy": None}),
+        "FAIL GET / content-security-policy: expected the header to be present, got no "
+        "content-security-policy header",
+    ),
+    (
+        "csp without default-src none",
+        _site("/", headers={"Content-Security-Policy": "default-src *; frame-ancestors 'none'"}),
+        "FAIL GET / content-security-policy: expected default-src 'none', got default-src *;",
+    ),
+    (
+        "csp without frame-ancestors none",
+        _site("/", headers={"Content-Security-Policy": "default-src 'none'"}),
+        "FAIL GET / content-security-policy: expected frame-ancestors 'none', got default-src "
+        "'none'",
+    ),
+    (
+        "no hsts",
+        _site("/", headers={"Strict-Transport-Security": None}),
+        "FAIL GET / strict-transport-security: expected max-age=31536000, got no "
+        "strict-transport-security header",
+    ),
+    (
+        "hsts with another max-age",
+        _site("/", headers={"Strict-Transport-Security": "max-age=315360000"}),
+        "FAIL GET / strict-transport-security: expected max-age=31536000, got max-age=315360000",
+    ),
+    (
+        "hsts with includeSubDomains",
+        _site("/", headers={"Strict-Transport-Security": "max-age=31536000; includeSubDomains"}),
+        "FAIL GET / strict-transport-security: expected no includeSubDomains and no preload, "
+        "got max-age=31536000; includeSubDomains",
+    ),
+    (
+        "hsts with preload",
+        _site("/", headers={"Strict-Transport-Security": "max-age=31536000; preload"}),
+        "FAIL GET / strict-transport-security: expected no includeSubDomains and no preload, "
+        "got max-age=31536000; preload",
+    ),
+    (
+        "no nosniff",
+        _site("/", headers={"X-Content-Type-Options": None}),
+        "FAIL GET / x-content-type-options: expected nosniff, got no x-content-type-options header",
+    ),
+    (
+        "frame options not DENY",
+        _site("/", headers={"X-Frame-Options": "SAMEORIGIN"}),
+        "FAIL GET / x-frame-options: expected DENY, got SAMEORIGIN",
+    ),
+    (
+        "no referrer policy",
+        _site("/", headers={"Referrer-Policy": None}),
+        "FAIL GET / referrer-policy: expected the header to be present, got no referrer-policy "
+        "header",
+    ),
+    (
+        "no permissions policy",
+        _site("/", headers={"Permissions-Policy": None}),
+        "FAIL GET / permissions-policy: expected the header to be present, got no "
+        "permissions-policy header",
+    ),
+    (
+        "asset not immutable",
+        _site(ASSET_JS, headers={"Cache-Control": "public,max-age=300"}),
+        f"FAIL GET {ASSET_JS} cache-control: expected immutable, got public,max-age=300",
+    ),
+    (
+        "css not found",
+        _site(ASSET_CSS, status=404),
+        f"FAIL GET {ASSET_CSS} status: expected 200, got 404",
+    ),
+    (
+        "css with the wrong type",
+        _site(ASSET_CSS, headers={"Content-Type": "text/plain"}),
+        f"FAIL GET {ASSET_CSS} content-type: expected text/css, got text/plain",
+    ),
+    (
+        "js with the wrong type",
+        _site(ASSET_JS, headers={"Content-Type": "text/html"}),
+        f"FAIL GET {ASSET_JS} content-type: expected text/javascript or application/javascript, "
+        "got text/html",
+    ),
+    (
+        "data file missing",
+        _site("/data/schema.json", status=404),
+        "FAIL GET /data/schema.json status: expected 200, got 404",
+    ),
+    (
+        "data file served as text",
+        _site("/data/cases/facet-01.json", headers={"Content-Type": "text/plain"}),
+        "FAIL GET /data/cases/facet-01.json content-type: expected application/json, got "
+        "text/plain",
+    ),
+    (
+        "favicon with the wrong type",
+        _site("/favicon.svg", headers={"Content-Type": "image/png"}),
+        "FAIL GET /favicon.svg content-type: expected image/svg+xml, got image/png",
+    ),
+    (
+        "a missing path answers 200",
+        _site("/nope", status=200),
+        "FAIL GET /nope status: expected 404, got 200",
+    ),
+    (
+        "the 404 page has no text",
+        _site("/nope", body="<h1>Not found</h1>"),
+        'FAIL GET /nope body: expected text containing "This page does not exist", '
+        "got a body without it",
+    ),
+    (
+        "http does not redirect",
+        {"site": {"http:/": {"status": 200, "headers": {"Location": None}}}},
+        f"FAIL GET http://{HOST}/ status: expected one of 301 302 307 308, got 200",
+    ),
+    (
+        "http redirects somewhere else",
+        {"site": {"http:/": {"headers": {"Location": "https://other.example.net/"}}}},
+        f"FAIL GET http://{HOST}/ location: expected https://{HOST}/..., got https://other.example.net/",
+    ),
+    (
+        "http redirects to http",
+        {"site": {"http:/": {"headers": {"Location": f"http://{HOST}/"}}}},
+        f"FAIL GET http://{HOST}/ location: expected https://{HOST}/..., got http://{HOST}/",
+    ),
+    (
+        "one request cannot complete",
+        _site("/data/index.json", exit=28, stderr="curl: (28) Operation timed out"),
+        "FAIL GET /data/index.json: expected a response, got curl exit 28: curl: (28) Operation "
+        "timed out",
+    ),
+]
+
+
+@pytest.mark.parametrize(("name", "config", "line"), FAILURES, ids=[f[0] for f in FAILURES])
+def test_web_smoke_one_failing_check_fails_that_check_and_the_others_still_run(
+    stub_bin: Path, name: str, config: dict[str, Any], line: str
+) -> None:
+    result = _smoke(stub_bin, **config)
+    assert result.returncode == 1, _output(result)
+    assert line in result.stdout, result.stdout
+    assert "result: FAIL" in result.stdout
+    assert re.search(r"^\d+ passed, [1-9]\d* failed$", result.stdout, re.MULTILINE)
+    # the summary repeats the failure
+    assert result.stdout.split("failed checks:")[1].count(line.removeprefix("FAIL ")) == 1
+    # every request was still made
+    assert len(_curl_calls(stub_bin)) == len(_curl_urls(stub_bin)) == REQUESTS
+    # and every failure belongs to the one request that was changed: the rest still passed
+    request = line.split()[2].rstrip(":")
+    assert {f.split()[2].rstrip(":") for f in _lines(result, "FAIL")} == {request}
+
+
+def test_web_smoke_a_missing_asset_name_is_a_failed_check(stub_bin: Path) -> None:
+    body = '<!doctype html><script type="module" src="./app.js"></script>'
+    result = _smoke(stub_bin, **_site("/", body=body))
+    assert result.returncode == 1, _output(result)
+    assert "FAIL first .js file under assets/ named in the body of /: expected" in result.stdout
+    assert "FAIL first .css file under assets/ named in the body of /: expected" in result.stdout
+    assert not any("/assets/" in url for url in _curl_urls(stub_bin))
+    assert "PASS GET /favicon.svg status" in result.stdout
+
+
+def test_web_smoke_takes_the_first_asset_of_each_kind(stub_bin: Path) -> None:
+    body = (
+        '<link rel="stylesheet" href="./assets/first-1.css">'
+        '<script type="module" src="./assets/first-1.js"></script>'
+        '<link rel="modulepreload" href="./assets/second-2.js">'
+        '<link rel="stylesheet" href="./assets/second-2.css">'
+        '<link rel="preload" href="./assets/data-3.json">'
+    )
+    first_js = {"headers": {"Content-Type": "text/javascript"}}
+    result = _smoke(stub_bin, site={"/": {"body": body}, "/assets/first-1.js": first_js})
+    assert result.returncode == 1, _output(result)  # the stub only knows the default names
+    urls = _curl_urls(stub_bin)
+    assert f"{SITE_URL}/assets/first-1.js" in urls
+    assert f"{SITE_URL}/assets/first-1.css" in urls
+    assert not any("second-2" in url or "data-3" in url for url in urls)
+
+
+def test_web_smoke_a_failing_response_shows_only_its_first_200_characters(
+    stub_bin: Path,
+) -> None:
+    result = _smoke(stub_bin, **_site("/data/index.json", status=500, body="x" * 500))
+    assert result.returncode == 1, _output(result)
+    assert "x" * 200 in result.stdout
+    assert "x" * 201 not in result.stdout
+    assert result.stdout.count("response body starts") == 1
+
+
+def test_web_smoke_shows_the_body_once_for_several_failures_of_one_response(
+    stub_bin: Path,
+) -> None:
+    result = _smoke(
+        stub_bin,
+        **_site("/", status=503, headers={"Cache-Control": None, "X-Frame-Options": None}),
+    )
+    assert len(_lines(result, "FAIL")) >= 3
+    assert result.stdout.count("response body starts") == 1
+
+
+def test_web_smoke_does_not_print_identifiers_from_a_failing_response(stub_bin: Path) -> None:
+    body = (
+        f"<p>bucket precertly-web-sitebucket397a1860-abc123def456 account {ACCOUNT} "
+        "distribution E1A2B3C4D5E6F7 \x1b[31mred\x1b[0m</p>"
+    )
+    result = _smoke(stub_bin, **_site("/data/index.json", status=403, body=body))
+    out = _output(result)
+    assert "response body starts" in out
+    for secret in ("sitebucket397a1860", ACCOUNT, "E1A2B3C4D5E6F7", "\x1b"):
+        assert secret not in out, secret
+    assert "REDACTED" in out
+
+
+def test_web_smoke_a_network_failure_is_one_failed_check_not_an_abort(stub_bin: Path) -> None:
+    config = _site("/favicon.svg", exit=6, stderr="curl: (6) Could not resolve host")
+    result = _smoke(stub_bin, **config)
+    assert result.returncode == 1, _output(result)
+    assert (
+        "FAIL GET /favicon.svg: expected a response, got curl exit 6: curl: (6) Could not resolve "
+        "host" in result.stdout
+    )
+    assert "result: FAIL" in result.stdout
+    assert len(_curl_calls(stub_bin)) == REQUESTS
+
+
+def test_web_smoke_every_request_failing_still_prints_the_summary(stub_bin: Path) -> None:
+    result = _smoke(stub_bin, site={"*": {"exit": 7, "stderr": "curl: (7) Failed to connect"}})
+    assert result.returncode == 1, _output(result)
+    assert "result: FAIL" in result.stdout
+    assert re.search(r"^0 passed, \d+ failed$", result.stdout, re.MULTILINE)
+    assert "FAIL first .js file under assets/" in result.stdout
+
+
+def test_web_smoke_a_certificate_problem_fails_the_tls_line_once(stub_bin: Path) -> None:
+    config = {"site": {"*": {"exit": 60, "stderr": "curl: (60) SSL certificate problem"}}}
+    result = _smoke(stub_bin, **config)
+    tls = _lines(result, "FAIL TLS")
+    assert len(tls) == 1 and tls[0].startswith("FAIL TLS certificate for"), tls
+    assert "TLS" not in "".join(_lines(result, "PASS"))
+    assert "curl exit 60" in tls[0]
+    assert result.returncode == 1
+
+
+def test_web_smoke_a_nonzero_verify_result_fails_tls(stub_bin: Path) -> None:
+    result = _smoke(stub_bin, tls_verify=20)
+    assert result.returncode == 1
+    assert "FAIL TLS certificate for" in result.stdout
+    assert "ssl_verify_result 20" in result.stdout
+
+
+def test_web_smoke_never_weakens_tls_or_follows_redirects(stub_bin: Path) -> None:
+    _smoke(stub_bin)
+    calls = _curl_calls(stub_bin)
+    assert len(calls) == REQUESTS
+    for call in calls:
+        words = call.split()
+        assert words[1] == "--disable"
+        assert "--insecure" not in words and "-k" not in words
+        assert not {"--location", "-L", "--cookie", "-b", "--cookie-jar", "-c"} & set(words)
+        assert not {"--user", "-u", "--header", "-H", "--data", "-d", "--request", "-X"} & set(
+            words
+        )
+        assert "--max-time" in words and words[words.index("--max-time") + 1] == "20"
+        assert "--silent" in words and "--show-error" in words
+        # nothing in the URL that would bypass a cache
+        assert "?" not in words[-1]
+        scheme = words[-1].split("://")[0]
+        assert words[words.index("--proto") + 1] == f"={scheme}"
+    assert not any("=https" in c for c in calls if c.endswith(f"http://{HOST}/"))
+    assert all("--proto =https" in c for c in calls if c.split()[-1].startswith("https://"))
+
+
+def test_web_smoke_makes_no_aws_call_but_two_stack_reads(stub_bin: Path) -> None:
+    _smoke(stub_bin)
+    aws_calls = [c for c in _calls(stub_bin) if c.startswith("aws ")]
+    assert len(aws_calls) == 2
+    assert all(
+        c.startswith("aws cloudformation describe-stacks --stack-name precertly-web")
+        for c in aws_calls
+    )
+    others = [c for c in _calls(stub_bin) if not c.startswith(("aws ", "curl "))]
+    assert others == []
+    assert _s3_writes(stub_bin) == []
+
+
+def test_web_smoke_reads_the_stack_before_it_sends_anything(stub_bin: Path) -> None:
+    _smoke(stub_bin)
+    calls = _calls(stub_bin)
+    assert calls[0].startswith("aws cloudformation describe-stacks")
+    assert calls[1].startswith("aws cloudformation describe-stacks") and "SiteUrl" in calls[1]
+    assert calls[2].startswith("curl ")
+
+
+@pytest.mark.parametrize(
+    "state", ["CREATE_IN_PROGRESS", "UPDATE_ROLLBACK_COMPLETE", "ROLLBACK_COMPLETE"]
+)
+def test_web_smoke_refuses_a_stack_that_is_not_complete_before_any_request(
+    stub_bin: Path, state: str
+) -> None:
+    result = _smoke(stub_bin, stacks={"precertly-web": state})
+    assert result.returncode != 0
+    assert f"is {state}, not CREATE_COMPLETE or UPDATE_COMPLETE" in result.stderr
+    assert "run web smoke again" in result.stderr
+    assert _curl_calls(stub_bin) == []
+
+
+def test_web_smoke_accepts_update_complete(stub_bin: Path) -> None:
+    result = _smoke(stub_bin, stacks={"precertly-web": "UPDATE_COMPLETE"})
+    assert result.returncode == 0, _output(result)
+
+
+def test_web_smoke_refuses_a_stack_that_is_not_deployed(stub_bin: Path) -> None:
+    result = _smoke(stub_bin, stacks={})
+    assert result.returncode != 0
+    assert "precertly-web is not deployed" in result.stderr
+    assert _curl_calls(stub_bin) == []
+
+
+def test_web_smoke_refuses_a_stack_with_no_site_url(stub_bin: Path) -> None:
+    result = _smoke(stub_bin, no_outputs=True)
+    assert result.returncode != 0
+    assert "no output SiteUrl" in result.stderr
+    assert _curl_calls(stub_bin) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["http://precertly.example.org", "precertly.example.org", "https://", "ftp://x.example.org"],
+)
+def test_web_smoke_refuses_a_site_url_that_is_not_https(stub_bin: Path, value: str) -> None:
+    result = _smoke(stub_bin, outputs={"SiteUrl": value})
+    assert result.returncode != 0
+    assert "not https://<hostname>" in result.stderr
+    assert _curl_calls(stub_bin) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://precertly.example.org/",
+        "https://precertly.example.org/path",
+        "https://a b.example.org",
+    ],
+)
+def test_web_smoke_refuses_a_site_url_with_a_path(stub_bin: Path, value: str) -> None:
+    result = _smoke(stub_bin, outputs={"SiteUrl": value})
+    assert result.returncode != 0
+    assert _curl_calls(stub_bin) == []
+
+
+def test_web_smoke_refuses_when_the_aws_read_fails(stub_bin: Path) -> None:
+    result = _smoke(stub_bin, fail_all="An error occurred (ExpiredToken): the token has expired")
+    assert result.returncode != 0
+    assert "ExpiredToken" in result.stderr
+    assert _curl_calls(stub_bin) == []
+
+
+def test_web_smoke_dry_run_makes_no_call_of_any_kind(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "web", "smoke", "--dry-run", email=None)
+    assert result.returncode == 0, _output(result)
+    _assert_no_calls(stub_bin)
+    out = result.stdout
+    assert "no AWS call and no request is made" in out
+    assert "aws cloudformation describe-stacks --stack-name precertly-web" in out
+    assert "SiteUrl" in out
+    for request in (
+        "GET https://SITE_HOST/\n",
+        "GET https://SITE_HOST/assets/<first .js file named in the body of />",
+        "GET https://SITE_HOST/assets/<first .css file named in the body of />",
+        "GET https://SITE_HOST/data/index.json",
+        "GET https://SITE_HOST/data/schema.json",
+        "GET https://SITE_HOST/data/policies/facet-joint-interventions.json",
+        "GET https://SITE_HOST/data/cases/facet-01.json",
+        "GET https://SITE_HOST/favicon.svg",
+        "GET https://SITE_HOST/nope",
+        "GET http://SITE_HOST/\n",
+    ):
+        assert request in out, request
+    assert out.count("asserts:") == 10
+    assert "content-security-policy" in out and "without includeSubDomains or preload" in out
+    assert "never --insecure" in out
+    assert "TLS" not in out.replace("tls", "")  # nothing to report: no handshake happened
+    assert ACCOUNT not in _output(result)
+
+
+def test_web_smoke_dry_run_writes_nothing(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "web", "smoke", "--dry-run", "--yes", email=None)
+    assert result.returncode == 0, _output(result)
+    _assert_no_calls(stub_bin)
+    assert not any(
+        word in result.stdout
+        for word in ("s3 sync", "s3 cp", "create-invalidation", "put-", "delete")
+    )
+
+
+def test_web_smoke_cleans_up_its_temporary_directory(stub_bin: Path, tmp_path: Path) -> None:
+    tmp = tmp_path / "scratch"
+    tmp.mkdir()
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "web", "smoke"],
+        cwd=_repo(stub_bin),
+        env={**_env(stub_bin, None), "TMPDIR": str(tmp)},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, _output(result)
+    assert list(tmp.iterdir()) == []
+
+
+def test_the_api_smoke_command_is_not_changed_by_web_smoke(stub_bin: Path) -> None:
+    script = SCRIPT.read_text()
+    smoke = script[
+        script.index("cmd_smoke() {") : script.index("# tools: one precertly-tools task")
+    ]
+    assert "curl" not in smoke
+    assert "web_smoke" not in smoke
+    result = _deploy(stub_bin, "smoke", "--dry-run")
+    assert result.returncode == 0, _output(result)
+    assert "execute-command" in result.stdout
+    assert "curl" not in result.stdout
