@@ -351,7 +351,9 @@ def test_log_group() -> None:
 
 def test_outputs_are_what_deploy_sh_reads() -> None:
     outputs = _template().to_json()["Outputs"]
-    assert set(outputs) == {
+    # The two PublishOutput... ones exist because precertly-live refers to the database secret
+    # and security group (tests/test_template_identity.py checks them).
+    assert {k for k in outputs if not k.startswith("PublishOutput")} == {
         "ClusterIdentifier",
         "SecretArn",
         "ToolsSubnetIds",

@@ -28,5 +28,5 @@ LIVE_CLOUD_MAP_SERVICE = "api"
 API_NAME = "precertly-live"
 
 # Sign-in (precertly-auth).
-USER_POOL = "precertly-live"
-USER_POOL_CLIENT = "precertly-web"
+USER_POOL = "precertly-users"
+USER_POOL_CLIENT = "precertly-site"

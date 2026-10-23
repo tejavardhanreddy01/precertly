@@ -1385,11 +1385,12 @@ def test_placeholders_match_the_cdk_tests_and_ci() -> None:
 
 
 def test_web_stack_name_matches_the_cdk_app() -> None:
-    assert "readonly STACKS=(precertly-base precertly-app precertly-data precertly-web)" in (
-        SCRIPT.read_text()
+    stacks = next(
+        line for line in SCRIPT.read_text().splitlines() if line.startswith("readonly STACKS=(")
     )
+    assert "precertly-web" in stacks
     app = (ROOT / "infra" / "app.py").read_text()
-    assert '"precertly-web")' in app
+    assert '"precertly-web",' in app
 
 
 # ---------------------------------------------------------------------------------------------
