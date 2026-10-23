@@ -86,9 +86,11 @@ A read-only check of the site `web publish` uploaded, so the same checks can be 
 
 ## Before the next up
 
-**Not done as of this PR (2026-10-21).** The images pushed so far (`sha-951a31b14a9a` and `sha-30bc9a4e4f79` among them) predate two changes on `main`: the certifi 2026.10.19 lockfile bump (PR #47, which fixed the pip-audit advisory GHSA-6q48-6c7w-9gw2) and the uv 0.13.4 base image bump (PR #51). Before the next `up`:
+**Not done as of 2026-10-23.** The owner rebuilt and pushed an image from `main` at `8f97de7` on 2026-10-23 (tag `sha-8f97de763b08`; owner-confirmed, not run by Claude). That image has the certifi 2026.10.19 lockfile bump (PR #47, which fixed the pip-audit advisory GHSA-6q48-6c7w-9gw2) and the uv 0.13.4 base image bump (PR #51). Its ECR basic scan finished with 3 HIGH, 9 MEDIUM and 3 LOW findings, the same three HIGH packages as the 2026-10-18 scan (glibc twice and zlib; owner-confirmed). It is not described as clean. Nothing was deployed from the 2026-10-23 image.
 
-1. Build and push an image from current `main` (`scripts/deploy.sh image`), which gives a new `sha-` tag.
+The live run API change (the Dockerfile now copies `evals/cases`, and the image carries `src/precertly/live/`) changes the image, so before any `up`:
+
+1. Build and push an image from the branch or from `main` after the merge (`scripts/deploy.sh image`), which gives a new `sha-` tag; `sha-8f97de763b08` does not contain the live code.
 2. Scan it on push and record the scan result here with the date.
 3. Re-run `smoke` after the task definition changes: it has only passed on revision 2 and has not been run on revision 3 or later.
 
