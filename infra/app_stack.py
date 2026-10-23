@@ -34,6 +34,48 @@ HEALTH_CHECK_COMMAND = (
 )
 
 
+def bedrock_invoke_statement(stack: cdk.Stack) -> aws_iam.PolicyStatement:
+    """What a task that calls the models may do: invoke the Nova inference profile (in this
+    account and region), its underlying foundation model and the Titan embedding model.
+
+    Shared by the app stack and the live stack; a test compares them. A "us." profile routes
+    across US regions, so the foundation model is allowed in any region (wildcard region, this
+    model id only). Titan is called in-region. Unverified until a real call.
+    """
+    foundation_model = BEDROCK_PROFILE_ID.removeprefix("us.")
+
+    def arn(resource: str, *, region: str, account: str) -> str:
+        return stack.format_arn(
+            service="bedrock", resource=resource, region=region, account=account
+        )
+
+    return aws_iam.PolicyStatement(
+        sid="BedrockInvoke",
+        actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+        resources=[
+            arn(
+                f"inference-profile/{BEDROCK_PROFILE_ID}",
+                region=Aws.REGION,
+                account=Aws.ACCOUNT_ID,
+            ),
+            arn(f"foundation-model/{foundation_model}", region="*", account=""),
+            arn(f"foundation-model/{EMBEDDING_MODEL_ID}", region=Aws.REGION, account=""),
+        ],
+    )
+
+
+def api_health_check() -> aws_ecs.HealthCheck:
+    """The container health check of the API image (ECS ignores the Dockerfile HEALTHCHECK).
+    /health touches no database."""
+    return aws_ecs.HealthCheck(
+        command=["CMD-SHELL", HEALTH_CHECK_COMMAND],
+        interval=cdk.Duration.seconds(30),
+        timeout=cdk.Duration.seconds(5),
+        retries=3,
+        start_period=cdk.Duration.seconds(20),
+    )
+
+
 def validate_image_tag(tag: object) -> str:
     if not isinstance(tag, str) or not tag.startswith(IMAGE_TAG_PREFIX) or tag == IMAGE_TAG_PREFIX:
         raise ValueError(
@@ -118,9 +160,6 @@ class AppStack(PrecertlyStack):
             restrict_default_security_group=False,
         )
 
-    def _bedrock_arn(self, resource: str, *, region: str, account: str) -> str:
-        return self.format_arn(service="bedrock", resource=resource, region=region, account=account)
-
     def _task_role(self) -> aws_iam.Role:
         role = aws_iam.Role(
             self,
@@ -131,29 +170,7 @@ class AppStack(PrecertlyStack):
         # ECS Exec: `enable_execute_command` on the service adds the four ssmmessages actions to
         # this role. They have no resource-level scoping, so that statement's resource is "*";
         # it is the only wildcard resource on the role.
-        # Unverified until a real call: a "us." profile routes across US regions, so the
-        # underlying foundation model is allowed in any region (wildcard region, this model id
-        # only), alongside the profile in this account and region. Titan is called in-region.
-        foundation_model = BEDROCK_PROFILE_ID.removeprefix("us.")
-        role.add_to_policy(
-            aws_iam.PolicyStatement(
-                sid="BedrockInvoke",
-                actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
-                resources=[
-                    self._bedrock_arn(
-                        f"inference-profile/{BEDROCK_PROFILE_ID}",
-                        region=Aws.REGION,
-                        account=Aws.ACCOUNT_ID,
-                    ),
-                    self._bedrock_arn(
-                        f"foundation-model/{foundation_model}", region="*", account=""
-                    ),
-                    self._bedrock_arn(
-                        f"foundation-model/{EMBEDDING_MODEL_ID}", region=Aws.REGION, account=""
-                    ),
-                ],
-            )
-        )
+        role.add_to_policy(bedrock_invoke_statement(self))
         return role
 
     def _task_definition(
@@ -187,12 +204,6 @@ class AppStack(PrecertlyStack):
                 "PRECERTLY_EMBEDDING_MODEL_ID": EMBEDDING_MODEL_ID,
             },
             logging=aws_ecs.LogDrivers.aws_logs(stream_prefix="api", log_group=self.log_group),
-            health_check=aws_ecs.HealthCheck(
-                command=["CMD-SHELL", HEALTH_CHECK_COMMAND],
-                interval=cdk.Duration.seconds(30),
-                timeout=cdk.Duration.seconds(5),
-                retries=3,
-                start_period=cdk.Duration.seconds(20),
-            ),
+            health_check=api_health_check(),
         )
         return task_definition
