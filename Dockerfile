@@ -38,6 +38,7 @@ COPY migrations ./migrations
 COPY evals/bundles ./evals/bundles
 COPY evals/cases ./evals/cases
 COPY scripts/smoke_llm.py ./scripts/smoke_llm.py
+COPY scripts/live_smoke_run.py ./scripts/live_smoke_run.py
 
 USER app
 EXPOSE 8000
