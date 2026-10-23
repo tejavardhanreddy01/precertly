@@ -96,7 +96,7 @@ docker run --rm -p 8000:8000 precertly-api     # then http://localhost:8000/docs
 docker ps                                      # STATUS shows (healthy) after the first check
 ```
 
-The image holds the policies, migrations, the eval bundles and `scripts/smoke_llm.py`, and no credentials. With no `PRECERTLY_AWS_PROFILE` set it asks for the named profile `precertly`; set it to an empty string (`PRECERTLY_AWS_PROFILE=`) to use the default credential chain, as a task role would. The base images (`python:3.12-slim` and the uv image) are pinned by multi-arch digest, and Dependabot proposes updates weekly. The CI job `docker-build` builds the image without pushing it, runs it, waits for the health check, requests `/health` and `/policies` and runs `alembic heads`. Images have been pushed to ECR from the owner's Mac (4 on 2026-10-20; `sha-951a31b14a9a` on 2026-10-18, and `sha-30bc9a4e4f79`, which task definition revision 3 of `precertly-app` uses); the service has no running task (see Infrastructure).
+The image holds the policies, migrations, the eval bundles, the eval case files (`evals/cases`, which the live run API reads) and `scripts/smoke_llm.py`, and no credentials. With no `PRECERTLY_AWS_PROFILE` set it asks for the named profile `precertly`; set it to an empty string (`PRECERTLY_AWS_PROFILE=`) to use the default credential chain, as a task role would. The base images (`python:3.12-slim` and the uv image) are pinned by multi-arch digest, and Dependabot proposes updates weekly. The CI job `docker-build` builds the image without pushing it, runs it, waits for the health check, requests `/health` and `/policies` and runs `alembic heads`. Images have been pushed to ECR from the owner's Mac (4 on 2026-10-20; `sha-951a31b14a9a` on 2026-10-18, and `sha-30bc9a4e4f79`, which task definition revision 3 of `precertly-app` uses); the service has no running task (see Infrastructure).
 
 ## Infrastructure (CDK)
 
@@ -250,6 +250,21 @@ Measured on 2026-10-22: 279 web tests in 17 files pass.
 
 `web/scripts/check-layout.mjs` is a manual layout check, not part of CI (it needs a downloaded browser): run `npx playwright install chromium` once, then `node scripts/check-layout.mjs` from `web/`. It starts the dev server, opens every kind of route (13 routes) at 360, 390, 768 and 1280 px in headless Chromium, and fails if the page scrolls sideways, if any container scrolls sideways on its own, if a case page scrolls itself or its tour bar leaves the viewport, if a false-approval pill is clipped by the criteria pane, or if the first highlight is not centered in the chart panel (when the chart is on screen).
 
+## Live mode in code (off by default, not deployed)
+
+Added 2026-10-23 as code only. Nothing is deployed from it: no image with this code has been pushed, the service is at zero tasks, and there is no gateway, no Cognito and no web UI for it. The public site still shows recorded runs only.
+
+With `PRECERTLY_LIVE_ENABLED=true` the API serves two routes (`src/precertly/live/`); with it unset or false the app has no `/live` path at all, needs no database or AWS setting to start, and `/health` never touches the database either way.
+
+- `POST /live/runs` with `{"case_id": "<id>"}` starts a run of one of the 29 curated synthetic eval cases and answers 202 with a run id. Any other case id is a 404; no other input is accepted (extra fields are rejected). `GET /live/runs/{run_id}` returns the state to the user who started it (anyone else gets 404). A run takes a while (estimated 40 to 60 seconds, not measured), so the client polls.
+- The user is the value of the `x-precertly-actor` header, which a later gateway will set after verifying a token; the app trusts that header and nothing else. A missing, empty, over-long (more than 128 characters) or oddly-charactered value is a 401 on every `/live` route.
+- Settings (`PRECERTLY_` prefix): `LIVE_ENABLED` (false), `LIVE_MAX_RUNS_PER_DAY` (10, all users), `LIVE_MAX_RUNS_PER_USER` (3), `LIVE_MAX_TOKENS_PER_DAY` (2,000,000 input plus output tokens; a placeholder, not a measurement) and `LIVE_RUN_TIMEOUT_SECONDS` (600). The day is the UTC day. The counts come from the database (`audit_log` start rows and `runs` tokens), so a restart does not reset them; a run that starts and then fails still counts.
+- One run at a time: all 29 bundles share one patient, hence one `cases` row, so two runs would replace each other's chart chunks. A second request while one is active in the process gets 409 before any database work, and a Postgres advisory lock, held for the whole run, covers a second process.
+- A run writes the `cases` and `chart_chunks` rows that ingest writes, one `runs` row (tokens and latency; `cost_usd` stays empty because the model's per-token price is not verified) and `audit_log` rows. It writes no verdicts, evidence, policies or criteria. The result (per-criterion verdicts with verified citations, the reviewer checklist, tokens and latency) is held in memory for the last 20 runs, is never stored, carries no expected labels or scores, and says so in a fixed notice.
+- Errors shown to the user come from a fixed table of messages; an exception's text is never returned or logged (the class name is).
+
+The tests use a fake model and a fake embedder; nothing here has run against Bedrock, Aurora or a gateway.
+
 ## Roadmap
 
 - [x] Policy criteria for 4 procedures, validated in CI
@@ -270,7 +285,8 @@ Measured on 2026-10-22: 279 web tests in 17 files pass.
 - [x] `scripts/deploy.sh web publish` written, tested with stubs and `--dry-run`, and run by the owner: first publish 2026-10-21, latest 2026-10-22 (owner-confirmed)
 - [x] `scripts/deploy.sh web smoke`, a read-only check of the published site, written, tested with stub `aws` and `curl` and `--dry-run`, and run by the owner against the real site on 2026-10-22: 34 passed, 0 failed
 - [x] Hosting for the recorded-mode site: custom domain with an ACM certificate, DNS record and publish done; https://precertly.tejaavuthu.com serves recorded runs, read-only (owner-confirmed 2026-10-22)
-- [ ] A live reviewer UI, MCP server, demo mode
+- [x] Live run API in code, off by default and not deployed: `POST` and `GET /live/runs` behind `PRECERTLY_LIVE_ENABLED`, one run at a time, daily caps, fake-only tests (2026-10-23)
+- [ ] Cognito, an API Gateway HTTP API, the live ECS service and a web UI for live runs; MCP server, demo mode
 
 ## License
 

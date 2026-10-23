@@ -6,7 +6,7 @@ import math
 from functools import lru_cache
 from typing import Any, Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
@@ -60,6 +60,50 @@ class Settings(BaseSettings):
     # database needs. The timeout is for each connect, in seconds, and must cover a resume.
     db_pool: Literal["queue", "null"] = "queue"
     db_connect_timeout: float = 60.0
+
+    # Live mode (src/precertly/live/): off by default. When on, the API serves POST and GET
+    # /live/runs, which judge one curated synthetic case against the real database and model.
+    live_enabled: bool = False
+    # Caps over the UTC day, counted in the database (audit_log and runs), so a restart does
+    # not reset them. A started run counts even if it fails afterwards.
+    live_max_runs_per_day: int = 10  # all users
+    live_max_runs_per_user: int = 3
+    # Input plus output tokens of the runs started over the UTC day. A placeholder, not a
+    # measurement: a run's token use has not been measured yet.
+    live_max_tokens_per_day: int = 2_000_000
+    # One run's hard limit, from the first database wait to the end, in seconds.
+    live_run_timeout_seconds: float = 600.0
+
+    @field_validator(
+        "live_max_runs_per_day",
+        "live_max_runs_per_user",
+        "live_max_tokens_per_day",
+        mode="before",
+    )
+    @classmethod
+    def _check_live_limit(cls, value: Any, info: ValidationInfo) -> int:
+        message = f"PRECERTLY_{(info.field_name or '').upper()} must be a positive integer"
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise ValueError(message)
+        try:
+            number = int(value)
+        except ValueError:
+            raise ValueError(message) from None
+        if number <= 0:
+            raise ValueError(message)
+        return number
+
+    @field_validator("live_run_timeout_seconds", mode="before")
+    @classmethod
+    def _check_live_run_timeout(cls, value: Any) -> float:
+        message = "PRECERTLY_LIVE_RUN_TIMEOUT_SECONDS must be a positive number of seconds"
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(message) from None
+        if not math.isfinite(seconds) or seconds <= 0:
+            raise ValueError(message)
+        return seconds
 
     @field_validator("db_pool", mode="before")
     @classmethod

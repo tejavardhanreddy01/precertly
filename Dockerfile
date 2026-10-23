@@ -36,6 +36,7 @@ COPY src ./src
 COPY data/policies ./data/policies
 COPY migrations ./migrations
 COPY evals/bundles ./evals/bundles
+COPY evals/cases ./evals/cases
 COPY scripts/smoke_llm.py ./scripts/smoke_llm.py
 
 USER app
