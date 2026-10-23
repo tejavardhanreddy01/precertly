@@ -15,6 +15,7 @@ from app_stack import IMAGE_TAG_CONTEXT_KEY, AppStack, validate_image_tag
 from base_stack import BUDGET_EMAIL_CONTEXT_KEY, BaseStack
 from data_stack import DataStack
 from precertly_stack import AVAILABILITY_ZONES, PrecertlyStack
+from spike_stack import SPIKE_CONTEXT_KEY, SpikeStack, spike_enabled
 from web_stack import (
     WEB_CERTIFICATE_ARN_CONTEXT_KEY,
     WEB_DOMAIN_CONTEXT_KEY,
@@ -65,6 +66,16 @@ def build_app(context: dict[str, Any] | None = None) -> cdk.App:
         tools_subnets=app_stack.public_subnets,
     )
     WebStack(app, "precertly-web", domain=web_domain, certificate_arn=web_certificate_arn)
+    # A throwaway spike (see spike_stack.py), built only with `-c spike=true`. STACK_NAMES is
+    # the normal app and does not list it.
+    if spike_enabled(app.node.try_get_context(SPIKE_CONTEXT_KEY)):
+        SpikeStack(
+            app,
+            "precertly-spike",
+            image_tag=image_tag,
+            vpc=app_stack.vpc,
+            public_subnets=app_stack.public_subnets,
+        )
     return app
 
 
