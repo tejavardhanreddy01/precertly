@@ -42,3 +42,18 @@ describe("isKnownRoute", () => {
     }
   });
 });
+
+describe("isKnownRoute with live mode", () => {
+  it("has no live page in a recorded-only build", () => {
+    expect(isKnownRoute(["live"])).toBe(false);
+    expect(isKnownRoute(["live", "facet-01"])).toBe(false);
+  });
+
+  it("accepts #/live and #/live/CASE_ID, and nothing deeper, when live mode is on", () => {
+    expect(isKnownRoute(["live"], true)).toBe(true);
+    expect(isKnownRoute(["live", "facet-01"], true)).toBe(true);
+    expect(isKnownRoute(["live", "a", "b"], true)).toBe(false);
+    expect(isKnownRoute(["cases"], true)).toBe(true);
+    expect(isKnownRoute(["nope"], true)).toBe(false);
+  });
+});

@@ -23,10 +23,12 @@ export function parseHash(hash: string): Route {
 }
 
 /** True for the address shapes the app has a page for; an unknown id under a known shape is still known. */
-export function isKnownRoute(path: readonly string[]): boolean {
+export function isKnownRoute(path: readonly string[], liveEnabled = false): boolean {
   const [first] = path;
   if (path.length === 0) return true;
   if (first === "cases" || first === "policies") return path.length <= 2;
+  // The live pages exist only in a build with live mode configured.
+  if (first === "live") return liveEnabled && path.length <= 2;
   return first === "about" && path.length === 1;
 }
 
