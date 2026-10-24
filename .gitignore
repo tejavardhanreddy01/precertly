@@ -31,4 +31,5 @@ data/fhir-validator/bin/
 # Web UI (web/): installed packages, build output and types generated from schema.json
 web/node_modules/
 web/dist/
+web/dist-*/
 web/src/generated/
