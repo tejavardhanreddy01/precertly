@@ -1385,11 +1385,12 @@ def test_placeholders_match_the_cdk_tests_and_ci() -> None:
 
 
 def test_web_stack_name_matches_the_cdk_app() -> None:
-    assert "readonly STACKS=(precertly-base precertly-app precertly-data precertly-web)" in (
-        SCRIPT.read_text()
+    stacks = next(
+        line for line in SCRIPT.read_text().splitlines() if line.startswith("readonly STACKS=(")
     )
+    assert "precertly-web" in stacks
     app = (ROOT / "infra" / "app.py").read_text()
-    assert '"precertly-web")' in app
+    assert '"precertly-web",' in app
 
 
 # ---------------------------------------------------------------------------------------------
@@ -2505,3 +2506,1074 @@ def test_the_api_smoke_command_is_not_changed_by_web_smoke(stub_bin: Path) -> No
     assert result.returncode == 0, _output(result)
     assert "execute-command" in result.stdout
     assert "curl" not in result.stdout
+
+
+# ---------------------------------------------------------------------------------------------
+# precertly-auth and precertly-live: settings, context, dependencies
+# ---------------------------------------------------------------------------------------------
+
+AUTH_PREFIX = "my-demo-login"
+PLACEHOLDER_PREFIX = "placeholder-auth-domain"
+AUTH_ENV = {"AUTH_DOMAIN_PREFIX": AUTH_PREFIX, "WEB_DOMAIN": WEB_DOMAIN}
+LIVE_ENV = {"WEB_DOMAIN": WEB_DOMAIN}
+ALL_STACKS = {
+    "precertly-base": "UPDATE_COMPLETE",
+    "precertly-app": "UPDATE_COMPLETE",
+    "precertly-data": "UPDATE_COMPLETE",
+    "precertly-web": "UPDATE_COMPLETE",
+    "precertly-auth": "CREATE_COMPLETE",
+    "precertly-live": "CREATE_COMPLETE",
+}
+LIVE_SERVICE = "precertly-api-live"
+
+
+def _live_stacks(**changes: str | None) -> dict[str, str]:
+    stacks = dict(ALL_STACKS)
+    for name, state in changes.items():
+        if state is None:
+            stacks.pop(name.replace("_", "-"), None)
+        else:
+            stacks[name.replace("_", "-")] = state
+    return stacks
+
+
+def test_auth_stack_dry_run_passes_the_real_prefix_and_domain_and_hides_the_prefix(
+    stub_bin: Path,
+) -> None:
+    result = _deploy(stub_bin, "stack", "precertly-auth", "--dry-run", env=AUTH_ENV)
+    assert result.returncode == 0, _output(result)
+    tag = _head_tag(stub_bin)
+    assert (
+        f"cdk deploy --exclusively precertly-auth -c budgetEmail=REDACTED -c imageTag={tag} "
+        f"-c webDomain={WEB_DOMAIN} -c webCertificateArn={PLACEHOLDER_ARN} "
+        "-c authDomainPrefix=REDACTED"
+    ) in result.stdout
+    assert "is in ECR" not in result.stdout
+    assert AUTH_PREFIX not in _output(result)
+    assert FAKE_EMAIL not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+def test_live_stack_dry_run_passes_the_real_domain_and_checks_its_dependencies(
+    stub_bin: Path,
+) -> None:
+    result = _deploy(stub_bin, "stack", "precertly-live", "--dry-run", env=LIVE_ENV)
+    assert result.returncode == 0, _output(result)
+    tag = _head_tag(stub_bin)
+    out = result.stdout
+    assert (
+        f"cdk deploy --exclusively precertly-live -c budgetEmail=REDACTED -c imageTag={tag} "
+        f"-c webDomain={WEB_DOMAIN} -c webCertificateArn={PLACEHOLDER_ARN} "
+        f"-c authDomainPrefix={PLACEHOLDER_PREFIX}"
+    ) in out
+    assert f"skipping the check that {tag} is in ECR" in out
+    for dependency in ("precertly-app", "precertly-data", "precertly-auth"):
+        assert f"--stack-name {dependency} " in out
+    assert out.count("StackStatus") == 3
+    assert out.count("PublishOutput") == 2
+    _assert_no_calls(stub_bin)
+
+
+@pytest.mark.parametrize(
+    "name", ["precertly-base", "precertly-app", "precertly-data", "precertly-web"]
+)
+def test_the_other_stacks_get_the_placeholder_prefix_even_when_the_real_one_exists(
+    stub_bin: Path, name: str
+) -> None:
+    env = {**WEB_ENV, **AUTH_ENV}
+    result = _deploy(stub_bin, "stack", name, "--dry-run", env=env)
+    assert result.returncode == 0, _output(result)
+    assert f"-c authDomainPrefix={PLACEHOLDER_PREFIX}" in result.stdout
+    assert AUTH_PREFIX not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+@pytest.mark.parametrize("name", ["precertly-base", "precertly-app", "precertly-data"])
+def test_the_other_stacks_need_no_auth_settings(stub_bin: Path, name: str) -> None:
+    result = _deploy(stub_bin, "stack", name, "--dry-run")
+    assert result.returncode == 0, _output(result)
+    assert f"-c authDomainPrefix={PLACEHOLDER_PREFIX}" in result.stdout
+
+
+@pytest.mark.parametrize("command", ["stack", "up"])
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [
+        ({}, "AUTH_DOMAIN_PREFIX is not set"),
+        ({"WEB_DOMAIN": WEB_DOMAIN}, "AUTH_DOMAIN_PREFIX is not set"),
+        ({"AUTH_DOMAIN_PREFIX": AUTH_PREFIX}, "WEB_DOMAIN is not set"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": PLACEHOLDER_PREFIX}, "looks like a placeholder"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": "placeholder-other"}, "looks like a placeholder"),
+        ({**AUTH_ENV, "WEB_DOMAIN": PLACEHOLDER_DOMAIN}, "WEB_DOMAIN looks like a placeholder"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": "My_Login"}, "AUTH_DOMAIN_PREFIX is not 3 to 63"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": "ab"}, "AUTH_DOMAIN_PREFIX is not 3 to 63"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": "-abc"}, "AUTH_DOMAIN_PREFIX is not 3 to 63"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": "abc-"}, "AUTH_DOMAIN_PREFIX is not 3 to 63"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": "x" * 64}, "AUTH_DOMAIN_PREFIX is not 3 to 63"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": "my-aws-login"}, "none of aws, amazon, cognito"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": "amazon-login"}, "none of aws, amazon, cognito"),
+        ({**AUTH_ENV, "AUTH_DOMAIN_PREFIX": "cognito-x"}, "none of aws, amazon, cognito"),
+    ],
+)
+def test_auth_stack_refuses_missing_or_placeholder_settings(
+    stub_bin: Path, command: str, env: dict[str, str], message: str
+) -> None:
+    for extra in ([], ["--dry-run"]):
+        result = _deploy(stub_bin, command, "precertly-auth", *extra, env=env)
+        assert result.returncode != 0
+        assert message in result.stderr
+        assert FAKE_EMAIL not in _output(result)
+        value = env.get("AUTH_DOMAIN_PREFIX")
+        if value and len(value) > 3:
+            assert value not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+@pytest.mark.parametrize("command", ["stack", "up"])
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [
+        ({}, "WEB_DOMAIN is not set"),
+        ({"WEB_DOMAIN": PLACEHOLDER_DOMAIN}, "WEB_DOMAIN looks like a placeholder"),
+        ({"WEB_DOMAIN": "other.invalid"}, "WEB_DOMAIN looks like a placeholder"),
+        ({"WEB_DOMAIN": "Site.Example.org"}, "WEB_DOMAIN is not a plain lowercase"),
+        ({"WEB_DOMAIN": "https://site.example.org"}, "WEB_DOMAIN is not a plain"),
+    ],
+)
+def test_live_stack_refuses_a_missing_or_placeholder_domain(
+    stub_bin: Path, command: str, env: dict[str, str], message: str
+) -> None:
+    for extra in ([], ["--dry-run"]):
+        result = _deploy(stub_bin, command, "precertly-live", *extra, env=env)
+        assert result.returncode != 0
+        assert message in result.stderr
+    _assert_no_calls(stub_bin)
+
+
+def test_auth_settings_are_read_from_env_local_and_the_environment_wins(stub_bin: Path) -> None:
+    (_repo(stub_bin) / ".env.local").write_text(
+        f"AUTH_DOMAIN_PREFIX='{AUTH_PREFIX}'\nWEB_DOMAIN={WEB_DOMAIN}\n"
+    )
+    result = _deploy(stub_bin, "stack", "precertly-auth", "--dry-run")
+    assert result.returncode == 0, _output(result)
+    assert f"-c webDomain={WEB_DOMAIN}" in result.stdout
+    assert "-c authDomainPrefix=REDACTED" in result.stdout
+    assert AUTH_PREFIX not in _output(result)
+
+    other = _deploy(
+        stub_bin,
+        "stack",
+        "precertly-auth",
+        "--dry-run",
+        env={"AUTH_DOMAIN_PREFIX": "env-wins-login"},
+    )
+    assert other.returncode == 0, _output(other)
+    _assert_no_calls(stub_bin)
+
+
+def test_a_bad_auth_line_in_env_local_blocks_only_precertly_auth(stub_bin: Path) -> None:
+    (_repo(stub_bin) / ".env.local").write_text("AUTH_DOMAIN_PREFIX=Not_Valid\n")
+    bad = _deploy(stub_bin, "stack", "precertly-auth", "--dry-run", env=LIVE_ENV)
+    assert bad.returncode != 0
+    assert "AUTH_DOMAIN_PREFIX in .env.local" in bad.stderr
+    assert "Not_Valid" not in _output(bad)
+    for name in ("precertly-base", "precertly-live"):
+        assert _deploy(stub_bin, "stack", name, "--dry-run", env=LIVE_ENV).returncode == 0
+
+
+def test_up_auth_dry_run_has_no_image_step_and_always_asks(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "up", "precertly-auth", "--dry-run", "--yes", env=AUTH_ENV)
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    assert "docker" not in out
+    assert "describe-images" not in out
+    assert (
+        out.index("cdk diff --exclusively precertly-auth")
+        < out.index("Deploy? [y/N]")
+        < out.index("cdk deploy --exclusively precertly-auth")
+    )
+    assert AUTH_PREFIX not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+def test_up_auth_redacts_the_prefix_and_the_email_in_the_diff(stub_bin: Path) -> None:
+    _configure(
+        stub_bin, diff_text="[+] domain {prefix}.auth.example\n [+] https://{prefix}.x\n a {email}"
+    )
+    result = _deploy(stub_bin, "up", "precertly-auth", stdin="y\n", env=AUTH_ENV)
+    assert result.returncode == 0, _output(result)
+    assert "[+] domain REDACTED.auth.example" in result.stdout
+    assert AUTH_PREFIX not in _output(result)
+    assert FAKE_EMAIL not in _output(result)
+    npx = [c for c in _calls(stub_bin) if c.startswith("npx")]
+    assert [c.split()[3] for c in npx] == ["diff", "deploy"]
+    assert all(f"authDomainPrefix={AUTH_PREFIX}" in c for c in npx)  # the real value reached cdk
+    assert not any(c.startswith("docker") for c in _calls(stub_bin))
+
+
+def test_up_auth_redacts_the_prefix_when_the_diff_fails(stub_bin: Path) -> None:
+    _configure(stub_bin, diff_fail="domain {prefix} is taken")
+    result = _deploy(stub_bin, "up", "precertly-auth", stdin="y\n", env=AUTH_ENV)
+    assert result.returncode != 0
+    assert "domain REDACTED is taken" in result.stderr
+    assert AUTH_PREFIX not in _output(result)
+
+
+def test_up_auth_stops_when_declined(stub_bin: Path) -> None:
+    _configure(stub_bin)
+    result = _deploy(stub_bin, "up", "precertly-auth", "--yes", stdin="n\n", env=AUTH_ENV)
+    assert result.returncode != 0
+    assert not any("cdk deploy" in c for c in _calls(stub_bin))
+
+
+def test_up_live_dry_run_checks_dependencies_once_then_pushes_the_image_then_asks(
+    stub_bin: Path,
+) -> None:
+    result = _deploy(stub_bin, "up", "precertly-live", "--dry-run", "--yes", env=LIVE_ENV)
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    assert out.count("StackStatus") == 3  # not repeated by the stack step
+    assert (
+        out.index("--stack-name precertly-auth")
+        < out.index("docker buildx build")
+        < out.index("cdk diff --exclusively precertly-live")
+        < out.index("Deploy? [y/N]")
+        < out.index("cdk deploy --exclusively precertly-live")
+    )
+    _assert_no_calls(stub_bin)
+
+
+def test_up_live_deploys_after_the_image_step_the_diff_and_the_question(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=_live_stacks())
+    result = _deploy(stub_bin, "up", "precertly-live", "--yes", stdin="y\n", env=LIVE_ENV)
+    assert result.returncode == 0, _output(result)
+    calls = _calls(stub_bin)
+    describe = _index_of(calls, "aws ecr describe-images")
+    diff = _index_of(calls, "npx --no-install cdk diff --exclusively precertly-live")
+    deploy = _index_of(calls, "npx --no-install cdk deploy --exclusively precertly-live")
+    assert describe < diff < deploy
+    assert f"webDomain={WEB_DOMAIN}" in calls[deploy]
+    assert f"authDomainPrefix={PLACEHOLDER_PREFIX}" in calls[deploy]
+    assert FAKE_EMAIL not in _output(result)
+
+
+@pytest.mark.parametrize(
+    ("stacks", "message"),
+    [
+        (_live_stacks(precertly_auth=None), "precertly-auth is not deployed"),
+        (_live_stacks(precertly_data=None), "precertly-data is not deployed"),
+        (_live_stacks(precertly_app=None), "precertly-app is not deployed"),
+        (
+            _live_stacks(precertly_data="UPDATE_IN_PROGRESS"),
+            "precertly-data is UPDATE_IN_PROGRESS, not CREATE_COMPLETE or UPDATE_COMPLETE",
+        ),
+        (
+            _live_stacks(precertly_auth="ROLLBACK_COMPLETE"),
+            "precertly-auth is ROLLBACK_COMPLETE",
+        ),
+    ],
+)
+def test_live_stack_refuses_until_its_dependencies_are_complete(
+    stub_bin: Path, stacks: dict[str, str], message: str
+) -> None:
+    _configure(stub_bin, stacks=stacks)
+    for command in ("stack", "up"):
+        result = _deploy(stub_bin, command, "precertly-live", "--yes", env=LIVE_ENV, stdin="y\n")
+        assert result.returncode != 0
+        assert message in result.stderr
+    calls = _calls(stub_bin)
+    assert not any("cdk deploy" in c for c in calls)
+    # `up` stops before it builds or pushes anything.
+    assert not any(c.startswith("docker") for c in calls)
+
+
+@pytest.mark.parametrize("dependency", ["precertly-data", "precertly-auth"])
+def test_live_stack_refuses_when_a_dependency_lacks_the_outputs_it_reads(
+    stub_bin: Path, dependency: str
+) -> None:
+    _configure(stub_bin, stacks=_live_stacks(), publish_outputs=0)
+    result = _deploy(stub_bin, "stack", "precertly-live", env=LIVE_ENV)
+    assert result.returncode != 0
+    assert "has none of the outputs precertly-live reads" in result.stderr
+    assert "deploy it from this commit first: scripts/deploy.sh up precertly-data" in (
+        result.stderr
+    )
+    assert not any("cdk deploy" in c for c in _calls(stub_bin))
+
+
+def test_live_stack_refuses_when_the_image_is_not_in_ecr(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=_live_stacks(), ecr_missing=True)
+    result = _deploy(stub_bin, "stack", "precertly-live", env=LIVE_ENV)
+    assert result.returncode != 0
+    assert "is not in ECR" in result.stderr or "could not check" in result.stderr
+    assert not any("cdk deploy" in c for c in _calls(stub_bin))
+
+
+def test_stack_names_and_placeholders_match_the_cdk_app_and_ci() -> None:
+    script = SCRIPT.read_text()
+    app = (ROOT / "infra" / "app.py").read_text()
+    stacks = re.search(r"^readonly STACKS=\((.*)\)$", script, re.M)
+    assert stacks is not None
+    cdk_names = re.search(r"STACK_NAMES = \(([^)]*)\)", app, re.S)
+    assert cdk_names is not None
+    assert stacks.group(1).split() == re.findall(r'"(precertly-[a-z]+)"', cdk_names.group(1))
+    assert "readonly IMAGE_STACKS=(precertly-app precertly-data precertly-live)" in script
+    support = (ROOT / "infra" / "tests" / "support.py").read_text()
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert f'readonly PLACEHOLDER_AUTH_DOMAIN_PREFIX="{PLACEHOLDER_PREFIX}"' in script
+    assert f'AUTH_DOMAIN_PREFIX = "{PLACEHOLDER_PREFIX}"' in support
+    assert f"-c authDomainPrefix={PLACEHOLDER_PREFIX}" in ci
+    assert "precertly-app precertly-auth precertly-base precertly-data precertly-live" in ci
+
+
+def test_live_names_match_the_cdk_names() -> None:
+    names = dict(
+        re.findall(r'^(\w+) = "([^"]+)"$', (ROOT / "infra" / "names.py").read_text(), re.M)
+    )
+    script = SCRIPT.read_text()
+    assert f'readonly LIVE_SERVICE="{names["API_LIVE_SERVICE"]}"' in script
+    assert f'readonly LIVE_CONTAINER="{names["LIVE_CONTAINER"]}"' in script
+    assert names["API_LIVE_SERVICE"] == LIVE_SERVICE
+    # The in-task script is copied into the image, so the path the command names must exist.
+    assert 'readonly LIVE_RUN_SCRIPT="scripts/live_smoke_run.py"' in script
+    assert (ROOT / "scripts" / "live_smoke_run.py").is_file()
+    assert (
+        "COPY scripts/live_smoke_run.py ./scripts/live_smoke_run.py"
+        in (ROOT / "Dockerfile").read_text()
+    )
+
+
+# ---------------------------------------------------------------------------------------------
+# live start, stop and status
+# ---------------------------------------------------------------------------------------------
+
+
+def _live_updates(stub_bin: Path) -> list[str]:
+    return [c for c in _calls(stub_bin) if "update-service" in c]
+
+
+def _gateway_calls(stub_bin: Path) -> list[str]:
+    return [c for c in _calls(stub_bin) if c.startswith("curl") and "execute-api" in c]
+
+
+@pytest.mark.parametrize("verb", ["start", "stop", "status"])
+def test_live_commands_dry_run_make_no_call(stub_bin: Path, verb: str) -> None:
+    result = _deploy(stub_bin, "live", verb, "--dry-run")
+    assert result.returncode == 0, _output(result)
+    assert "dry-run" in result.stdout
+    assert FAKE_EMAIL not in _output(result)
+    assert ACCOUNT not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+def test_live_start_dry_run_shows_the_order_and_the_warning(stub_bin: Path) -> None:
+    out = _deploy(stub_bin, "live", "start", "--dry-run").stdout
+    assert "0.36 USD a day" in out
+    assert (
+        out.index("--stack-name precertly-live")
+        < out.index("--desired-count 1")
+        < out.index("describe-tasks")
+        < out.index("API_URL/health")
+    )
+    assert f"--service {LIVE_SERVICE} --desired-count 1" in out
+
+
+def test_live_start_brings_the_environment_up_and_reports_the_seconds(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=_live_stacks(), gateway_polls=2)
+    result = _deploy(stub_bin, "live", "start")
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    assert "warning: a running live task costs about 0.36 USD a day" in out
+    assert "scripts/deploy.sh live stop" in out
+    assert re.search(r"live environment is up: gateway GET /health returned 200 after \d+s", out)
+    updates = _live_updates(stub_bin)
+    assert len(updates) == 1 and f"--service {LIVE_SERVICE} --desired-count 1" in updates[0]
+    # The cold start is a few answers of 500 before the first 200.
+    assert len(_gateway_calls(stub_bin)) == 3
+    calls = _calls(stub_bin)
+    assert _index_of(calls, "aws ecs update-service") < _index_of(calls, "curl")
+    assert not any(f"--service {LIVE_SERVICE} --desired-count 0" in c for c in calls)
+    assert ACCOUNT not in _output(result)
+
+
+def test_live_start_waits_for_the_ecs_health_status_before_asking_the_gateway(
+    stub_bin: Path,
+) -> None:
+    _configure(stub_bin, stacks=_live_stacks(), health_after_polls=2)
+    result = _deploy(stub_bin, "live", "start")
+    assert result.returncode == 0, _output(result)
+    calls = _calls(stub_bin)
+    health_polls = [i for i, c in enumerate(calls) if "describe-tasks" in c]
+    assert len(health_polls) == 3
+    assert max(health_polls) < _index_of(calls, "curl")
+
+
+def test_live_start_never_touches_the_api_service(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=_live_stacks())
+    result = _deploy(stub_bin, "live", "start")
+    assert result.returncode == 0, _output(result)
+    for call in _calls(stub_bin):
+        if "--service " in call or "--services " in call or "--service-name " in call:
+            assert LIVE_SERVICE in call
+
+
+@pytest.mark.parametrize(
+    ("config", "message"),
+    [
+        ({"stacks": _live_stacks(precertly_live=None)}, "precertly-live is not deployed"),
+        (
+            {"stacks": _live_stacks(precertly_live="UPDATE_ROLLBACK_COMPLETE")},
+            "precertly-live is UPDATE_ROLLBACK_COMPLETE",
+        ),
+        ({"stacks": _live_stacks(), "live_service_missing": True}, "is not deployed"),
+        (
+            {"stacks": _live_stacks(), "outputs": {"ApiUrl": "http://evil.example.com/"}},
+            "not https://<id>.execute-api.<region>.amazonaws.com",
+        ),
+        (
+            {"stacks": _live_stacks(), "outputs": {"ApiUrl": "https://evil.example.com/"}},
+            "not https://<id>.execute-api.<region>.amazonaws.com",
+        ),
+    ],
+)
+def test_live_start_refuses_and_starts_nothing(
+    stub_bin: Path, config: dict[str, object], message: str
+) -> None:
+    _configure(stub_bin, **config)
+    result = _deploy(stub_bin, "live", "start")
+    assert result.returncode != 0
+    assert message in result.stderr
+    assert _live_updates(stub_bin) == []
+    assert _gateway_calls(stub_bin) == []
+
+
+def test_live_start_that_times_out_says_the_task_is_not_stopped(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=_live_stacks(), live_stuck_running=True)
+    result = _deploy(stub_bin, "live", "start")
+    assert result.returncode != 0
+    assert "did not reach 1 running task" in result.stderr
+    assert "It is NOT stopped" in result.stderr
+    assert "scripts/deploy.sh live stop" in result.stderr
+    assert len(_live_updates(stub_bin)) == 1  # no scale-down behind your back
+
+
+def test_live_start_when_the_gateway_never_answers_200_says_the_task_is_not_stopped(
+    stub_bin: Path,
+) -> None:
+    _configure(stub_bin, stacks=_live_stacks(), gateway_polls=100000)
+    result = _deploy(stub_bin, "live", "start")
+    assert result.returncode != 0
+    assert "the gateway did not answer GET /health with 200" in result.stderr
+    assert "NOT stopped" in result.stderr
+    assert len(_live_updates(stub_bin)) == 1
+
+
+def test_live_start_when_the_task_never_becomes_healthy(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=_live_stacks(), health="UNHEALTHY")
+    result = _deploy(stub_bin, "live", "start")
+    assert result.returncode != 0
+    assert "did not become HEALTHY" in result.stderr
+    assert "UNHEALTHY" in result.stderr
+    assert "NOT stopped" in result.stderr
+    assert _gateway_calls(stub_bin) == []
+
+
+def test_live_stop_scales_the_live_service_to_zero_and_confirms(stub_bin: Path) -> None:
+    _configure(stub_bin, live_desired=1, live_running=1)
+    result = _deploy(stub_bin, "live", "stop")
+    assert result.returncode == 0, _output(result)
+    updates = _live_updates(stub_bin)
+    assert len(updates) == 1 and f"--service {LIVE_SERVICE} --desired-count 0" in updates[0]
+    assert "desired 0, running 0: the live task is stopped" in result.stdout
+
+
+def test_live_stop_leaves_the_api_service_alone(stub_bin: Path) -> None:
+    _configure(stub_bin, desired=1, running=1, live_desired=1, live_running=1)
+    _deploy(stub_bin, "live", "stop")
+    assert all(f"--service {LIVE_SERVICE} " in c for c in _live_updates(stub_bin))
+
+
+def test_live_stop_fails_when_a_task_will_not_stop(stub_bin: Path) -> None:
+    _configure(stub_bin, live_desired=1, live_running=1, live_stuck_running=True)
+    result = _deploy(stub_bin, "live", "stop")
+    assert result.returncode != 0
+    assert "did not reach 0 running tasks" in result.stderr
+
+
+def test_live_stop_with_no_service_is_not_an_error(stub_bin: Path) -> None:
+    _configure(stub_bin, live_service_missing=True)
+    result = _deploy(stub_bin, "live", "stop")
+    assert result.returncode == 0, _output(result)
+    assert "not deployed; nothing to stop" in result.stdout
+    assert _live_updates(stub_bin) == []
+
+
+def test_live_status_dry_run_lists_the_reads_and_the_one_request(stub_bin: Path) -> None:
+    out = _deploy(stub_bin, "live", "status", "--dry-run").stdout
+    assert "--stack-name precertly-auth" in out and "--stack-name precertly-live" in out
+    assert f"--services {LIVE_SERVICE}" in out
+    assert "curl --disable --silent --show-error --max-time 20 --proto =https" in out
+    assert "--request GET" in out and "API_URL/health" in out
+    assert "update-service" not in out
+
+
+def test_live_status_says_down_when_the_service_is_at_zero(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=_live_stacks())
+    result = _deploy(stub_bin, "live", "status")
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    assert re.search(r"precertly-auth\s+CREATE_COMPLETE", out)
+    assert re.search(r"precertly-live\s+CREATE_COMPLETE", out)
+    assert "desired 0, running 0, pending 0" in out
+    assert "api url: https://abc123def4.execute-api.us-east-2.amazonaws.com" in out
+    assert "gateway GET /health: 500" in out
+    assert "environment: DOWN (service at zero tasks; gateway /health 500)" in out
+    assert _live_updates(stub_bin) == []  # read-only
+    assert len(_gateway_calls(stub_bin)) == 1
+
+
+def test_live_status_says_up_and_warns_about_the_cost(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=_live_stacks(), live_desired=1, live_running=1)
+    result = _deploy(stub_bin, "live", "status")
+    assert result.returncode == 0, _output(result)
+    assert "gateway GET /health: 200" in result.stdout
+    assert "environment: UP (desired 1, running 1, gateway /health 200)" in result.stdout
+    assert "bills until: scripts/deploy.sh live stop" in result.stdout
+    # Only the status code of the gateway's answer is shown, never its body.
+    assert '"status":"ok"' not in _output(result)
+
+
+def test_live_status_says_not_ready_while_the_gateway_still_fails(stub_bin: Path) -> None:
+    _configure(
+        stub_bin, stacks=_live_stacks(), live_desired=1, live_running=1, gateway_polls=100000
+    )
+    result = _deploy(stub_bin, "live", "status")
+    assert "environment: NOT READY (desired 1, running 1, gateway /health 500)" in result.stdout
+
+
+def test_live_status_reports_a_gateway_that_does_not_answer(stub_bin: Path) -> None:
+    _configure(
+        stub_bin,
+        stacks=_live_stacks(),
+        gateway={"GET /health": {"exit": 28, "stderr": "curl: (28) Operation timed out"}},
+    )
+    result = _deploy(stub_bin, "live", "status")
+    assert result.returncode == 0, _output(result)
+    assert "gateway GET /health: no response (curl exit 28)" in result.stdout
+
+
+def test_live_status_when_nothing_is_deployed(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks={}, live_service_missing=True)
+    result = _deploy(stub_bin, "live", "status")
+    assert result.returncode == 0, _output(result)
+    assert re.search(r"precertly-live\s+not deployed", result.stdout)
+    assert "api url: not available" in result.stdout
+    assert "environment: DOWN (precertly-api-live is not deployed)" in result.stdout
+    assert _gateway_calls(stub_bin) == []
+
+
+def test_status_lists_the_new_stacks_and_the_live_service(stub_bin: Path) -> None:
+    dry = _deploy(stub_bin, "status", "--dry-run")
+    assert "--stack-name precertly-auth" in dry.stdout
+    assert "--stack-name precertly-live" in dry.stdout
+    assert f"--services {LIVE_SERVICE}" in dry.stdout
+    _assert_no_calls(stub_bin)
+
+    _configure(stub_bin, stacks=_live_stacks(), live_desired=1, live_running=1)
+    result = _deploy(stub_bin, "status")
+    assert result.returncode == 0, _output(result)
+    assert re.search(r"precertly-auth\s+CREATE_COMPLETE", result.stdout)
+    assert re.search(r"precertly-live\s+CREATE_COMPLETE", result.stdout)
+    assert "live service precertly/precertly-api-live" in result.stdout
+    assert "a live task is running and bills until: scripts/deploy.sh live stop" in result.stdout
+    # The API service line still describes the API service (desired 0 there).
+    assert "service precertly/precertly-api\n  status ACTIVE, desired 0, running 0" in (
+        result.stdout
+    )
+
+
+def test_live_status_with_no_service_prints_not_deployed_in_status(stub_bin: Path) -> None:
+    _configure(stub_bin, live_service_missing=True)
+    result = _deploy(stub_bin, "status")
+    assert "live service precertly/precertly-api-live\n  not deployed" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("live",),
+        ("live", "bogus"),
+        ("live", "start", "extra"),
+        ("live", "start", "--yes"),
+        ("live", "stop", "--yes"),
+        ("live", "status", "--yes"),
+        ("live", "smoke", "--yes"),
+        ("live", "smoke", "--bedrock"),
+        ("live", "start", "--run", "facet-01"),
+        ("live", "--run", "facet-01"),
+        ("smoke", "--run", "facet-01"),
+        ("status", "--run", "facet-01"),
+        ("live", "smoke", "--run"),
+        ("live", "smoke", "--run", "bad/case"),
+        ("live", "smoke", "--run", ""),
+        ("live", "smoke", "--run=a b"),
+        ("live", "smoke", "--run", "-x"),
+    ],
+)
+def test_bad_live_invocations_fail_without_calls_or_leaks(
+    stub_bin: Path, args: tuple[str, ...]
+) -> None:
+    result = _deploy(stub_bin, *args, env=LIVE_ENV)
+    assert result.returncode != 0
+    assert FAKE_EMAIL not in _output(result)
+    _assert_no_calls(stub_bin)
+
+
+# ---------------------------------------------------------------------------------------------
+# live smoke
+# ---------------------------------------------------------------------------------------------
+
+
+def _live_smoke(
+    stub_bin: Path, *args: str, stdin: str = "", env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    return _deploy(
+        stub_bin, "live", "smoke", *args, stdin=stdin, env=env if env is not None else LIVE_ENV
+    )
+
+
+@pytest.fixture
+def live_ready(stub_bin: Path) -> Path:
+    """Every stack complete, the live service at zero, a healthy gateway."""
+    _configure(stub_bin, stacks=_live_stacks())
+    return stub_bin
+
+
+def _pass_lines(out: str) -> list[str]:
+    return [m.group(1) for m in re.finditer(r"^  PASS\s+(.*)$", out, re.M)]
+
+
+def _fail_lines(out: str) -> list[str]:
+    return [m.group(1) for m in re.finditer(r"^  FAIL\s+(.*)$", out, re.M)]
+
+
+def test_live_smoke_dry_run_shows_the_order_and_makes_no_call(stub_bin: Path) -> None:
+    result = _live_smoke(stub_bin, "--dry-run")
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    assert (
+        out.index("--desired-count 1")
+        < out.index("API_URL/health")
+        < out.index("API_URL/live/runs")
+        < out.index("API_URL/policies")
+        < out.rindex("--request OPTIONS")
+        < out.rindex("--desired-count 0")
+    )
+    assert f"--header Origin:\\ https://{WEB_DOMAIN}" in out
+    assert "Origin:\\ https://other.example.invalid" in out
+    assert "execute-command" not in out and "Continue?" not in out
+    _assert_no_calls(stub_bin)
+
+
+def test_live_smoke_run_dry_run_mentions_the_question_and_the_exec(stub_bin: Path) -> None:
+    result = _live_smoke(stub_bin, "--run", "facet-01", "--yes", "--dry-run")
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    assert (
+        "dry-run: would ask 'Continue? About 0.07 USD of Bedrock and the database wakes up. "
+        "[y/N]' first (--yes does not skip it)"
+    ) in out
+    assert "--container api" in out
+    # printf %q escapes the spaces of the one command string
+    assert "scripts/live_smoke_run.py\\ facet-01" in out
+    assert out.index("execute-command") < out.rindex("--desired-count 0")
+    _assert_no_calls(stub_bin)
+
+
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [
+        ({}, "WEB_DOMAIN is not set"),
+        ({"WEB_DOMAIN": PLACEHOLDER_DOMAIN}, "WEB_DOMAIN looks like a placeholder"),
+        ({"WEB_DOMAIN": "https://x.example.org"}, "WEB_DOMAIN is not a plain"),
+    ],
+)
+def test_live_smoke_needs_the_real_site_domain(
+    stub_bin: Path, env: dict[str, str], message: str
+) -> None:
+    for extra in ([], ["--dry-run"]):
+        result = _live_smoke(stub_bin, *extra, env=env)
+        assert result.returncode != 0
+        assert message in result.stderr
+    _assert_no_calls(stub_bin)
+
+
+def test_live_smoke_passes_and_scales_back_to_zero(live_ready: Path) -> None:
+    _configure(live_ready, stacks=_live_stacks(), gateway_polls=2)
+    result = _live_smoke(live_ready)
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    assert "live smoke summary" in out
+    passed = _pass_lines(out)
+    assert any(
+        re.fullmatch(r"cold start: scale-up to the first gateway 200 on /health took \d+s", p)
+        for p in passed
+    )
+    for expected in (
+        "service stable (desired 1, running 1)",
+        "unauthenticated GET /health through the gateway is 200",
+        "unauthenticated POST /live/runs is 401",
+        "unauthenticated GET /live/runs/anything is 401",
+        "GET /policies has no route and is 404 at the gateway",
+        "CORS preflight OPTIONS /live/runs from the site origin is 204",
+        "CORS preflight OPTIONS /live/runs from the site origin allows exactly the site origin",
+        "CORS preflight OPTIONS /live/runs from the site origin allows POST",
+        "CORS preflight OPTIONS /live/runs from the site origin allows the authorization and "
+        "content-type headers",
+        "CORS preflight OPTIONS /live/runs from a different origin gets no "
+        "access-control-allow-origin header",
+        "scaled back to 0",
+    ):
+        assert expected in passed, expected
+    assert _fail_lines(out) == []
+    assert "final counts: desired 0, running 0, pending 0" in out
+    assert "result: PASS" in out
+    updates = _live_updates(live_ready)
+    assert [re.search(r"--desired-count (\d)", u).group(1) for u in updates] == ["1", "0"]  # type: ignore[union-attr]
+    assert all(f"--service {LIVE_SERVICE} " in u for u in updates)
+    # No ECS Exec without --run.
+    assert not any("execute-command" in c for c in _calls(live_ready))
+    assert ACCOUNT not in _output(result)
+
+
+def test_live_smoke_sends_the_requests_it_names(live_ready: Path) -> None:
+    result = _live_smoke(live_ready)
+    assert result.returncode == 0, _output(result)
+    sent = [c for c in _gateway_calls(live_ready)]
+    assert any("--request POST" in c and c.endswith("/live/runs") for c in sent)
+    assert any(c.endswith("/live/runs/anything") for c in sent)
+    assert any(c.endswith("/policies") for c in sent)
+    options = [c for c in sent if "--request OPTIONS" in c]
+    assert len(options) == 2
+    assert any(f"Origin: https://{WEB_DOMAIN}" in c for c in options)
+    assert any("Origin: https://other.example.invalid" in c for c in options)
+    assert all("--proto =https" in c and "--insecure" not in c for c in sent)
+    # Nothing is sent with a bearer token: the checks are all unauthenticated.
+    assert not any("uthorization:" in c and "Bearer" in c for c in sent)
+
+
+def test_live_smoke_refuses_when_a_task_is_running(live_ready: Path) -> None:
+    _configure(live_ready, stacks=_live_stacks(), live_desired=1, live_running=1)
+    result = _live_smoke(live_ready)
+    assert result.returncode != 0
+    assert "refusing" in result.stderr
+    assert _live_updates(live_ready) == []
+    assert _gateway_calls(live_ready) == []
+
+
+@pytest.mark.parametrize(
+    ("config", "message"),
+    [
+        ({"stacks": _live_stacks(precertly_live=None)}, "precertly-live is not deployed"),
+        ({"stacks": _live_stacks(), "live_service_missing": True}, "is not deployed"),
+    ],
+)
+def test_live_smoke_refuses_when_nothing_is_deployed(
+    stub_bin: Path, config: dict[str, object], message: str
+) -> None:
+    _configure(stub_bin, **config)
+    result = _live_smoke(stub_bin)
+    assert result.returncode != 0
+    assert message in result.stderr
+    assert _live_updates(stub_bin) == []
+
+
+def test_live_smoke_scales_to_zero_when_the_cold_start_never_ends(live_ready: Path) -> None:
+    _configure(live_ready, stacks=_live_stacks(), gateway_polls=100000)
+    result = _live_smoke(live_ready)
+    assert result.returncode != 0
+    assert any(
+        "cold start: the gateway returned 200 on /health within 2s" in f
+        for f in _fail_lines(result.stdout)
+    )
+    assert "scaled back to 0" in _pass_lines(result.stdout)
+    assert [re.search(r"--desired-count (\d)", u).group(1) for u in _live_updates(live_ready)] == [  # type: ignore[union-attr]
+        "1",
+        "0",
+    ]
+    assert "result: FAIL" in result.stdout
+
+
+def test_live_smoke_scales_to_zero_when_the_service_never_starts(live_ready: Path) -> None:
+    _configure(live_ready, stacks=_live_stacks(), live_stuck_running=True)
+    result = _live_smoke(live_ready)
+    assert result.returncode != 0
+    assert any(f.startswith("service stable within 2s") for f in _fail_lines(result.stdout))
+    assert "scaled back to 0" in _pass_lines(result.stdout)
+    assert _gateway_calls(live_ready) == []
+
+
+def test_live_smoke_reports_a_scale_down_that_cannot_be_confirmed(live_ready: Path) -> None:
+    _configure(live_ready, stacks=_live_stacks(), live_stick_on_zero=True)
+    result = _live_smoke(live_ready)
+    assert result.returncode != 0
+    assert any(
+        f.startswith("scale back to 0 not confirmed: run scripts/deploy.sh live stop NOW")
+        for f in _fail_lines(result.stdout)
+    )
+    assert "final counts: desired 0, running 1" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("override", "failing"),
+    [
+        ({"GET /policies": {"status": 200}}, "GET /policies has no route and is 404"),
+        ({"POST /live/runs": {"status": 200}}, "unauthenticated POST /live/runs is 401"),
+        ({"POST /live/runs": {"status": 500}}, "unauthenticated POST /live/runs is 401"),
+        (
+            {"GET /live/runs/anything": {"status": 404}},
+            "unauthenticated GET /live/runs/anything is 401",
+        ),
+    ],
+)
+def test_live_smoke_fails_when_the_gateway_does_not_behave(
+    live_ready: Path, override: dict[str, object], failing: str
+) -> None:
+    _configure(live_ready, stacks=_live_stacks(), gateway=override)
+    result = _live_smoke(live_ready)
+    assert result.returncode != 0
+    assert any(f.startswith(failing) for f in _fail_lines(result.stdout)), result.stdout
+    assert "scaled back to 0" in _pass_lines(result.stdout)
+    assert "result: FAIL" in result.stdout
+
+
+def test_live_smoke_fails_when_the_gateway_would_allow_any_origin(live_ready: Path) -> None:
+    star = {"headers": {"Access-Control-Allow-Origin": "*"}}
+    _configure(live_ready, stacks=_live_stacks(), gateway={"OPTIONS /live/runs": star})
+    result = _live_smoke(live_ready)
+    assert result.returncode != 0
+    fails = _fail_lines(result.stdout)
+    assert any("from the site origin allows exactly the site origin (got '*')" in f for f in fails)
+    assert any(
+        "from a different origin gets no access-control-allow-origin header (got '*')" in f
+        for f in fails
+    )
+
+
+def test_live_smoke_fails_when_the_site_origin_is_not_allowed(live_ready: Path) -> None:
+    _configure(live_ready, stacks=_live_stacks(), gateway_origin="https://another.example.org")
+    result = _live_smoke(live_ready)
+    assert result.returncode != 0
+    fails = _fail_lines(result.stdout)
+    assert any("allows exactly the site origin (got 'no header')" in f for f in fails)
+    # The other-origin check passes: nothing is allowed for it either.
+    assert any(
+        "different origin gets no access-control-allow-origin" in p
+        for p in _pass_lines(result.stdout)
+    )
+
+
+def test_live_smoke_counts_a_request_that_cannot_complete_as_a_failed_check(
+    live_ready: Path,
+) -> None:
+    gateway = {"GET /policies": {"exit": 28, "stderr": "curl: (28) Operation timed out"}}
+    _configure(live_ready, stacks=_live_stacks(), gateway=gateway)
+    result = _live_smoke(live_ready)
+    assert result.returncode != 0
+    assert any(
+        "GET /policies has no route and is 404 at the gateway (no response: curl exit 28)" in f
+        for f in _fail_lines(result.stdout)
+    )
+    # The remaining checks still ran.
+    assert any("CORS preflight" in p for p in _pass_lines(result.stdout))
+    assert "scaled back to 0" in _pass_lines(result.stdout)
+
+
+# --- live smoke --run ----------------------------------------------------------------------
+
+
+def test_live_smoke_run_asks_first_and_makes_one_real_run(live_ready: Path) -> None:
+    result = _live_smoke(live_ready, "--run", "facet-01", stdin="y\n")
+    assert result.returncode == 0, _output(result)
+    assert "Continue? About 0.07 USD of Bedrock and the database wakes up. [y/N]" in result.stderr
+    execs = [c for c in _calls(live_ready) if "execute-command" in c]
+    assert len(execs) == 1
+    assert "--container api" in execs[0] and "python scripts/live_smoke_run.py facet-01" in execs[0]
+    assert f"--task {LIVE_TASK_ARN_SUFFIX}" in execs[0] or "1111222233334444" in execs[0]
+    passed = _pass_lines(result.stdout)
+    assert "ECS Exec agent running" in passed
+    assert (
+        "one real live run of facet-01: status=done reason=- overall=met tokens=1000/234 "
+        "timings=waking_database:12.3,checking_limits:0.1,ingesting:5.0,judging:40.0"
+    ) in passed
+    assert "result: PASS" in result.stdout
+    assert [re.search(r"--desired-count (\d)", u).group(1) for u in _live_updates(live_ready)] == [  # type: ignore[union-attr]
+        "1",
+        "0",
+    ]
+
+
+LIVE_TASK_ARN_SUFFIX = "task/precertly/1111222233334444"
+
+
+@pytest.mark.parametrize("answer", ["", "n\n", "yes please\n"])
+def test_live_smoke_run_declined_starts_nothing(live_ready: Path, answer: str) -> None:
+    result = _live_smoke(live_ready, "--run", "facet-01", stdin=answer)
+    assert result.returncode != 0
+    assert "nothing started" in result.stderr
+    assert not any(c.startswith("aws") for c in _calls(live_ready))
+
+
+@pytest.mark.parametrize("answer", ["", "n\n"])
+def test_yes_does_not_skip_the_live_run_question(live_ready: Path, answer: str) -> None:
+    result = _live_smoke(live_ready, "--run", "facet-01", "--yes", stdin=answer)
+    assert result.returncode != 0
+    assert "nothing started" in result.stderr
+    assert not any(c.startswith("aws") for c in _calls(live_ready))
+
+
+def test_live_smoke_run_needs_the_session_manager_plugin(live_ready: Path) -> None:
+    (live_ready / "session-manager-plugin").unlink()
+    # A PATH without the Homebrew directory, so a plugin installed on this machine is not found.
+    result = _live_smoke(
+        live_ready,
+        "--run",
+        "facet-01",
+        stdin="y\n",
+        env={**LIVE_ENV, "PATH": f"{live_ready}{os.pathsep}/usr/bin{os.pathsep}/bin"},
+    )
+    assert result.returncode != 0
+    assert "session-manager-plugin is not installed" in result.stderr
+    assert not any(c.startswith("aws") for c in _calls(live_ready))
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        (
+            "LIVE_RUN status=failed reason=embedding_failed overall=- tokens=- "
+            "timings=waking_database:3.0,checking_limits:0.2,ingesting:1.5",
+            "status failed, reason embedding_failed",
+        ),
+        (
+            "LIVE_RUN status=rejected reason=daily_cap_user overall=- tokens=- timings=-",
+            "status rejected, reason daily_cap_user",
+        ),
+        (
+            "LIVE_RUN status=timeout reason=still_judging overall=- tokens=- timings=-",
+            "status timeout, reason still_judging",
+        ),
+        (
+            "LIVE_RUN status=start_http_409 reason=- overall=- tokens=- timings=-",
+            "status start_http_409",
+        ),
+    ],
+)
+def test_live_smoke_run_reports_a_run_that_did_not_finish_with_its_reason(
+    live_ready: Path, line: str, expected: str
+) -> None:
+    _configure(live_ready, stacks=_live_stacks(), live_run_line=line)
+    result = _live_smoke(live_ready, "--run", "facet-01", stdin="y\n")
+    assert result.returncode != 0
+    fails = _fail_lines(result.stdout)
+    assert any(f.startswith(f"one real live run of facet-01: {expected}") for f in fails), fails
+    assert "scaled back to 0" in _pass_lines(result.stdout)
+    assert "result: FAIL" in result.stdout
+
+
+def test_live_smoke_run_without_a_result_line_is_a_failure_with_the_output_tail(
+    live_ready: Path,
+) -> None:
+    _configure(
+        live_ready,
+        stacks=_live_stacks(),
+        live_run_line="Traceback (most recent call last):\nValueError: boom",
+    )
+    result = _live_smoke(live_ready, "--run", "facet-01", stdin="y\n")
+    assert result.returncode != 0
+    assert any(
+        "no result line from scripts/live_smoke_run.py" in f for f in _fail_lines(result.stdout)
+    )
+    assert "ValueError: boom" in result.stderr
+    assert _live_updates(live_ready)[-1].count("--desired-count 0") == 1
+
+
+def test_live_smoke_run_retries_only_the_exec_not_ready_errors(live_ready: Path) -> None:
+    _configure(live_ready, stacks=_live_stacks(), exec_errors={"live_smoke_run": 2})
+    result = _live_smoke(live_ready, "--run", "facet-01", stdin="y\n")
+    assert result.returncode == 0, _output(result)
+    assert len([c for c in _calls(live_ready) if "execute-command" in c]) == 3
+    assert "ECS Exec not ready (attempt 1 of 3)" in result.stdout
+
+
+def test_live_smoke_run_never_prints_a_result_body(live_ready: Path) -> None:
+    secret = "SECRET RATIONALE AND QUOTE"
+    _configure(
+        live_ready,
+        stacks=_live_stacks(),
+        live_run_line=f"{secret}\nLIVE_RUN status=done reason=- overall=met tokens=1/2 timings=-",
+    )
+    result = _live_smoke(live_ready, "--run", "facet-01", stdin="y\n")
+    assert result.returncode == 0, _output(result)
+    assert secret not in _output(result)
+
+
+@pytest.mark.parametrize(("sig", "status"), [(signal.SIGTERM, 143), (signal.SIGINT, 130)])
+def test_live_smoke_scales_to_zero_when_interrupted(
+    live_ready: Path, sig: signal.Signals, status: int
+) -> None:
+    _configure(live_ready, stacks=_live_stacks(), exec_sleep=2)
+    proc = subprocess.Popen(
+        ["bash", str(SCRIPT), "live", "smoke", "--run", "facet-01"],
+        cwd=_repo(live_ready),
+        env=_env(live_ready, FAKE_EMAIL, LIVE_ENV),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert proc.stdin is not None
+    proc.stdin.write("y\n")
+    proc.stdin.flush()
+    deadline = time.monotonic() + 30
+    while not any("execute-command" in c for c in _calls(live_ready)):
+        assert time.monotonic() < deadline, "live smoke never reached the exec step"
+        time.sleep(0.05)
+    proc.send_signal(sig)
+    stdout, stderr = proc.communicate(timeout=30)
+    assert proc.returncode == status, stdout + stderr
+    assert [re.search(r"--desired-count (\d)", u).group(1) for u in _live_updates(live_ready)] == [  # type: ignore[union-attr]
+        "1",
+        "0",
+    ]
+    assert "scaled back to 0" in _pass_lines(stdout)
+    assert "result: FAIL" in stdout
+    assert "final counts: desired 0, running 0" in stdout
+
+
+def test_live_smoke_cleans_up_its_temporary_files(live_ready: Path) -> None:
+    before = set(Path(os.environ.get("TMPDIR", "/tmp")).glob("tmp.*"))
+    result = _live_smoke(live_ready)
+    assert result.returncode == 0, _output(result)
+    after = set(Path(os.environ.get("TMPDIR", "/tmp")).glob("tmp.*"))
+    assert after <= before
+
+
+def test_script_help_documents_the_live_commands() -> None:
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "--help"], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0
+    for text in (
+        "live start",
+        "live stop",
+        "live status",
+        "live smoke",
+        "--run CASE_ID",
+        "AUTH_DOMAIN_PREFIX",
+        "0.36 USD a day",
+        "About\n               0.07 USD",
+    ):
+        assert text in result.stdout, text

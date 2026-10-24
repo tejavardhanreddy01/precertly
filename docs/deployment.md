@@ -6,20 +6,21 @@ Deploys run from the owner's Mac with `scripts/deploy.sh`. GitHub Actions never 
 
 - AWS CLI v2 and a login for the `precertly` profile: `aws login --profile precertly`. The credentials are short-lived console-login credentials, so log in again if a command reports an expired token. The script defaults to that profile and to `us-east-2`; `AWS_PROFILE` and `AWS_REGION` override them.
 - Docker with buildx, running. Images are built for `linux/arm64`.
-- `BUDGET_EMAIL` for `stack` and `up`. Set it in the environment, or put one line `BUDGET_EMAIL=<address>` in `.env.local` at the repo root. That file is gitignored and is parsed, not sourced: only blank lines, `#` comments and `KEY=value` lines are accepted, nothing is expanded, and only `BUDGET_EMAIL`, `WEB_DOMAIN` and `WEB_CERTIFICATE_ARN` are used (the last two only for `precertly-web`; see The web stack). The environment wins if both are set. The address is passed to the CDK as `-c budgetEmail=...` and is never printed (the `cdk diff` that `up` shows is redacted). Do not put it in a committed file, a shell history you share or a CI variable.
+- `BUDGET_EMAIL` for `stack` and `up`. Set it in the environment, or put one line `BUDGET_EMAIL=<address>` in `.env.local` at the repo root. That file is gitignored and is parsed, not sourced: only blank lines, `#` comments and `KEY=value` lines are accepted, nothing is expanded, and only `BUDGET_EMAIL`, `WEB_DOMAIN`, `WEB_CERTIFICATE_ARN` and `AUTH_DOMAIN_PREFIX` are used (`WEB_DOMAIN` and `WEB_CERTIFICATE_ARN` for `precertly-web`, `AUTH_DOMAIN_PREFIX` and `WEB_DOMAIN` for `precertly-auth`, `WEB_DOMAIN` for `precertly-live` and `live smoke`; see The web stack and The live environment). The environment wins if both are set. The address is passed to the CDK as `-c budgetEmail=...` and is never printed (the `cdk diff` that `up` shows is redacted). Do not put it in a committed file, a shell history you share or a CI variable.
 - `WEB_DOMAIN` and `WEB_CERTIFICATE_ARN` for `stack precertly-web` and `up precertly-web` only, from the environment or `.env.local` like the budget address: the site's hostname (a plain lowercase name such as `site.example.com`) and the ARN of an ACM certificate for it in **us-east-1** (CloudFront accepts no other region). The script refuses to run, even with `--dry-run`, if either is missing, malformed or one of the placeholders. The ARN is never printed: dry runs and the diff show `REDACTED`. Every other stack is given the documented placeholders, so base, app and data deploys need neither.
 - For stacks: `cd infra && uv sync --locked && npm ci` once, and the account bootstrapped for the CDK.
 - For `web publish`: `uv` and Node with `npm` on the Mac (the script runs `uv sync`, then `npm ci` in `web/`; it never runs `npm install`, so `package-lock.json` is not rewritten). `web/package.json` pins Node 24.x in `engines`; the repository sets no `engine-strict`, so npm only warns on Node 22 (a user-level `.npmrc` that sets it would make it an error). It needs no `BUDGET_EMAIL`, `WEB_DOMAIN` or `WEB_CERTIFICATE_ARN`: it reads the bucket and distribution from the deployed stack's outputs.
-- For `smoke`: the AWS `session-manager-plugin`, which ECS Exec needs on your machine.
+- `AUTH_DOMAIN_PREFIX` for `stack precertly-auth` and `up precertly-auth` only (the Cognito hosted-UI prefix: 3 to 63 lowercase letters, digits and hyphens, no leading or trailing hyphen, none of `aws`, `amazon`, `cognito`; it must be unique across Cognito). From the environment or `.env.local`, like the others; refused if missing, malformed or the placeholder; redacted in dry runs, diffs and error messages. See The live environment.
+- For `smoke` and `live smoke --run`: the AWS `session-manager-plugin`, which ECS Exec needs on your machine.
 - For `web smoke`: `curl` (the macOS one is enough) and network access to the site; nothing else.
-- A clean working tree with `HEAD` pushed, for `image` (and so for `up precertly-app` and `up precertly-data`, which also check that the image is in ECR) and for `web publish`.
+- A clean working tree with `HEAD` pushed, for `image` (and so for `up precertly-app`, `up precertly-data` and `up precertly-live`, which also check that the image is in ECR) and for `web publish`.
 
 ## Runbook
 
 Every command takes `--dry-run`, which prints the commands with the account id and email redacted and does not touch AWS or Docker. Run it first.
 
-1. **Check what exists:** `scripts/deploy.sh status`. Read-only. It prints the CloudFormation status of the four stacks, one line for the web stack (state, distribution id, bucket name; `not deployed` if the stack does not exist), the service's desired, running and pending counts and rollout, the task definition revision, its image tag and whether a container health check is set, the number of available NAT gateways, the number of RDS instances and the images in the ECR repository. A resource that does not exist prints "not deployed"; any other failure (expired login, no permission) stops with the AWS error instead of reading as "not deployed".
-2. **Deploy a stack:** `scripts/deploy.sh up <name>`, one stack at a time, in dependency order: `precertly-base`, then `precertly-app`, then `precertly-data`. Deploy `precertly-app` before `precertly-data` even if it was deployed before: it gains the two isolated `database` subnets, which the data stack's cluster needs. Every deploy and diff passes `--exclusively`, so one stack is never deployed together with the stacks it depends on. For `precertly-app` and `precertly-data` it first runs the image step (build for `linux/arm64`, push `sha-<12 hex of HEAD>`, skipped if that tag exists). It then shows `cdk diff` with the budget address redacted, asks `Deploy? [y/N]`, and only on `y` runs the same deploy as `scripts/deploy.sh stack <name>`. `--yes` only skips the image build confirmation: it never skips the diff or the Deploy question, and the CDK's own approval prompt for IAM and security-group changes stays on. `--all` is refused. `precertly-app` deploys the service at desired count 0, so nothing starts.
+1. **Check what exists:** `scripts/deploy.sh status`. Read-only. It prints the CloudFormation status of the six stacks, the live service's counts (a running live task is called out), one line for the web stack (state, distribution id, bucket name; `not deployed` if the stack does not exist), the service's desired, running and pending counts and rollout, the task definition revision, its image tag and whether a container health check is set, the number of available NAT gateways, the number of RDS instances and the images in the ECR repository. A resource that does not exist prints "not deployed"; any other failure (expired login, no permission) stops with the AWS error instead of reading as "not deployed".
+2. **Deploy a stack:** `scripts/deploy.sh up <name>`, one stack at a time, in dependency order: `precertly-base`, then `precertly-app`, then `precertly-data`, then `precertly-auth`, then `precertly-live` (`precertly-web` stands alone; see The live environment for the last two). Deploy `precertly-app` before `precertly-data` even if it was deployed before: it gains the two isolated `database` subnets, which the data stack's cluster needs. Every deploy and diff passes `--exclusively`, so one stack is never deployed together with the stacks it depends on. For `precertly-app`, `precertly-data` and `precertly-live` it first runs the image step (build for `linux/arm64`, push `sha-<12 hex of HEAD>`, skipped if that tag exists). It then shows `cdk diff` with the budget address redacted, asks `Deploy? [y/N]`, and only on `y` runs the same deploy as `scripts/deploy.sh stack <name>`. `--yes` only skips the image build confirmation: it never skips the diff or the Deploy question, and the CDK's own approval prompt for IAM and security-group changes stays on. `--all` is refused. `precertly-app` deploys the service at desired count 0, so nothing starts.
 3. **Smoke test:** `scripts/deploy.sh smoke [--bedrock]`. It refuses unless the service exists and has desired, running and pending counts of 0, so it never touches a task someone else started. With `--bedrock` it first asks `One real Bedrock call, costs a fraction of a cent. Continue? [y/N]` (before anything starts, so no task bills while the question waits; `--yes` is not accepted). Then it scales to 1 and runs these checks in order, stopping at the first failure:
    1. **Service stable:** desired 1, running 1, pending 0, rollout completed, within 10 minutes (`DEPLOY_WAIT_TIMEOUT`).
    2. **Task RUNNING:** the task's `lastStatus`; its `healthStatus` is printed for information.
@@ -84,6 +85,77 @@ A read-only check of the site `web publish` uploaded, so the same checks can be 
 - **When:** after every `web publish`, once the invalidation has completed (the script waits for it); and on a schedule during a launch window. A failure on `/` right after a publish may only mean the old `index.html` is still cached (`max-age=60`); run it again before assuming a problem.
 - **`--dry-run`:** prints the two AWS reads and each request (method, URL with `SITE_HOST` for the hostname, what it asserts) and makes no call.
 
+## The live environment (auth and live stacks)
+
+**In code only, as of 2026-10-23: nothing here is deployed.** Branch `feat/infra-auth-live` adds `precertly-auth` (a Cognito user pool and app client) and `precertly-live` (an HTTP API in front of one Fargate task running the API image with live mode on), and the `deploy.sh` commands for them. They were checked by synthesis, assertion tests and stub tests only; no AWS call was made. The design, the IAM and security group tables and everything unverified are in [live-infrastructure.md](live-infrastructure.md). Do not call it live, deployed or running until a `live smoke` has passed (see What to call it).
+
+**Spike (owner-confirmed, run by the owner on 2026-10-23, not by Claude; the code was a throwaway branch and is not in this repository):** an HTTP API, a VPC link and a Cloud Map SRV record reached a Fargate task in the VPC's public subnets with a public IP for the ECR pull and no load balancer, NAT or endpoints. `GET /health` returned 200 through the gateway in about 0.2 s (0.16 to 0.23 s); a direct connection to the task's public IP timed out; with the service at zero tasks the gateway returned 500; the cold start from scale-up to the first 200 was 48 s; the stack was destroyed and its removal verified. The spike had no authorizer, no parameter mapping and no database.
+
+### First deployment, in order
+
+1. **Merge the pull request.** The owner merges ("Create a merge commit") after CI is green.
+2. **Push the image from `main`:** `git checkout main && git pull`, then `scripts/deploy.sh image`. The image must come from this code (the Dockerfile now also copies `scripts/live_smoke_run.py`, and the stacks pin the image tag of `HEAD`). Scan it on push and record the result here; the 2026-10-23 image `sha-8f97de763b08` does not contain the live code (see Before the next up).
+3. **`scripts/deploy.sh up precertly-data`.** Adds two outputs (the database security group id and the secret ARN; nothing else in the template changes) and a new tools task definition revision (the image tag changes with the commit). It must come before `precertly-live`, which refuses to deploy until the data stack has those outputs. `precertly-app`, `precertly-base` and `precertly-web` need no redeploy: their templates are unchanged.
+4. **`scripts/deploy.sh up precertly-auth`.** Needs `AUTH_DOMAIN_PREFIX` and `WEB_DOMAIN` (environment or `.env.local`). No image step. Then create the first user (below).
+5. **`scripts/deploy.sh up precertly-live`.** Needs `WEB_DOMAIN`. Refuses unless `precertly-app`, `precertly-data` and `precertly-auth` are complete and the last two have the outputs it reads; checks that the image is in ECR; deploys the service at desired count 0.
+6. **`scripts/deploy.sh live smoke`** (read the summary), then once, if you accept the cost, **`scripts/deploy.sh live smoke --run facet-01`**.
+
+Put the real values in the gitignored `.env.local` (never committed, parsed and not sourced):
+
+```
+AUTH_DOMAIN_PREFIX=<your cognito prefix>
+WEB_DOMAIN=<the site's hostname>
+```
+
+### Creating the first user and enrolling TOTP
+
+Nobody can sign themselves up. The owner creates each user. The flags below were checked against the help of the locally installed AWS CLI (aws-cli 2.37.11: `aws cognito-idp admin-create-user help`, `admin-set-user-password help`, `admin-delete-user help`; no AWS call). Their behaviour was **not** checked: nothing has run.
+
+```bash
+export AWS_PROFILE=precertly AWS_REGION=us-east-2
+POOL=$(aws cloudformation describe-stacks --stack-name precertly-auth \
+  --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue | [0]" --output text)
+
+# The pool signs in by email, so the user name is the address. Cognito emails a temporary
+# password (the default sender; Cognito limits how many it sends a day).
+aws cognito-idp admin-create-user --user-pool-id "$POOL" --username you@example.org \
+  --user-attributes Name=email,Value=you@example.org Name=email_verified,Value=true \
+  --desired-delivery-mediums EMAIL
+
+# A forgotten password is reset by the owner, since the pool has no self-service recovery.
+# The password lands in your shell history: use a one-off value and change it at sign-in.
+aws cognito-idp admin-set-user-password --user-pool-id "$POOL" --username you@example.org \
+  --password '<a one-off password that meets the policy>' --no-permanent
+
+aws cognito-idp admin-delete-user --user-pool-id "$POOL" --username you@example.org
+```
+
+Enrolling TOTP is done in the browser, in the hosted UI, at the first sign-in: open `<HostedUiBaseUrl>/login?client_id=<UserPoolClientId>&response_type=code&scope=openid+email&redirect_uri=https://<WEB_DOMAIN>/` (both values are outputs of `precertly-auth`), sign in with the temporary password, choose a new one, and scan the QR code with an authenticator app. **Unverified:** that the hosted UI asks for the new password and the enrolment in that order, and which hosted UI a domain created this way gets. The site has no sign-in yet, so the redirect only lands on the static site with `?code=...` in the address. The app client allows no password or SRP flow, so there is no command-line way to enrol; if the hosted UI does not offer enrolment, report what it shows.
+
+### Using it
+
+- `scripts/deploy.sh live start` scales `precertly-api-live` to 1, waits for the ECS health status HEALTHY, then for the gateway to answer `GET /health` with 200, and prints the seconds it took. **It prints a warning: a running live task costs about 0.36 USD a day until `live stop` (unverified).** If a wait times out it does not stop the task: it says so and tells you to run `live stop`.
+- `scripts/deploy.sh live stop` sets the desired count to 0 and waits until no task runs. **Forgetting it costs about 0.36 USD a day.** `live status` and `status` call a running live task out.
+- `scripts/deploy.sh live status` is read-only: the two stack states, the service counts, the API URL, the HTTP status of the gateway's `GET /health` (nothing else of the response), and one line, `environment: UP`, `DOWN` or `NOT READY`.
+- `scripts/deploy.sh live smoke [--run CASE_ID]` refuses unless the live service has no task. A trap always scales back to 0 and waits, even after a failure or Ctrl-C. It scales to 1, measures the cold start (scale-up to the first gateway 200), then checks through the gateway, each as a named PASS or FAIL: unauthenticated `GET /health` is 200; unauthenticated `POST /live/runs` and `GET /live/runs/anything` are 401; `GET /policies` (no route) is 404; the CORS preflight from `https://WEB_DOMAIN` returns that origin, POST, and the `authorization` and `content-type` headers, and the same preflight from another origin returns no `access-control-allow-origin`. With `--run CASE_ID` it first asks `Continue? About 0.07 USD of Bedrock and the database wakes up. [y/N]` (`--yes` does not skip it; it is asked before anything starts), then makes one real run inside the task through ECS Exec (`python scripts/live_smoke_run.py CASE_ID`, the actor `deploy-smoke`, up to 300 s) and prints only the final status, reason, per-status timings (`waking_database`, `checking_limits`, `ingesting`, `judging`), tokens and outcome, never the result. A Bedrock or Titan permission failure shows as a failed run with a reason and a FAIL line.
+
+### What it costs
+
+The standing cost is the Route 53 private hosted zone that the Cloud Map namespace creates (about 0.50 USD a month, unverified). A running task costs about 0.36 USD a day. Cognito, API Gateway and Cloud Map charges are per use and unverified; there is no NAT gateway, load balancer, interface endpoint, WAF or advanced security. Details and the unverified items are in [live-infrastructure.md](live-infrastructure.md#costs).
+
+### Tearing it down
+
+Destroy in this order, with the same `-c` values the deploy used (the live stack first, because its database rule sits on the data stack's security group and it reads the auth stack's outputs); the budget address and the real values are not in the repository:
+
+```bash
+cd infra
+npx --no-install cdk destroy --exclusively precertly-live -c budgetEmail=<address> -c imageTag=sha-<12 hex> \
+  -c webDomain=<hostname> -c webCertificateArn=<arn> -c authDomainPrefix=<prefix>
+npx --no-install cdk destroy --exclusively precertly-auth  <the same -c values>
+```
+
+Everything is removed with its stack, users included. Destroying `precertly-data` while `precertly-live` exists would fail on the database security group.
+
 ## Before the next up
 
 **Not done as of 2026-10-23.** The owner rebuilt and pushed an image from `main` at `8f97de7` on 2026-10-23 (tag `sha-8f97de763b08`; owner-confirmed, not run by Claude). That image has the certifi 2026.10.19 lockfile bump (PR #47, which fixed the pip-audit advisory GHSA-6q48-6c7w-9gw2) and the uv 0.13.4 base image bump (PR #51). Its ECR basic scan finished with 3 HIGH, 9 MEDIUM and 3 LOW findings, the same three HIGH packages as the 2026-10-18 scan (glibc twice and zlib; owner-confirmed). It is not described as clean. Nothing was deployed from the 2026-10-23 image.
@@ -92,7 +164,7 @@ The live run API change (the Dockerfile now copies `evals/cases`, and the image 
 
 1. Build and push an image from the branch or from `main` after the merge (`scripts/deploy.sh image`), which gives a new `sha-` tag; `sha-8f97de763b08` does not contain the live code.
 2. Scan it on push and record the scan result here with the date.
-3. Re-run `smoke` after the task definition changes: it has only passed on revision 2 and has not been run on revision 3 or later.
+3. For the live environment, see its first-deployment list above; re-run `smoke` after the task definition changes: it has only passed on revision 2 and has not been run on revision 3 or later.
 
 ## Database and tools
 
@@ -116,6 +188,8 @@ The live run API change (the Dockerfile now copies `evals/cases`, and the image 
 To remove the database: `cd infra && npx --no-install cdk destroy precertly-data -c budgetEmail=<address> -c imageTag=sha-<12 hex>` (not part of `deploy.sh`). Everything in the stack is deleted with it, without a snapshot.
 
 ## What is verified
+
+`live start`, `live stop`, `live status`, `live smoke` and `up` and `stack` for `precertly-auth` and `precertly-live` were written on 2026-10-23 and are tested with stub `aws`, `curl`, `npx` and `docker` programs and with `--dry-run` only (`tests/test_deploy_script.py`, shellcheck clean, run under macOS's bash 3.2). **None of them has run against AWS**, and the in-task script `scripts/live_smoke_run.py` has only been run against a local test server. The rest of this section is about the older commands.
 
 `up`, `status`, `smoke`, `down`, `tools`, `web publish` and `web smoke` (the last also with a stub `curl`) are tested with stub `aws`, `npx` and `docker` programs and with `--dry-run` (`tests/test_deploy_script.py`), and CI shellchecks the script (it was not run locally for the `tools` change: shellcheck was not installed). On 2026-10-20 the owner ran `status`, `tools check`, `tools migrate` and `tools load` against real AWS and they worked (results above). `smoke` passed against real AWS on 2026-10-18, on task definition revision 2, after the fix for the first failed run (PR 43), and `smoke --bedrock` also passed once that day (owner-confirmed from their CLI output): service stable, Exec agent running, `/health` 200, `/policies` 200 through ECS Exec, ECS health HEALTHY, scaled back to 0. That passing run shows the `--query` expressions and the quoting of the ECS Exec command worked against real AWS. `smoke` has not been re-run on revision 3. The one thing still unconfirmed is that a Ctrl-C during an Exec session reaches the trap. `web publish` ran for real on 2026-10-21 and 2026-10-22 (owner-confirmed), and `web smoke` passed against the real site on 2026-10-22 with 34 checks and 0 failures, so the content types and cache headers the real CLI set are served as asserted for the files it checks. Claude did not see the output of either run.
 
@@ -181,4 +255,4 @@ The repository keeps the last 5 `sha-` images and expires untagged images after 
 
 ## What to call it
 
-Until the service is running and a smoke check passes, say **deployable**, not **deployed**. A pushed image is "pushed", a created stack is "created", and "deployed" is for a service that is serving and has answered `/health` and `/policies` after the release. As of 2026-10-20 the database is deployed (the data stack exists and was used through the tools task) and the service is at zero tasks: nothing is live. The web stack follows the same rule, and it has met it: as of 2026-10-22 it is deployed, published and has passed `web smoke` (owner-confirmed). Describe it as a "public read-only site of recorded runs, always available; live environment on request" at https://precertly.tejaavuthu.com, and do not call it "live" or "running in production": it serves recorded files of synthetic data, and no judgment runs when it is opened. README and the Status section in CLAUDE.md follow the same rule, with the date checked.
+Until the service is running and a smoke check passes, say **deployable**, not **deployed**. A pushed image is "pushed", a created stack is "created", and "deployed" is for a service that is serving and has answered `/health` and `/policies` after the release. The live environment (auth and live stacks) is in code only as of 2026-10-23: say "in code, not deployed", and use "deployed" only after `up precertly-live`, and "live" only after a `live smoke` has passed and the web UI can start a run. As of 2026-10-20 the database is deployed (the data stack exists and was used through the tools task) and the service is at zero tasks: nothing is live. The web stack follows the same rule, and it has met it: as of 2026-10-22 it is deployed, published and has passed `web smoke` (owner-confirmed). Describe it as a "public read-only site of recorded runs, always available; live environment on request" at https://precertly.tejaavuthu.com, and do not call it "live" or "running in production": it serves recorded files of synthetic data, and no judgment runs when it is opened. README and the Status section in CLAUDE.md follow the same rule, with the date checked.

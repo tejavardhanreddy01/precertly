@@ -24,8 +24,8 @@ stub.json keys (all optional):
   health            healthStatus of the task (default HEALTHY)
   health_after_polls   healthStatus is UNKNOWN for the first N describe-tasks health queries,
                     then HEALTHY
-  diff_text         what `cdk diff` prints; {email} and {arn} are replaced by the budgetEmail
-                    and webCertificateArn context values
+  diff_text         what `cdk diff` prints; {email}, {arn} and {prefix} are replaced by the
+                    budgetEmail, webCertificateArn and authDomainPrefix context values
   diff_fail         `cdk diff` prints this to stderr and fails
   outputs           {output key: value} for the data stack's outputs (defaults below)
   no_outputs        the data stack exists but has no outputs
@@ -56,6 +56,18 @@ stub.json keys (all optional):
                     why and the write-out is "000 0"). The key "*" applies to every request.
   site_lowercase_headers  send every header name in lower case (as over HTTP/2)
   tls_verify        ssl_verify_result for https requests (default 0)
+  live_desired, live_running, live_service_missing, live_stuck_running, live_stick_on_zero
+                    the same, for the live service precertly-api-live (its own counts)
+  publish_outputs   how many PublishOutput... outputs a dependency stack has (default 2)
+  gateway           {"METHOD /path": override} for the live API's gateway, which curl reaches at
+                    any *.execute-api.* host; an override is like one in "site" (status, headers,
+                    body, exit). The key "*" applies to every request. By default the gateway
+                    answers GET /health with 200 while the live service has a running task and
+                    500 otherwise, 401 for the two authorized routes, 404 for any other path,
+                    and a preflight with the CORS headers only for the origin below.
+  gateway_polls     GET /health answers 500 this many times after the task is running (cold start)
+  gateway_origin    the one origin the gateway allows (default https://precertly.example.org)
+  live_run_line     what the live run script prints over ECS Exec (default: a finished run)
 """
 
 import fnmatch
@@ -67,6 +79,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent.parent
 ACCOUNT = "123456789012"
 TASK_ARN = f"arn:aws:ecs:us-east-2:{ACCOUNT}:task/precertly/0123456789abcdef"
+LIVE_TASK_ARN = f"arn:aws:ecs:us-east-2:{ACCOUNT}:task/precertly/1111222233334444"
 TOOLS_ARN = f"arn:aws:ecs:us-east-2:{ACCOUNT}:task/precertly/aaaabbbbccccdddd"
 OTHER_TOOLS_ARN = f"arn:aws:ecs:us-east-2:{ACCOUNT}:task/precertly/9999888877776666"
 DATA_OUTPUTS = {
@@ -79,7 +92,13 @@ DATA_OUTPUTS = {
     "DistributionId": "E1A2B3C4D5E6F7",
     "BucketName": "precertly-web-sitebucket397a1860-abc123def456",
     "SiteUrl": "https://precertly.example.org",
+    # precertly-live's outputs
+    "ApiUrl": "https://abc123def4.execute-api.us-east-2.amazonaws.com/",
 }
+LIVE_RUN_LINE = (
+    "LIVE_RUN status=done reason=- overall=met tokens=1000/234 "
+    "timings=waking_database:12.3,checking_limits:0.1,ingesting:5.0,judging:40.0"
+)
 IMAGE = f"{ACCOUNT}.dkr.ecr.us-east-2.amazonaws.com/precertly-api:sha-abc123def456"
 
 
@@ -111,14 +130,22 @@ def fail(message: str, code: int = 254) -> int:
 def npx(args: list[str], config: dict) -> int:
     email = next((a.split("=", 1)[1] for a in args if a.startswith("budgetEmail=")), "")
     arn = next((a.split("=", 1)[1] for a in args if a.startswith("webCertificateArn=")), "")
+    prefix = next((a.split("=", 1)[1] for a in args if a.startswith("authDomainPrefix=")), "")
+
+    def fill(text: str) -> str:
+        return text.replace("{email}", email).replace("{arn}", arn).replace("{prefix}", prefix)
+
     if "diff" in args and "diff_fail" in config:
-        print(config["diff_fail"].replace("{email}", email).replace("{arn}", arn), file=sys.stderr)
+        print(fill(config["diff_fail"]), file=sys.stderr)
         return 1
     if "diff" in args:
-        text = config.get(
-            "diff_text", "Resources\n[~] AWS::Budgets::Budget Budget\n subscriber {email}"
+        print(
+            fill(
+                config.get(
+                    "diff_text", "Resources\n[~] AWS::Budgets::Budget Budget\n subscriber {email}"
+                )
+            )
         )
-        print(text.replace("{email}", email).replace("{arn}", arn))
     return 0
 
 
@@ -195,6 +222,34 @@ def site_response(path: str, scheme: str, host: str) -> dict:
     }
 
 
+def gateway_response(method: str, path: str, request_headers: dict, config: dict) -> dict:
+    """What the live API's gateway answers (see the module docstring)."""
+    allowed = config.get("gateway_origin", "https://precertly.example.org")
+    health = path == "/health"
+    start = path == "/live/runs"
+    poll = path.startswith("/live/runs/") and len(path) > len("/live/runs/")
+    if method == "OPTIONS":
+        if not (health or start or poll):
+            return {"status": 404, "headers": {}, "body": '{"message":"Not Found"}'}
+        headers = {}
+        if request_headers.get("origin") == allowed:
+            headers = {
+                "Access-Control-Allow-Origin": allowed,
+                "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                "Access-Control-Allow-Headers": "authorization,content-type",
+                "Access-Control-Max-Age": "3600",
+            }
+        return {"status": 204, "headers": headers, "body": ""}
+    if method == "GET" and health:
+        running = read_state(config).get("live_running", 0) >= 1
+        if running and bump("gateway_health") > config.get("gateway_polls", 0):
+            return {"status": 200, "headers": {}, "body": '{"status":"ok"}'}
+        return {"status": 500, "headers": {}, "body": '{"message":"Internal Server Error"}'}
+    if (method == "POST" and start) or (method == "GET" and poll):
+        return {"status": 401, "headers": {}, "body": '{"message":"Unauthorized"}'}
+    return {"status": 404, "headers": {}, "body": '{"message":"Not Found"}'}
+
+
 def curl(args: list[str], config: dict) -> int:
     """A read-only HTTP client: writes the headers and body files the script asks for and prints
     the --write-out text. Nothing leaves the machine."""
@@ -202,9 +257,22 @@ def curl(args: list[str], config: dict) -> int:
     scheme, _, rest = url.partition("://")
     host, _, tail = rest.partition("/")
     path = "/" + tail
-    sites = config.get("site", {})
-    key = path if scheme == "https" else f"http:{path}"
-    response = site_response(path, scheme, host)
+    option = {a: args[i + 1] for i, a in enumerate(args[:-1]) if a.startswith("--")}
+    if ".execute-api." in host:
+        request_headers = {
+            name.strip().lower(): value.strip()
+            for i, a in enumerate(args[:-1])
+            if a == "--header"
+            for name, _, value in [args[i + 1].partition(":")]
+        }
+        method = option.get("--request", "GET")
+        sites = config.get("gateway", {})
+        key = f"{method} {path}"
+        response = gateway_response(method, path, request_headers, config)
+    else:
+        sites = config.get("site", {})
+        key = path if scheme == "https" else f"http:{path}"
+        response = site_response(path, scheme, host)
     for override in (sites.get("*", {}), sites.get(key, {})):
         response["status"] = override.get("status", response["status"])
         response["body"] = override.get("body", response["body"])
@@ -221,7 +289,6 @@ def curl(args: list[str], config: dict) -> int:
             lines.append(
                 f"{name.lower() if config.get('site_lowercase_headers') else name}: {value}"
             )
-    option = {a: args[i + 1] for i, a in enumerate(args[:-1]) if a.startswith("--")}
     Path(option["--dump-header"]).write_text("\r\n".join(lines) + "\r\n\r\n")
     Path(option["--output"]).write_text(response["body"])
     verify = config.get("tls_verify", 0) if scheme == "https" else 0
@@ -301,9 +368,15 @@ def bump(name: str) -> int:
 
 def read_state(config: dict) -> dict:
     path = BASE / "state.json"
-    if path.exists():
-        return json.loads(path.read_text())
-    return {"desired": config.get("desired", 0), "running": config.get("running", 0)}
+    state = json.loads(path.read_text()) if path.exists() else {}
+    for key in ("desired", "running", "live_desired", "live_running"):
+        state.setdefault(key, config.get(key, 0))
+    return state
+
+
+def service_prefix(args: list[str]) -> str:
+    """The state and config prefix of the service a call is about: "live_" or nothing."""
+    return "live_" if "precertly-api-live" in args else ""
 
 
 def aws(args: list[str], config: dict) -> int:
@@ -320,7 +393,9 @@ def aws(args: list[str], config: dict) -> int:
         if name not in stacks:
             return fail(f"An error occurred (ValidationError): Stack with id {name} does not exist")
         query = " ".join(args)
-        if "Outputs" in query:
+        if "starts_with" in query:
+            print(config.get("publish_outputs", 2))
+        elif "Outputs" in query:
             key = query.split("OutputKey==")[1].split("'")[1]
             outputs = {**DATA_OUTPUTS, **config.get("outputs", {})}
             print("None" if config.get("no_outputs") else outputs.get(key, "None"))
@@ -339,28 +414,32 @@ def aws(args: list[str], config: dict) -> int:
             return fail("An error occurred (DBClusterNotFoundFault): DBCluster x not found.")
         print("available\t16.13\t0.0\t2.0")
     elif operation == "describe-services":
+        p = service_prefix(args)
         if config.get("cluster_missing"):
             return fail("An error occurred (ClusterNotFoundException): Cluster not found.")
-        if config.get("service_missing"):
+        if config.get(f"{p}service_missing"):
             print("None")
         else:
+            family = "precertly-api-live" if p else "precertly-api"
             print(
-                f"ACTIVE\t{state['desired']}\t{state['running']}\t0\tCOMPLETED\t"
-                f"arn:aws:ecs:us-east-2:{ACCOUNT}:task-definition/precertly-api:3"
+                f"ACTIVE\t{state[p + 'desired']}\t{state[p + 'running']}\t0\tCOMPLETED\t"
+                f"arn:aws:ecs:us-east-2:{ACCOUNT}:task-definition/{family}:3"
             )
     elif operation == "update-service":
-        state["desired"] = int(args[args.index("--desired-count") + 1])
-        stuck = config.get("stuck_running") or (
-            config.get("stick_on_zero") and state["desired"] == 0
+        p = service_prefix(args)
+        state[p + "desired"] = int(args[args.index("--desired-count") + 1])
+        stuck = config.get(f"{p}stuck_running") or (
+            config.get(f"{p}stick_on_zero") and state[p + "desired"] == 0
         )
         if not stuck:
-            state["running"] = state["desired"]
+            state[p + "running"] = state[p + "desired"]
         (BASE / "state.json").write_text(json.dumps(state))
-        print(state["desired"])
+        print(state[p + "desired"])
     elif operation == "describe-task-definition":
         print(f"3\t{IMAGE}\t{'CMD-SHELL' if config.get('health_check') else 'None'}")
     elif operation == "list-tasks":
-        print(TASK_ARN if state["running"] else "None")
+        p = service_prefix(args)
+        print((LIVE_TASK_ARN if p else TASK_ARN) if state[p + "running"] else "None")
     elif operation == "describe-tasks":
         if "managedAgents" in " ".join(args):
             polls = bump("agent")
@@ -462,6 +541,8 @@ def execute_command(args: list[str], config: dict) -> int:
     )
     print("Starting session with SessionId: ecs-execute-command-0abc")
     outputs = config.get("exec", {})
+    if "live_smoke_run" in command:
+        print(config.get("live_run_line", LIVE_RUN_LINE))
     for key in ("/policies", "/health", "smoke_llm"):
         if key in command:
             default = (

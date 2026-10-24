@@ -17,6 +17,9 @@ WEB_DOMAIN = "site.example.invalid"
 WEB_CERTIFICATE_ARN = (
     "arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000"
 )
+# Likewise for the Cognito domain prefix: valid, but clearly fake (scripts/deploy.sh refuses it
+# for precertly-auth).
+AUTH_DOMAIN_PREFIX = "placeholder-auth-domain"
 
 
 def context(**extra: Any) -> dict[str, Any]:
@@ -27,6 +30,7 @@ def context(**extra: Any) -> dict[str, Any]:
         "imageTag": IMAGE_TAG,
         "webDomain": WEB_DOMAIN,
         "webCertificateArn": WEB_CERTIFICATE_ARN,
+        "authDomainPrefix": AUTH_DOMAIN_PREFIX,
     }
     merged.update(extra)
     return {k: v for k, v in merged.items() if v is not None}

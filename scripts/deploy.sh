@@ -11,24 +11,34 @@ export AWS_REGION="${AWS_REGION:-us-east-2}"
 export AWS_DEFAULT_REGION="$AWS_REGION"
 export AWS_PAGER=""
 readonly REPO_NAME="precertly-api"
-readonly STACKS=(precertly-base precertly-app precertly-data precertly-web)
+readonly STACKS=(precertly-base precertly-app precertly-data precertly-web precertly-auth precertly-live)
 # Stacks whose deploy needs the image of HEAD in ECR; `up` pushes it first. precertly-data holds
-# the tools task definition, which pins the same image tag.
-readonly IMAGE_STACKS=(precertly-app precertly-data)
+# the tools task definition and precertly-live the live task definition, which pin the same tag.
+readonly IMAGE_STACKS=(precertly-app precertly-data precertly-live)
 readonly DATA_STACK="precertly-data"
 readonly WEB_STACK="precertly-web"
+readonly AUTH_STACK="precertly-auth"
+readonly LIVE_STACK="precertly-live"
 # What every stack other than precertly-web is given for webDomain and webCertificateArn: the CDK
 # app requires both for every stack, but only the web stack uses them. They are also what CI and
 # infra/tests/support.py use, and the web stack refuses to deploy with them (a test compares).
 readonly PLACEHOLDER_WEB_DOMAIN="site.example.invalid"
 readonly PLACEHOLDER_WEB_CERTIFICATE_ARN="arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000"
+# The Cognito hosted-UI prefix every stack other than precertly-auth is given (the CDK app needs
+# it for every stack). Also what CI and infra/tests/support.py use; precertly-auth refuses it.
+readonly PLACEHOLDER_AUTH_DOMAIN_PREFIX="placeholder-auth-domain"
 # Must match infra/names.py (tests/test_deploy_script.py compares them).
 readonly CLUSTER="precertly"
 readonly SERVICE="precertly-api"
 readonly CONTAINER="api"
 readonly TOOLS_FAMILY="precertly-tools"
 readonly TOOLS_CONTAINER="tools"
+readonly LIVE_SERVICE="precertly-api-live"
+readonly LIVE_CONTAINER="api"
 readonly API_PORT=8000
+# Which ECS service the q_ functions below talk to: the API (default) or the live service.
+ACTIVE_SERVICE="$SERVICE"
+ACTIVE_CONTAINER="$CONTAINER"
 # Polling for `smoke` and `down`; overridable so the tests do not sleep.
 POLL_SECONDS="${DEPLOY_POLL_SECONDS:-10}"
 WAIT_TIMEOUT="${DEPLOY_WAIT_TIMEOUT:-600}"
@@ -45,30 +55,37 @@ Usage:
   scripts/deploy.sh tools migrate|load|check [--yes] [--dry-run]
   scripts/deploy.sh web publish [--yes] [--dry-run]
   scripts/deploy.sh web smoke [--dry-run]
+  scripts/deploy.sh live start|stop|status [--dry-run]
+  scripts/deploy.sh live smoke [--run CASE_ID] [--yes] [--dry-run]
 
 Commands:
   image        Build the API image for linux/arm64 and push it to ECR as sha-<12 hex of HEAD>.
                Refuses a dirty working tree or a HEAD that is not pushed. Tags are immutable,
                so a tag that already exists is skipped.
-  stack <name> Deploy one CDK stack: precertly-base, precertly-app, precertly-data or
-               precertly-web. Needs BUDGET_EMAIL (environment or .env.local; never printed).
-               precertly-web also needs WEB_DOMAIN and WEB_CERTIFICATE_ARN (same sources) and
-               refuses if they are missing or look like the placeholders; every other stack is
-               given the placeholders, so they need no configuration for base, app or data.
+  stack <name> Deploy one CDK stack: precertly-base, precertly-app, precertly-data,
+               precertly-web, precertly-auth or precertly-live. Needs BUDGET_EMAIL (environment or
+               .env.local; never printed). precertly-web also needs WEB_DOMAIN and
+               WEB_CERTIFICATE_ARN (same sources), precertly-auth AUTH_DOMAIN_PREFIX and
+               WEB_DOMAIN, precertly-live WEB_DOMAIN; each refuses if a value is missing or looks
+               like the placeholder. Every other stack is given the placeholders, so base, app
+               and data need no configuration. precertly-live also refuses unless precertly-app,
+               precertly-data and precertly-auth are complete and the last two have the outputs
+               it reads (deploy data from the same commit first).
                Passes --exclusively, so a stack's dependencies are never deployed with it
                (deploy precertly-app before precertly-data yourself).
-               Passes -c imageTag=sha-<12 hex of HEAD>; precertly-app and precertly-data first
-               check that image is in ECR and refuse if it is not.
+               Passes -c imageTag=sha-<12 hex of HEAD>; precertly-app, precertly-data and
+               precertly-live first check that image is in ECR and refuse if it is not.
                --all is refused; the CDK approval prompt for IAM and security changes stays on.
-  up <name>    The usual path: for precertly-app and precertly-data run `image` first
-               (precertly-web has no image step), then show `cdk diff --exclusively` (email and
-               certificate ARN redacted), ask "Deploy? [y/N]", then run `stack`. --yes only
-               skips the image confirmation: it never skips the diff or the Deploy? question.
+  up <name>    The usual path: for precertly-app, precertly-data and precertly-live run `image`
+               first (precertly-web and precertly-auth have no image step), then show
+               `cdk diff --exclusively` (email, certificate ARN and hosted-UI prefix redacted),
+               ask "Deploy? [y/N]", then run `stack`. --yes only skips the image confirmation:
+               it never skips the diff or the Deploy? question.
   status       Read-only. Stack status, service counts and rollout, task definition revision,
                image tag and health check, the Aurora cluster (status, engine version, minimum
                and maximum ACU; a paused instance still reports available), available NAT
                gateways, RDS instances and ECR images, and one line for the web stack (stack
-               state, distribution id, bucket name).
+               state, distribution id, bucket name) and the live service (desired, running).
                A missing resource prints "not deployed".
   smoke        Refuses unless the service has no task. Scales to 1, waits (10 min), waits for the
                ECS Exec agent (2 min), runs /health and /policies inside the task with ECS Exec
@@ -114,9 +131,30 @@ Commands:
                cannot complete is a failed check, not an abort. Uploads, invalidates and changes
                nothing. Run it after every publish.
 
+  live start   Scale precertly-api-live to 1, wait for the ECS health status HEALTHY, then for the
+               gateway to answer GET /health with 200, and print the seconds it took. Refuses
+               unless precertly-live is complete. Prints the cost warning: a running task costs
+               about 0.36 USD a day until `live stop`. Does not stop the task if a wait times out.
+  live stop    Set precertly-api-live to 0 and wait until no task runs.
+  live status  Read-only: the auth and live stack states, the live service counts, the API URL,
+               the HTTP status of the gateway's GET /health (nothing else of the response), and
+               one line saying whether the environment is UP or DOWN.
+  live smoke   Refuses unless the live service shows no task and precertly-live is complete;
+               needs WEB_DOMAIN. Scales to 1 (a trap ALWAYS scales back to 0 and waits, even
+               after a failure or Ctrl-C), measures the cold start to the first gateway 200, then
+               checks through the gateway: unauthenticated GET /health is 200; unauthenticated
+               POST /live/runs and GET /live/runs/anything are 401; GET /policies is 404; the CORS
+               preflight from https://WEB_DOMAIN gets that origin and a different origin gets none.
+               With --run CASE_ID it also needs the session-manager-plugin, asks "Continue? About
+               0.07 USD of Bedrock and the database wakes up. [y/N]" first (--yes does NOT skip
+               it), and makes ONE real run inside the task through ECS Exec (actor deploy-smoke);
+               it prints only the final status, reason, timings, tokens and outcome.
+
 Options:
-  --yes        Skip the image build confirmation (image, up). tools load, web publish and web
-               smoke ignore it.
+  --yes        Skip the image build confirmation (image, up). tools load, web publish, web
+               smoke and live smoke --run ignore it for their own questions; it is refused for
+               the other live commands.
+  --run CASE_ID  live smoke only: add one real run of that curated case.
   --bedrock    smoke only: add the real Bedrock call.
   --dry-run    Print the commands, with the email and account id redacted, and run nothing
                that touches AWS or Docker. The git working-tree and push checks are skipped.
@@ -128,7 +166,11 @@ Environment:
   BUDGET_EMAIL address for the budget alerts (stack, up). If unset, it is read from the
                gitignored file .env.local at the repo root: a BUDGET_EMAIL=address line,
                parsed and never sourced.
-  WEB_DOMAIN   the site's hostname, for precertly-web only (same sources as BUDGET_EMAIL).
+  WEB_DOMAIN   the site's hostname, for precertly-web, precertly-auth, precertly-live and
+               live smoke (same sources as BUDGET_EMAIL).
+  AUTH_DOMAIN_PREFIX
+               the Cognito hosted-UI prefix, for precertly-auth only (same sources); redacted in
+               the output.
   WEB_CERTIFICATE_ARN
                ARN of the ACM certificate in us-east-1, for precertly-web only; redacted in the
                output.
@@ -199,6 +241,7 @@ needs_image() {
 readonly EMAIL_RE='^[^[:space:]@]+@[^[:space:]@]+$'
 readonly DOMAIN_LABEL='[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?'
 readonly DOMAIN_RE="^${DOMAIN_LABEL}(\\.${DOMAIN_LABEL})+\$"
+readonly AUTH_PREFIX_RE='^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
 readonly CERT_ARN_RE='^arn:aws:acm:us-east-1:[0-9]{12}:certificate/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 # check_setting KEY VALUE [WHERE]: die if the value is not shaped like a KEY. WHERE (for example
@@ -214,6 +257,10 @@ check_setting() {
     WEB_CERTIFICATE_ARN)
       [[ "$value" =~ $CERT_ARN_RE ]] ||
         die "WEB_CERTIFICATE_ARN${where} is not an ACM certificate ARN in us-east-1"
+      ;;
+    AUTH_DOMAIN_PREFIX)
+      [[ "$value" =~ $AUTH_PREFIX_RE && "$value" != *aws* && "$value" != *amazon* && "$value" != *cognito* ]] ||
+        die "AUTH_DOMAIN_PREFIX${where} is not 3 to 63 lowercase letters, digits and hyphens (no hyphen at either end, none of aws, amazon, cognito)"
       ;;
   esac
 }
@@ -292,25 +339,58 @@ require_web_settings() {
   fi
 }
 
+# precertly-live needs the real site hostname (the gateway allows exactly that origin); a missing,
+# malformed or placeholder value is refused. Also used by precertly-auth (its callback URLs).
+require_real_web_domain() {
+  [[ -n "${WEB_DOMAIN:-}" ]] ||
+    die "WEB_DOMAIN is not set (the site's hostname): export it or put WEB_DOMAIN=<hostname> in .env.local"
+  check_setting WEB_DOMAIN "$WEB_DOMAIN"
+  if [[ "$WEB_DOMAIN" == "$PLACEHOLDER_WEB_DOMAIN" || "$WEB_DOMAIN" == *.invalid ]]; then
+    die "WEB_DOMAIN looks like a placeholder; set the real hostname"
+  fi
+}
+
+# precertly-auth also needs the real Cognito hosted-UI prefix (never committed, like the others).
+require_auth_settings() {
+  [[ -n "${AUTH_DOMAIN_PREFIX:-}" ]] ||
+    die "AUTH_DOMAIN_PREFIX is not set (the Cognito hosted-UI prefix): export it or put AUTH_DOMAIN_PREFIX=<prefix> in .env.local"
+  check_setting AUTH_DOMAIN_PREFIX "$AUTH_DOMAIN_PREFIX"
+  if [[ "$AUTH_DOMAIN_PREFIX" == "$PLACEHOLDER_AUTH_DOMAIN_PREFIX" || "$AUTH_DOMAIN_PREFIX" == placeholder-* ]]; then
+    die "AUTH_DOMAIN_PREFIX looks like a placeholder; set the real prefix"
+  fi
+  require_real_web_domain
+}
+
 # Set CDK_CONTEXT to the -c arguments every stack needs. Only precertly-web gets the real domain
-# and certificate; the others get the placeholders. With redact=true (a dry run) the address and
-# the certificate ARN are replaced, as they are in the diff.
+# and certificate, precertly-auth the real hosted-UI prefix and site domain (its callback URLs),
+# precertly-live the real site domain (the gateway's CORS origin); the others get the
+# placeholders. With redact=true (a dry run) the address, the certificate ARN and the prefix are
+# replaced, as they are in the diff.
 build_context() {
-  local name="$1" tag="$2" redact="$3" email domain arn
+  local name="$1" tag="$2" redact="$3" email domain arn prefix
   email="$BUDGET_EMAIL"
   domain="$PLACEHOLDER_WEB_DOMAIN"
   arn="$PLACEHOLDER_WEB_CERTIFICATE_ARN"
+  prefix="$PLACEHOLDER_AUTH_DOMAIN_PREFIX"
   if [[ "$name" == "$WEB_STACK" ]]; then
     domain="$WEB_DOMAIN"
     arn="$WEB_CERTIFICATE_ARN"
     if [[ "$redact" == true ]]; then
       arn="REDACTED"
     fi
+  elif [[ "$name" == "$AUTH_STACK" ]]; then
+    domain="$WEB_DOMAIN"
+    prefix="$AUTH_DOMAIN_PREFIX"
+    if [[ "$redact" == true ]]; then
+      prefix="REDACTED"
+    fi
+  elif [[ "$name" == "$LIVE_STACK" ]]; then
+    domain="$WEB_DOMAIN"
   fi
   if [[ "$redact" == true ]]; then
     email="REDACTED"
   fi
-  CDK_CONTEXT=(-c "budgetEmail=${email}" -c "imageTag=${tag}" -c "webDomain=${domain}" -c "webCertificateArn=${arn}")
+  CDK_CONTEXT=(-c "budgetEmail=${email}" -c "imageTag=${tag}" -c "webDomain=${domain}" -c "webCertificateArn=${arn}" -c "authDomainPrefix=${prefix}")
 }
 
 # Print text with the budget address and the certificate ARN replaced, so a CDK diff can be
@@ -322,6 +402,9 @@ redact() {
   fi
   if [[ -n "${WEB_CERTIFICATE_ARN:-}" ]]; then
     text="${text//"$WEB_CERTIFICATE_ARN"/REDACTED}"
+  fi
+  if [[ -n "${AUTH_DOMAIN_PREFIX:-}" ]]; then
+    text="${text//"$AUTH_DOMAIN_PREFIX"/REDACTED}"
   fi
   printf '%s\n' "$text"
 }
@@ -405,13 +488,54 @@ cmd_image() {
     --image-ids "imageTag=${tag}" --query 'imageDetails[0].imageDigest' --output text
 }
 
+# The real settings a stack needs on top of the budget address: precertly-web its domain and
+# certificate, precertly-auth its hosted-UI prefix and the site domain, precertly-live the site
+# domain. The other stacks need nothing (they get placeholders).
+require_stack_settings() {
+  case "$1" in
+    "$WEB_STACK") require_web_settings ;;
+    "$AUTH_STACK") require_auth_settings ;;
+    "$LIVE_STACK") require_real_web_domain ;;
+  esac
+}
+
+q_publish_output_count() {
+  run aws cloudformation describe-stacks --stack-name "$1" \
+    --query "length(Stacks[0].Outputs[?starts_with(OutputKey,'PublishOutput')])" --output text
+}
+
+# precertly-live refers to precertly-app, precertly-data and precertly-auth, so it refuses to
+# deploy until all three are complete, and until the last two have the outputs it reads (the
+# data stack gains them in the same release: deploy it first, from this commit).
+LIVE_DEPS_CHECKED=false
+require_live_dependencies() {
+  local dep
+  if $LIVE_DEPS_CHECKED; then
+    return 0
+  fi
+  LIVE_DEPS_CHECKED=true
+  if $DRY_RUN; then
+    echo "dry-run: ${LIVE_STACK} refuses unless these are CREATE_COMPLETE or UPDATE_COMPLETE, and the last two have the outputs it reads:"
+    for dep in precertly-app "$DATA_STACK" "$AUTH_STACK"; do q_stack_status "$dep"; done
+    q_publish_output_count "$DATA_STACK"
+    q_publish_output_count "$AUTH_STACK"
+    return 0
+  fi
+  for dep in precertly-app "$DATA_STACK" "$AUTH_STACK"; do
+    require_stack_complete "$dep" up "$LIVE_STACK"
+  done
+  for dep in "$DATA_STACK" "$AUTH_STACK"; do
+    probe q_publish_output_count "$dep"
+    [[ "$AWS_OUT" =~ ^[0-9]+$ && "$AWS_OUT" -ge 1 ]] ||
+      die "${dep} has none of the outputs ${LIVE_STACK} reads; deploy it from this commit first: scripts/deploy.sh up ${dep}"
+  done
+}
+
 cmd_stack() {
   local name="$1"
   validate_stack "$name"
   require_budget_email
-  if [[ "$name" == "$WEB_STACK" ]]; then
-    require_web_settings
-  fi
+  require_stack_settings "$name"
 
   # The tag of HEAD is passed to every stack because the CDK app is built whole, which requires
   # it. Only precertly-app and precertly-data use it, so only they check the image exists.
@@ -427,6 +551,9 @@ cmd_stack() {
     ecr_has_tag "$tag" ||
       die "image ${tag} is not in ECR; push it first: scripts/deploy.sh image"
   fi
+  if [[ "$name" == "$LIVE_STACK" ]]; then
+    require_live_dependencies
+  fi
   cd "$(repo_root)/infra"
   # --require-approval is left at the CDK default on purpose. --exclusively: deploying one stack
   # must not also deploy the stacks it depends on (precertly-data depends on precertly-app).
@@ -439,12 +566,14 @@ cmd_up() {
   local name="$1"
   validate_stack "$name"
   require_budget_email
-  if [[ "$name" == "$WEB_STACK" ]]; then
-    require_web_settings
-  fi
+  require_stack_settings "$name"
   local tag
   tag="$(image_tag)"
 
+  # Before the image is built and pushed, so a missing dependency costs nothing.
+  if [[ "$name" == "$LIVE_STACK" ]]; then
+    require_live_dependencies
+  fi
   if needs_image "$name"; then
     cmd_image
   fi
@@ -479,7 +608,7 @@ q_stack_status() {
 }
 
 q_service() {
-  run aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+  run aws ecs describe-services --cluster "$CLUSTER" --services "$ACTIVE_SERVICE" \
     --query 'services[0].[status,desiredCount,runningCount,pendingCount,deployments[0].rolloutState,taskDefinition]' \
     --output text
 }
@@ -521,12 +650,12 @@ q_ecr_image_tags() {
 }
 
 q_set_desired() {
-  run aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
+  run aws ecs update-service --cluster "$CLUSTER" --service "$ACTIVE_SERVICE" \
     --desired-count "$1" --query 'service.desiredCount' --output text
 }
 
 q_list_tasks() {
-  run aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" \
+  run aws ecs list-tasks --cluster "$CLUSTER" --service-name "$ACTIVE_SERVICE" \
     --desired-status RUNNING --query 'taskArns[0]' --output text
 }
 
@@ -542,7 +671,7 @@ q_exec_agent_status() {
 }
 
 q_exec() {
-  run aws ecs execute-command --cluster "$CLUSTER" --task "$1" --container "$CONTAINER" \
+  run aws ecs execute-command --cluster "$CLUSTER" --task "$1" --container "$ACTIVE_CONTAINER" \
     --interactive --command "$2"
 }
 
@@ -642,6 +771,9 @@ cmd_status() {
     for s in "${STACKS[@]}"; do q_stack_status "$s"; done
     q_service
     q_task_definition "TASK_DEFINITION"
+    use_live_service
+    q_service
+    use_api_service
     q_stack_output "$DATA_STACK" ClusterIdentifier
     q_aurora_cluster "CLUSTER_ID"
     q_stack_output "$WEB_STACK" DistributionId
@@ -685,6 +817,21 @@ cmd_status() {
         "$revision" "${image##*:}" "$health_text"
     else
       echo "  task definition: not found"
+    fi
+  fi
+
+  echo "live service ${CLUSTER}/${LIVE_SERVICE}"
+  use_live_service
+  rc=0
+  fetch_service || rc=$?
+  use_api_service
+  if [[ $rc -ne 0 ]]; then
+    echo "  not deployed"
+  else
+    printf '  status %s, desired %s, running %s, pending %s, rollout %s\n' \
+      "$SVC_STATUS" "$SVC_DESIRED" "$SVC_RUNNING" "$SVC_PENDING" "$SVC_ROLLOUT"
+    if [[ "$SVC_RUNNING" != "0" ]]; then
+      echo "  a live task is running and bills until: scripts/deploy.sh live stop"
     fi
   fi
 
@@ -882,8 +1029,11 @@ smoke_steps() {
   record PASS "ECS health check HEALTHY"
 }
 
-# EXIT trap of `smoke`. Runs after success, a failed check, a die or Ctrl-C/TERM, and always
-# tries to leave the service at zero tasks before printing the summary.
+# EXIT trap of `smoke` and `live smoke`. Runs after success, a failed check, a die or Ctrl-C/TERM,
+# and always tries to leave the service at zero tasks before printing the summary.
+SMOKE_TITLE="smoke"
+SMOKE_DOWN_COMMAND="down"
+GW_TMP=""
 smoke_finish() {
   local rc=$?
   trap - EXIT
@@ -892,17 +1042,20 @@ smoke_finish() {
   PROBE_FATAL=false
 
   if $SMOKE_SCALED; then
-    echo "scaling ${SERVICE} back to 0"
+    echo "scaling ${ACTIVE_SERVICE} back to 0"
     if scale_to_zero; then
       record PASS "scaled back to 0"
     else
-      record FAIL "scale back to 0 not confirmed: run scripts/deploy.sh down NOW (a task bills while it runs)"
+      record FAIL "scale back to 0 not confirmed: run scripts/deploy.sh ${SMOKE_DOWN_COMMAND} NOW (a task bills while it runs)"
     fi
     fetch_service
   fi
+  if [[ -n "$GW_TMP" ]]; then
+    rm -rf "$GW_TMP"
+  fi
 
   echo
-  echo "smoke summary"
+  echo "${SMOKE_TITLE} summary"
   printf '%s' "$SMOKE_SUMMARY"
   if $SMOKE_SCALED; then
     echo "final counts: desired ${SVC_DESIRED:-unknown}, running ${SVC_RUNNING:-unknown}, pending ${SVC_PENDING:-unknown}"
@@ -1386,15 +1539,20 @@ web_preview() {
   echo "--- end ---"
 }
 
-# Die unless the web stack exists and is CREATE_COMPLETE or UPDATE_COMPLETE. $* names the command
-# to run again, for the message.
-require_web_stack_complete() {
-  local rc=0 state
-  probe q_stack_status "$WEB_STACK" || rc=$?
+# Die unless the stack $1 exists and is CREATE_COMPLETE or UPDATE_COMPLETE. The rest names the
+# command to run again, for the message.
+require_stack_complete() {
+  local stack="$1" rc=0 state
+  shift
+  probe q_stack_status "$stack" || rc=$?
   state="$AWS_OUT"
-  [[ $rc -ne 3 ]] || die "${WEB_STACK} is not deployed; deploy it first: scripts/deploy.sh up ${WEB_STACK}"
+  [[ $rc -ne 3 ]] || die "${stack} is not deployed; deploy it first: scripts/deploy.sh up ${stack}"
   [[ "$state" == "CREATE_COMPLETE" || "$state" == "UPDATE_COMPLETE" ]] ||
-    die "${WEB_STACK} is ${state}, not CREATE_COMPLETE or UPDATE_COMPLETE; wait for it or fix it, then run $* again"
+    die "${stack} is ${state}, not CREATE_COMPLETE or UPDATE_COMPLETE; wait for it or fix it, then run $* again"
+}
+
+require_web_stack_complete() {
+  require_stack_complete "$WEB_STACK" "$@"
 }
 
 cmd_web_publish() {
@@ -1810,21 +1968,509 @@ cmd_web() {
   esac
 }
 
-# The settings a stack needs: the budget address always, the web domain and certificate only for
-# precertly-web (the other stacks get placeholders, so a bad web line in .env.local cannot block
-# them).
-load_settings() {
-  if [[ "$1" == "$WEB_STACK" ]]; then
-    load_env_local BUDGET_EMAIL WEB_DOMAIN WEB_CERTIFICATE_ARN
-  else
-    load_env_local BUDGET_EMAIL
+# ---------------------------------------------------------------------------------------------
+# live: start, stop, status and smoke for the live service (precertly-live)
+#
+# The live service is one Fargate task behind an HTTP API (gateway), at desired count 0 until
+# started. A running task bills by the second; `live stop` and the trap in `live smoke` set it
+# back to 0.
+# ---------------------------------------------------------------------------------------------
+
+readonly LIVE_API_URL_RE='^https://[a-z0-9]+\.execute-api\.[a-z0-9-]+\.amazonaws\.com/?$'
+readonly LIVE_COST_WARNING="a running live task costs about 0.36 USD a day (Fargate time plus its public IPv4 address; unverified) until it is stopped: scripts/deploy.sh live stop"
+readonly LIVE_RUN_PROMPT="Continue? About 0.07 USD of Bedrock and the database wakes up."
+# An origin that is not the site's, for the CORS check (.invalid never resolves).
+readonly LIVE_OTHER_ORIGIN="https://other.example.invalid"
+readonly CASE_ID_RE='^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$'
+# The script in the image that makes the one run (scripts/live_smoke_run.py).
+readonly LIVE_RUN_SCRIPT="scripts/live_smoke_run.py"
+
+LIVE_RUN_REQUESTED=false
+LIVE_RUN_CASE=""
+GW_URL=""
+GW_STATUS=""
+GW_COUNT=0
+
+use_live_service() {
+  ACTIVE_SERVICE="$LIVE_SERVICE"
+  ACTIVE_CONTAINER="$LIVE_CONTAINER"
+}
+
+use_api_service() {
+  ACTIVE_SERVICE="$SERVICE"
+  ACTIVE_CONTAINER="$CONTAINER"
+}
+
+gw_cleanup() {
+  if [[ -n "$GW_TMP" ]]; then
+    rm -rf "$GW_TMP"
   fi
+}
+
+# The gateway URL without a trailing slash, from the ApiUrl output. Dies if it is missing or
+# does not look like an API Gateway URL (nothing is sent anywhere else).
+live_api_url() {
+  local url
+  url="$(stack_output "$LIVE_STACK" ApiUrl '.*')"
+  [[ "$url" =~ $LIVE_API_URL_RE ]] ||
+    die "the ApiUrl output of ${LIVE_STACK} is '$(printable "$url")', not https://<id>.execute-api.<region>.amazonaws.com"
+  printf '%s' "${url%/}"
+}
+
+# gw_print METHOD PATH [curl option...]: what a dry run shows for one gateway request.
+gw_print() {
+  local method="$1" path="$2"
+  shift 2
+  printf '+ curl --disable --silent --show-error --max-time %q --proto %q --request %q' \
+    "$SMOKE_CURL_TIMEOUT" "=https" "$method"
+  if [[ $# -gt 0 ]]; then
+    printf ' %q' "$@"
+  fi
+  printf ' %q\n' "${GW_URL}${path}"
+}
+
+# gw_request METHOD PATH [curl option...]: one request to the gateway, over https only, never
+# --insecure, no cookies, redirects not followed. Sets GW_STATUS (000 if curl could not complete)
+# and the FETCH_HEADERS and FETCH_BODY files that header_value reads. Returns curl's exit code.
+gw_request() {
+  local method="$1" path="$2" rc=0 out=""
+  shift 2
+  GW_COUNT=$((GW_COUNT + 1))
+  FETCH_HEADERS="${GW_TMP}/headers.${GW_COUNT}"
+  FETCH_BODY="${GW_TMP}/body.${GW_COUNT}"
+  : >"$FETCH_HEADERS"
+  : >"$FETCH_BODY"
+  out="$(curl --disable --silent --show-error --max-time "$SMOKE_CURL_TIMEOUT" --proto '=https' \
+    --request "$method" --dump-header "$FETCH_HEADERS" --output "$FETCH_BODY" \
+    --write-out '%{http_code}' "$@" "${GW_URL}${path}" 2>"${GW_TMP}/stderr")" || rc=$?
+  GW_STATUS="${out:-000}"
+  return "$rc"
+}
+
+# Predicates for wait_for.
+gateway_health_ok() {
+  gw_request GET /health || return 1
+  [[ "$GW_STATUS" == "200" ]]
+}
+
+# The first running task of the active service is HEALTHY (the container health check).
+live_task_is_healthy() {
+  probe q_list_tasks || true
+  SMOKE_TASK="$AWS_OUT"
+  [[ -n "$SMOKE_TASK" && "$SMOKE_TASK" != "None" ]] || return 1
+  task_is_healthy
+}
+
+live_health_wait() {
+  printf '%s' "$((WAIT_TIMEOUT < 300 ? WAIT_TIMEOUT : 300))"
+}
+
+cmd_live_start() {
+  use_live_service
+  if $DRY_RUN; then
+    echo "dry-run: no AWS call and no request is made. Order of a real run:"
+    q_stack_status "$LIVE_STACK"
+    q_stack_output "$LIVE_STACK" ApiUrl
+    q_service
+    echo "dry-run: prints the warning: ${LIVE_COST_WARNING}"
+    q_set_desired 1
+    q_service
+    echo "dry-run: waits up to ${WAIT_TIMEOUT}s for 1 running task, then up to $(live_health_wait)s for the ECS health status HEALTHY:"
+    q_list_tasks
+    q_describe_task "TASK_ARN"
+    echo "dry-run: then polls the gateway until /health returns 200 (up to ${WAIT_TIMEOUT}s) and prints the elapsed seconds:"
+    GW_URL="API_URL"
+    gw_print GET /health
+    return 0
+  fi
+
+  require_stack_complete "$LIVE_STACK" live start
+  GW_URL="$(live_api_url)"
+  local rc=0
+  fetch_service || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    die "${CLUSTER}/${LIVE_SERVICE} is not deployed; deploy it first: scripts/deploy.sh up ${LIVE_STACK}"
+  fi
+  echo "warning: ${LIVE_COST_WARNING}"
+  GW_TMP="$(mktemp -d)"
+  trap gw_cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  local started=$SECONDS
+  echo "scaling ${LIVE_SERVICE} to 1 (now desired ${SVC_DESIRED}, running ${SVC_RUNNING})"
+  q_set_desired 1 >/dev/null || die "could not set the desired count of ${LIVE_SERVICE} to 1"
+  wait_for service_is_up ||
+    die "${LIVE_SERVICE} did not reach 1 running task in ${WAIT_TIMEOUT}s (running ${SVC_RUNNING:-unknown}, rollout ${SVC_ROLLOUT:-unknown}). It is NOT stopped: look at scripts/deploy.sh live status, and run scripts/deploy.sh live stop when you are done"
+  wait_for_seconds "$(live_health_wait)" live_task_is_healthy ||
+    die "the task did not become HEALTHY within $(live_health_wait)s (last status: ${TASK_HEALTH}). It is NOT stopped: look at the log group /precertly/live, and run scripts/deploy.sh live stop when you are done"
+  wait_for gateway_health_ok ||
+    die "the gateway did not answer GET /health with 200 within ${WAIT_TIMEOUT}s (last status: ${GW_STATUS:-none}). The task is NOT stopped: run scripts/deploy.sh live stop when you are done"
+  echo "live environment is up: gateway GET /health returned 200 after $((SECONDS - started))s"
+  echo "stop it when you are done: scripts/deploy.sh live stop"
+}
+
+cmd_live_stop() {
+  use_live_service
+  if $DRY_RUN; then
+    echo "dry-run: no AWS call is made"
+    q_set_desired 0
+    q_service
+    return 0
+  fi
+  local rc=0
+  fetch_service || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo "${LIVE_SERVICE} is not deployed; nothing to stop"
+    return 0
+  fi
+  echo "scaling ${LIVE_SERVICE} to 0 (now desired ${SVC_DESIRED}, running ${SVC_RUNNING})"
+  scale_to_zero || die "${LIVE_SERVICE} did not reach 0 running tasks in ${WAIT_TIMEOUT}s; check: scripts/deploy.sh live status"
+  echo "desired ${SVC_DESIRED}, running ${SVC_RUNNING}: the live task is stopped"
+}
+
+# One line saying whether the environment is up, from the counts and the gateway's /health.
+live_environment_line() {
+  local desired="$1" running="$2" gateway="$3"
+  if [[ "$running" == "0" && "$desired" == "0" ]]; then
+    if [[ "$gateway" == "200" ]]; then
+      echo "environment: DOWN? the service is at zero tasks but the gateway answered 200; check again in a minute"
+    else
+      echo "environment: DOWN (service at zero tasks; gateway /health ${gateway})"
+    fi
+  elif [[ "$running" != "0" && "$gateway" == "200" ]]; then
+    echo "environment: UP (desired ${desired}, running ${running}, gateway /health 200); it bills until: scripts/deploy.sh live stop"
+  else
+    echo "environment: NOT READY (desired ${desired}, running ${running}, gateway /health ${gateway}); a running task bills until: scripts/deploy.sh live stop"
+  fi
+}
+
+cmd_live_status() {
+  local s rc
+  if $DRY_RUN; then
+    echo "dry-run: read-only queries; none is run"
+    q_stack_status "$AUTH_STACK"
+    q_stack_status "$LIVE_STACK"
+    use_live_service
+    q_service
+    use_api_service
+    q_stack_output "$LIVE_STACK" ApiUrl
+    GW_URL="API_URL"
+    gw_print GET /health
+    return 0
+  fi
+
+  echo "live environment (region ${AWS_REGION}, profile ${AWS_PROFILE})"
+  echo "stacks"
+  for s in "$AUTH_STACK" "$LIVE_STACK"; do
+    rc=0
+    probe q_stack_status "$s" || rc=$?
+    if [[ $rc -eq 0 ]]; then
+      printf '  %-16s %s\n' "$s" "$AWS_OUT"
+    else
+      printf '  %-16s not deployed\n' "$s"
+    fi
+  done
+
+  echo "service ${CLUSTER}/${LIVE_SERVICE}"
+  use_live_service
+  rc=0
+  fetch_service || rc=$?
+  use_api_service
+  local desired="" running=""
+  if [[ $rc -ne 0 ]]; then
+    echo "  not deployed"
+  else
+    desired="$SVC_DESIRED"
+    running="$SVC_RUNNING"
+    printf '  status %s, desired %s, running %s, pending %s, rollout %s\n' \
+      "$SVC_STATUS" "$SVC_DESIRED" "$SVC_RUNNING" "$SVC_PENDING" "$SVC_ROLLOUT"
+  fi
+
+  local url="" gateway="no response"
+  rc=0
+  probe q_stack_output "$LIVE_STACK" ApiUrl || rc=$?
+  if [[ $rc -eq 0 && "$AWS_OUT" =~ $LIVE_API_URL_RE ]]; then
+    url="${AWS_OUT%/}"
+    echo "api url: ${url}"
+    GW_URL="$url"
+    GW_TMP="$(mktemp -d)"
+    rc=0
+    gw_request GET /health || rc=$?
+    if [[ $rc -eq 0 ]]; then
+      gateway="$GW_STATUS"
+    else
+      gateway="no response (curl exit ${rc})"
+    fi
+    gw_cleanup
+    GW_TMP=""
+    echo "gateway GET /health: ${gateway}"
+  else
+    echo "api url: not available"
+  fi
+
+  if [[ -z "$desired" ]]; then
+    echo "environment: DOWN (${LIVE_SERVICE} is not deployed)"
+  else
+    live_environment_line "$desired" "$running" "$gateway"
+  fi
+}
+
+# --- live smoke ---------------------------------------------------------------------------
+
+# gw_expect LABEL EXPECTED_STATUS METHOD PATH [curl option...]: one request, one named check.
+gw_expect() {
+  local label="$1" expected="$2" method="$3" path="$4" rc=0
+  shift 4
+  gw_request "$method" "$path" "$@" || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    record FAIL "${label} (no response: curl exit ${rc})"
+  elif [[ "$GW_STATUS" == "$expected" ]]; then
+    record PASS "$label"
+  else
+    record FAIL "${label} (expected ${expected}, got ${GW_STATUS})"
+  fi
+}
+
+CORS_PREFLIGHT_OPTIONS=(--header "Access-Control-Request-Method: POST" --header "Access-Control-Request-Headers: authorization,content-type")
+
+# The preflight from the site origin must be answered with that origin (and no other, and no
+# wildcard), the methods and the two headers; one from another origin must get no allow-origin.
+live_cors_checks() {
+  local origin="$1" rc=0 value
+  local label="CORS preflight OPTIONS /live/runs from the site origin"
+  gw_request OPTIONS /live/runs --header "Origin: ${origin}" "${CORS_PREFLIGHT_OPTIONS[@]}" || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    record FAIL "${label} (no response: curl exit ${rc})"
+  else
+    if [[ "$GW_STATUS" == "200" || "$GW_STATUS" == "204" ]]; then
+      record PASS "${label} is ${GW_STATUS}"
+    else
+      record FAIL "${label} (expected 200 or 204, got ${GW_STATUS})"
+    fi
+    value="$(header_value access-control-allow-origin)"
+    if [[ "$value" == "$origin" ]]; then
+      record PASS "${label} allows exactly the site origin"
+    else
+      record FAIL "${label} allows exactly the site origin (got '$(printable "${value:-no header}")')"
+    fi
+    value="$(lowercase "$(header_value access-control-allow-methods)")"
+    if [[ "$value" =~ (^|[^a-z])post([^a-z]|$) ]]; then
+      record PASS "${label} allows POST"
+    else
+      record FAIL "${label} allows POST (got '$(printable "${value:-no header}")')"
+    fi
+    value="$(lowercase "$(header_value access-control-allow-headers)")"
+    if [[ "$value" == *authorization* && "$value" == *content-type* ]]; then
+      record PASS "${label} allows the authorization and content-type headers"
+    else
+      record FAIL "${label} allows the authorization and content-type headers (got '$(printable "${value:-no header}")')"
+    fi
+  fi
+
+  rc=0
+  label="CORS preflight OPTIONS /live/runs from a different origin"
+  gw_request OPTIONS /live/runs --header "Origin: ${LIVE_OTHER_ORIGIN}" "${CORS_PREFLIGHT_OPTIONS[@]}" || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    record FAIL "${label} (no response: curl exit ${rc})"
+  else
+    value="$(header_value access-control-allow-origin)"
+    if [[ -z "$value" ]]; then
+      record PASS "${label} gets no access-control-allow-origin header"
+    else
+      record FAIL "${label} gets no access-control-allow-origin header (got '$(printable "$value")')"
+    fi
+  fi
+}
+
+# What runs inside the task: one run of CASE, one summary line (scripts/live_smoke_run.py).
+live_run_command() {
+  printf 'python %s %s' "$LIVE_RUN_SCRIPT" "$1"
+}
+
+# One real run through ECS Exec. The script prints a single "LIVE_RUN status=... reason=...
+# overall=... tokens=... timings=..." line and never the result; only the errors that mean
+# "ECS Exec is not ready" are retried, like smoke_exec_check.
+live_run_check() {
+  local arn="$1" case_id="$2" out="" line="" attempt status reason
+  local retry_seconds=$((POLL_SECONDS < 5 ? POLL_SECONDS : 5))
+  local label="one real live run of ${case_id}"
+  for ((attempt = 1; attempt <= EXEC_ATTEMPTS; attempt++)); do
+    out="$(q_exec "$arn" "$(live_run_command "$case_id")" 2>&1)" || true
+    line="$(printf '%s\n' "$out" | tr -d '\r' | grep -E '^LIVE_RUN ' | tail -n 1 || true)"
+    if [[ -n "$line" ]]; then
+      break
+    fi
+    if ((attempt < EXEC_ATTEMPTS)) && grep -Eq "$EXEC_NOT_READY_RE" <<<"$out"; then
+      echo "ECS Exec not ready (attempt ${attempt} of ${EXEC_ATTEMPTS}), retrying in ${retry_seconds}s"
+      sleep "$retry_seconds"
+      continue
+    fi
+    break
+  done
+  if [[ -z "$line" ]]; then
+    record FAIL "${label}: no result line from ${LIVE_RUN_SCRIPT}"
+    show_tail "$out"
+    return 1
+  fi
+  status="${line#*status=}"
+  status="${status%% *}"
+  reason="${line#*reason=}"
+  reason="${reason%% *}"
+  line="$(printable "${line#LIVE_RUN }")"
+  if [[ "$status" == "done" ]]; then
+    record PASS "${label}: ${line}"
+  else
+    record FAIL "${label}: status ${status}, reason ${reason} (${line})"
+    return 1
+  fi
+}
+
+live_run_steps() {
+  local arn wait_cap
+  wait_cap=$((WAIT_TIMEOUT < 120 ? WAIT_TIMEOUT : 120))
+  probe q_list_tasks || true
+  arn="$AWS_OUT"
+  if [[ -z "$arn" || "$arn" == "None" ]]; then
+    record FAIL "live run: no running task found"
+    return 1
+  fi
+  SMOKE_TASK="$arn"
+  if ! wait_for_seconds "$wait_cap" exec_agent_is_running; then
+    record FAIL "live run: ECS Exec agent not RUNNING within ${wait_cap}s (last status: ${EXEC_AGENT_STATUS})"
+    return 1
+  fi
+  record PASS "ECS Exec agent running"
+  echo "running ${LIVE_RUN_CASE}: one real run (waits up to 300 s)"
+  live_run_check "$arn" "$LIVE_RUN_CASE"
+}
+
+live_smoke_steps() {
+  local origin="https://${WEB_DOMAIN}" started=$SECONDS
+  echo "scaling ${LIVE_SERVICE} to 1"
+  if ! q_set_desired 1 >/dev/null; then
+    record FAIL "scale to 1"
+    return 1
+  fi
+  if ! wait_for service_is_up; then
+    record FAIL "service stable within ${WAIT_TIMEOUT}s (running ${SVC_RUNNING:-unknown}, rollout ${SVC_ROLLOUT:-unknown})"
+    return 1
+  fi
+  record PASS "service stable (desired 1, running 1)"
+
+  echo "waiting for the first gateway 200 on /health"
+  if wait_for gateway_health_ok; then
+    record PASS "cold start: scale-up to the first gateway 200 on /health took $((SECONDS - started))s"
+  else
+    record FAIL "cold start: the gateway returned 200 on /health within ${WAIT_TIMEOUT}s (last status: ${GW_STATUS:-none})"
+    return 1
+  fi
+
+  gw_expect "unauthenticated GET /health through the gateway is 200" 200 GET /health
+  gw_expect "unauthenticated POST /live/runs is 401" 401 POST /live/runs \
+    --header "content-type: application/json" --data '{}'
+  gw_expect "unauthenticated GET /live/runs/anything is 401" 401 GET /live/runs/anything
+  gw_expect "GET /policies has no route and is 404 at the gateway" 404 GET /policies
+  live_cors_checks "$origin"
+
+  if [[ -n "$LIVE_RUN_CASE" ]]; then
+    live_run_steps || return 1
+  fi
+}
+
+cmd_live_smoke() {
+  use_live_service
+  require_real_web_domain
+  if $DRY_RUN; then
+    echo "dry-run: no AWS call and no request is made. Order of a real run:"
+    if [[ -n "$LIVE_RUN_CASE" ]]; then
+      echo "dry-run: would ask '${LIVE_RUN_PROMPT} [y/N]' first (--yes does not skip it)"
+    fi
+    q_stack_status "$LIVE_STACK"
+    q_stack_output "$LIVE_STACK" ApiUrl
+    q_service
+    echo "dry-run: refuses unless the service shows desired 0, running 0 and pending 0; then:"
+    q_set_desired 1
+    q_service
+    GW_URL="API_URL"
+    echo "dry-run: polls the gateway until /health returns 200 (up to ${WAIT_TIMEOUT}s; that time is the cold start), then these requests:"
+    gw_print GET /health
+    gw_print POST /live/runs --header "content-type: application/json" --data '{}'
+    gw_print GET /live/runs/anything
+    gw_print GET /policies
+    gw_print OPTIONS /live/runs --header "Origin: https://${WEB_DOMAIN}" "${CORS_PREFLIGHT_OPTIONS[@]}"
+    gw_print OPTIONS /live/runs --header "Origin: ${LIVE_OTHER_ORIGIN}" "${CORS_PREFLIGHT_OPTIONS[@]}"
+    if [[ -n "$LIVE_RUN_CASE" ]]; then
+      echo "dry-run: then one real run inside the task (ECS Exec):"
+      q_list_tasks
+      q_exec_agent_status "TASK_ARN"
+      q_exec "TASK_ARN" "$(live_run_command "$LIVE_RUN_CASE")"
+    fi
+    echo "dry-run: on exit, interrupt or failure, always:"
+    q_set_desired 0
+    q_service
+    return 0
+  fi
+
+  if [[ -n "$LIVE_RUN_CASE" ]]; then
+    command -v session-manager-plugin >/dev/null 2>&1 ||
+      die "session-manager-plugin is not installed (ECS Exec needs it for --run): https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html"
+    # Ask before anything starts, so no task bills while a question waits.
+    confirm "$LIVE_RUN_PROMPT" || die "not confirmed; nothing started"
+  fi
+
+  require_stack_complete "$LIVE_STACK" live smoke
+  GW_URL="$(live_api_url)"
+  local rc=0
+  fetch_service || rc=$?
+  if [[ $rc -ne 0 ]]; then
+    die "${CLUSTER}/${LIVE_SERVICE} is not deployed; deploy it first: scripts/deploy.sh up ${LIVE_STACK}"
+  fi
+  if [[ "$SVC_RUNNING" != "0" || "$SVC_PENDING" != "0" || "$SVC_DESIRED" != "0" ]]; then
+    die "refusing: ${LIVE_SERVICE} is not at zero (desired ${SVC_DESIRED}, running ${SVC_RUNNING}, pending ${SVC_PENDING}); something else may be using it. Check with live status; to stop it: scripts/deploy.sh live stop"
+  fi
+  echo "service at zero; starting one task"
+
+  GW_TMP="$(mktemp -d)"
+  SMOKE_TITLE="live smoke"
+  SMOKE_DOWN_COMMAND="live stop"
+  # From here on every exit path scales back to 0 before the summary.
+  trap smoke_finish EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  SMOKE_SCALED=true
+  live_smoke_steps || true
+}
+
+cmd_live() {
+  case "$1" in
+    start) cmd_live_start ;;
+    stop) cmd_live_stop ;;
+    status) cmd_live_status ;;
+    smoke) cmd_live_smoke ;;
+    *) die "usage: deploy.sh live start|stop|status|smoke [--run CASE_ID]" ;;
+  esac
+}
+
+# The settings a stack needs: the budget address always; the web domain and certificate only for
+# precertly-web; the hosted-UI prefix and the web domain for precertly-auth; the web domain for
+# precertly-live. The other stacks get placeholders, so a bad line for one of these in .env.local
+# cannot block them.
+load_settings() {
+  case "$1" in
+    "$WEB_STACK") load_env_local BUDGET_EMAIL WEB_DOMAIN WEB_CERTIFICATE_ARN ;;
+    "$AUTH_STACK") load_env_local BUDGET_EMAIL AUTH_DOMAIN_PREFIX WEB_DOMAIN ;;
+    "$LIVE_STACK") load_env_local BUDGET_EMAIL WEB_DOMAIN ;;
+    *) load_env_local BUDGET_EMAIL ;;
+  esac
 }
 
 main() {
   local positional=()
   local arg
-  for arg in "$@"; do
+  while [[ $# -gt 0 ]]; do
+    arg="$1"
+    shift
     case "$arg" in
       -h | --help)
         usage
@@ -1833,6 +2479,16 @@ main() {
       --dry-run) DRY_RUN=true ;;
       --yes) ASSUME_YES=true ;;
       --bedrock) BEDROCK=true ;;
+      --run)
+        [[ $# -gt 0 ]] || die "--run needs a case id: live smoke --run CASE_ID"
+        LIVE_RUN_REQUESTED=true
+        LIVE_RUN_CASE="$1"
+        shift
+        ;;
+      --run=*)
+        LIVE_RUN_REQUESTED=true
+        LIVE_RUN_CASE="${arg#--run=}"
+        ;;
       --all) die "--all is not allowed: deploy one stack at a time, by name" ;;
       -*) die "unknown option '${arg}' (see --help)" ;;
       *) positional+=("$arg") ;;
@@ -1850,6 +2506,15 @@ main() {
   fi
   if $ASSUME_YES && [[ "$command" == "status" || "$command" == "smoke" || "$command" == "down" ]]; then
     die "--yes does not apply to ${command}"
+  fi
+  if $LIVE_RUN_REQUESTED; then
+    [[ "$command" == "live" && "${positional[1]:-}" == "smoke" ]] || die "--run is only for live smoke"
+    [[ "$LIVE_RUN_CASE" =~ $CASE_ID_RE ]] ||
+      die "--run needs a case id of letters, digits, '.', '_' and '-' (for example facet-01)"
+  fi
+  # live smoke --run asks a question that --yes never skips; every other live command has none.
+  if $ASSUME_YES && [[ "$command" == "live" ]] && ! { [[ "${positional[1]:-}" == "smoke" ]] && $LIVE_RUN_REQUESTED; }; then
+    die "--yes does not apply to live ${positional[1]:-}"
   fi
   if $ASSUME_YES && [[ "$command" == "tools" && "${positional[1]:-}" != "load" ]]; then
     die "--yes does not apply to tools ${positional[1]:-}"
@@ -1891,6 +2556,13 @@ main() {
     web)
       [[ ${#positional[@]} -eq 2 ]] || die "usage: deploy.sh web publish|smoke"
       cmd_web "${positional[1]}"
+      ;;
+    live)
+      [[ ${#positional[@]} -eq 2 ]] || die "usage: deploy.sh live start|stop|status|smoke [--run CASE_ID]"
+      if [[ "${positional[1]}" == "smoke" ]]; then
+        load_env_local WEB_DOMAIN
+      fi
+      cmd_live "${positional[1]}"
       ;;
     *) die "unknown command '${command}' (see --help)" ;;
   esac

@@ -29,7 +29,19 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.pyright]
-include = ["app.py", "base_stack.py", "names.py", "precertly_stack.py", "web_stack.py", "tests"]
+# app_stack.py, data_stack.py and live_stack.py are left out on purpose: they pass IAM roles and
+# principals to ECS constructs, and the jsii-generated IPrincipal and IRole protocols do not
+# match the classes under pyright (parameter names differ), which is a typing artefact of the
+# library, not a defect to fix here. They are still analysed where app.py imports them.
+include = [
+    "app.py",
+    "auth_stack.py",
+    "base_stack.py",
+    "names.py",
+    "precertly_stack.py",
+    "web_stack.py",
+    "tests",
+]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 venvPath = "."
