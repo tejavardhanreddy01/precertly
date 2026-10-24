@@ -1,0 +1,320 @@
+{
+  "ended_states": [
+    {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": "The database did not become available in time. Try again.",
+      "reason": "database_unavailable",
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "failed",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    },
+    {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": "Another live run is in progress. Try again when it has finished.",
+      "reason": "run_in_progress",
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "rejected",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    },
+    {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": "The daily limit of live runs for everyone has been reached.",
+      "reason": "daily_cap_total",
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "rejected",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    },
+    {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": "Your daily limit of live runs has been reached.",
+      "reason": "daily_cap_user",
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "rejected",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    },
+    {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": "The daily limit of model tokens for live runs has been reached.",
+      "reason": "daily_tokens",
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "rejected",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    },
+    {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": "The chart could not be embedded, so the run stopped.",
+      "reason": "embedding_failed",
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "failed",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    },
+    {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": "The run took too long and was stopped.",
+      "reason": "timeout",
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "failed",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    },
+    {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": "The run was cancelled.",
+      "reason": "cancelled",
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "failed",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    },
+    {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": "The run failed.",
+      "reason": "internal_error",
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "failed",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    }
+  ],
+  "enums": {
+    "decided_by": [
+      "model",
+      "rule",
+      "rule+model"
+    ],
+    "outcomes": [
+      "met",
+      "not_met",
+      "insufficient"
+    ],
+    "reasons": [
+      "database_unavailable",
+      "run_in_progress",
+      "daily_cap_total",
+      "daily_cap_user",
+      "daily_tokens",
+      "embedding_failed",
+      "timeout",
+      "cancelled",
+      "internal_error"
+    ],
+    "statuses": [
+      "waking_database",
+      "checking_limits",
+      "ingesting",
+      "judging",
+      "done",
+      "failed",
+      "rejected"
+    ]
+  },
+  "messages": {
+    "cancelled": "The run was cancelled.",
+    "daily_cap_total": "The daily limit of live runs for everyone has been reached.",
+    "daily_cap_user": "Your daily limit of live runs has been reached.",
+    "daily_tokens": "The daily limit of model tokens for live runs has been reached.",
+    "database_unavailable": "The database did not become available in time. Try again.",
+    "embedding_failed": "The chart could not be embedded, so the run stopped.",
+    "internal_error": "The run failed.",
+    "run_in_progress": "Another live run is in progress. Try again when it has finished.",
+    "timeout": "The run took too long and was stopped."
+  },
+  "note": "Generated by scripts/build_live_contract.py from src/precertly/live/models.py. Do not edit.",
+  "notice": "Single unregistered run, not part of the eval, no accuracy claim. Results are not stored.",
+  "run_states": {
+    "checking_limits": {
+      "case_id": "facet-01",
+      "finished_at": null,
+      "message": null,
+      "reason": null,
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "checking_limits",
+      "timings": {
+        "waking_database": 0.5
+      }
+    },
+    "done": {
+      "case_id": "facet-01",
+      "finished_at": "2026-01-02T03:05:35Z",
+      "message": null,
+      "reason": null,
+      "result": {
+        "case_id": "facet-01",
+        "input_tokens": 12000,
+        "latency_ms": 41250.5,
+        "notice": "Single unregistered run, not part of the eval, no accuracy claim. Results are not stored.",
+        "output_tokens": 3400,
+        "overall": "insufficient",
+        "policy": "example-policy",
+        "reviewer_checklist": [
+          {
+            "criterion": "example-criterion-d",
+            "evidence_stage": "provider_attestation",
+            "text": "Confirm the attestation with the provider."
+          }
+        ],
+        "variant": "example-variant",
+        "verdicts": [
+          {
+            "applicable": true,
+            "citations": [
+              {
+                "char_end": 44,
+                "char_start": 10,
+                "chunk_id": "DocumentReference/example-note#0",
+                "quote": "example quote from a synthetic note"
+              }
+            ],
+            "confidence": 0.75,
+            "criterion": "example-criterion-a",
+            "decided_by": "model",
+            "outcome": "met",
+            "rationale": "The note states the finding. <b>Markup in a rationale is text.</b>"
+          },
+          {
+            "applicable": false,
+            "citations": [],
+            "confidence": 1.0,
+            "criterion": "example-criterion-b",
+            "decided_by": "rule",
+            "outcome": "met",
+            "rationale": "The condition does not apply."
+          },
+          {
+            "applicable": true,
+            "citations": [],
+            "confidence": 0.25,
+            "criterion": "example-criterion-c",
+            "decided_by": "rule+model",
+            "outcome": "insufficient",
+            "rationale": "Nothing in the chart settles it."
+          }
+        ]
+      },
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "done",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "judging": 40.0,
+        "waking_database": 0.5
+      }
+    },
+    "ingesting": {
+      "case_id": "facet-01",
+      "finished_at": null,
+      "message": null,
+      "reason": null,
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "ingesting",
+      "timings": {
+        "checking_limits": 0.1,
+        "waking_database": 0.5
+      }
+    },
+    "judging": {
+      "case_id": "facet-01",
+      "finished_at": null,
+      "message": null,
+      "reason": null,
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "judging",
+      "timings": {
+        "checking_limits": 0.1,
+        "ingesting": 12.25,
+        "waking_database": 0.5
+      }
+    },
+    "waking_database": {
+      "case_id": "facet-01",
+      "finished_at": null,
+      "message": null,
+      "reason": null,
+      "result": null,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "started_at": "2026-01-02T03:04:05Z",
+      "status": "waking_database",
+      "timings": {}
+    }
+  },
+  "started": {
+    "run_id": "00000000-0000-4000-8000-000000000001",
+    "status": "waking_database"
+  }
+}

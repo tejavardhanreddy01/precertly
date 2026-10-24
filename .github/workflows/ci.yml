@@ -240,3 +240,43 @@ jobs:
       - name: Check the built site for hosts outside the allowlist
         working-directory: web
         run: node scripts/check-dist.mjs
+      # The same code built with live mode configured, using clearly fake values of the right
+      # shape: never a real host or id. It goes to another folder, so the recorded-only build
+      # above is untouched, and check-dist reads the same three variables.
+      - name: Build and check a live-enabled build (placeholder values)
+        working-directory: web
+        env:
+          VITE_LIVE_API_URL: https://abcdefghij.execute-api.us-east-2.amazonaws.com
+          VITE_LIVE_HOSTED_UI_URL: https://placeholder-prefix.auth.us-east-2.amazoncognito.com
+          VITE_LIVE_CLIENT_ID: PlaceholderClientId0123456789
+        run: |
+          npm run build -- --outDir dist-live
+          node scripts/check-dist.mjs --dir dist-live
+      - name: Check that the two modes cannot be mixed up
+        working-directory: web
+        run: |
+          # The live build, checked as if no live configuration were given, must fail ...
+          if node scripts/check-dist.mjs --dir dist-live; then
+            echo "check-dist accepted a live build without live configuration" >&2
+            exit 1
+          fi
+          # ... the recorded-only build, checked as if live mode were configured, must fail ...
+          if VITE_LIVE_API_URL=https://abcdefghij.execute-api.us-east-2.amazonaws.com \
+            VITE_LIVE_HOSTED_UI_URL=https://placeholder-prefix.auth.us-east-2.amazoncognito.com \
+            VITE_LIVE_CLIENT_ID=PlaceholderClientId0123456789 \
+            node scripts/check-dist.mjs; then
+            echo "check-dist accepted a recorded-only build with live configuration" >&2
+            exit 1
+          fi
+          # ... and a half-set configuration must stop the build.
+          # It must fail for that reason, not for another one.
+          if VITE_LIVE_API_URL=https://abcdefghij.execute-api.us-east-2.amazonaws.com \
+            npx vite build --outDir dist-half >half.log 2>&1; then
+            echo "a half-set live configuration did not stop the build" >&2
+            exit 1
+          fi
+          if ! grep -q "half configured" half.log; then
+            echo "the half-set build failed, but not with the half-configured message:" >&2
+            cat half.log >&2
+            exit 1
+          fi

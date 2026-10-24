@@ -24,8 +24,9 @@ stub.json keys (all optional):
   health            healthStatus of the task (default HEALTHY)
   health_after_polls   healthStatus is UNKNOWN for the first N describe-tasks health queries,
                     then HEALTHY
-  diff_text         what `cdk diff` prints; {email}, {arn} and {prefix} are replaced by the
-                    budgetEmail, webCertificateArn and authDomainPrefix context values
+  diff_text         what `cdk diff` prints; {email}, {arn}, {prefix}, {api} and {auth} are
+                    replaced by the budgetEmail, webCertificateArn, authDomainPrefix,
+                    liveApiOrigin and liveAuthOrigin context values (empty when not given)
   diff_fail         `cdk diff` prints this to stderr and fails
   outputs           {output key: value} for the data stack's outputs (defaults below)
   no_outputs        the data stack exists but has no outputs
@@ -72,6 +73,7 @@ stub.json keys (all optional):
 
 import fnmatch
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -116,6 +118,14 @@ def main() -> int:
     if tool == "npx":
         return npx(args, config)
     if tool in ("uv", "npm", "node"):
+        # The Vite variables each build command sees, for the tests that check what is passed.
+        with (BASE / "build_env.log").open("a") as env_log:
+            seen = " ".join(
+                f"{k}={os.environ[k]}"
+                for k in ("VITE_LIVE_API_URL", "VITE_LIVE_HOSTED_UI_URL", "VITE_LIVE_CLIENT_ID")
+                if k in os.environ
+            )
+            env_log.write(f"{tool} {' '.join(args)} | {seen}\n")
         return build_tool(tool, args, config)
     if tool == "curl":
         return curl(args, config)
@@ -131,9 +141,17 @@ def npx(args: list[str], config: dict) -> int:
     email = next((a.split("=", 1)[1] for a in args if a.startswith("budgetEmail=")), "")
     arn = next((a.split("=", 1)[1] for a in args if a.startswith("webCertificateArn=")), "")
     prefix = next((a.split("=", 1)[1] for a in args if a.startswith("authDomainPrefix=")), "")
+    api = next((a.split("=", 1)[1] for a in args if a.startswith("liveApiOrigin=")), "")
+    auth = next((a.split("=", 1)[1] for a in args if a.startswith("liveAuthOrigin=")), "")
 
     def fill(text: str) -> str:
-        return text.replace("{email}", email).replace("{arn}", arn).replace("{prefix}", prefix)
+        return (
+            text.replace("{email}", email)
+            .replace("{arn}", arn)
+            .replace("{prefix}", prefix)
+            .replace("{api}", api)
+            .replace("{auth}", auth)
+        )
 
     if "diff" in args and "diff_fail" in config:
         print(fill(config["diff_fail"]), file=sys.stderr)

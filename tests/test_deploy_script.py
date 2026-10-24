@@ -1485,8 +1485,10 @@ def test_web_publish_dry_run_prints_every_command_and_calls_nothing(stub_bin: Pa
         "+ uv sync",
         "+ (cd web && npm ci)",
         "+ (cd web && npm run prepare-data)",
-        "+ (cd web && npm run build)",
-        "+ (cd web && node scripts/check-dist.mjs)",
+        "+ (cd web && env VITE_LIVE_API_URL=REDACTED VITE_LIVE_HOSTED_UI_URL=REDACTED "
+        "VITE_LIVE_CLIENT_ID=REDACTED npm run build)",
+        "+ (cd web && env VITE_LIVE_API_URL=REDACTED VITE_LIVE_HOSTED_UI_URL=REDACTED "
+        "VITE_LIVE_CLIENT_ID=REDACTED node scripts/check-dist.mjs)",
         "aws s3 sync web/dist/assets s3://BUCKET_NAME/assets",
         "aws s3 sync web/dist s3://BUCKET_NAME --exclude assets/\\* --exclude index.html --delete",
         "aws s3 cp web/dist/index.html s3://BUCKET_NAME/index.html",
@@ -1920,7 +1922,11 @@ def test_publishing_never_touches_the_service_or_the_other_stacks(
     calls = _calls(stub_bin)
     assert not any(c.startswith(("aws ecs", "aws ecr", "aws rds", "docker", "npx")) for c in calls)
     stack_names = {m.group(1) for c in calls if (m := re.search(r"--stack-name (\S+)", c))}
-    assert stack_names == {"precertly-web"}
+    # The live and auth stacks are only asked whether they exist (to decide the build mode).
+    assert stack_names == {"precertly-web", "precertly-live", "precertly-auth"}
+    for c in calls:
+        if "--stack-name precertly-live" in c or "--stack-name precertly-auth" in c:
+            assert "StackStatus" in c, c
 
 
 def test_status_is_unchanged_by_the_web_publish_command() -> None:
@@ -2030,6 +2036,8 @@ def test_web_smoke_pass_lines_name_each_header_check_once(stub_bin: Path) -> Non
         "PASS GET / content-security-policy: the header to be present",
         "PASS GET / content-security-policy: default-src 'none'",
         "PASS GET / content-security-policy: frame-ancestors 'none'",
+        "PASS GET / content-security-policy: form-action 'none'",
+        "PASS GET / content-security-policy connect-src: 'self' only, no wildcard",
     ]
 
 
@@ -2355,10 +2363,11 @@ def test_web_smoke_never_weakens_tls_or_follows_redirects(stub_bin: Path) -> Non
     assert all("--proto =https" in c for c in calls if c.split()[-1].startswith("https://"))
 
 
-def test_web_smoke_makes_no_aws_call_but_two_stack_reads(stub_bin: Path) -> None:
+def test_web_smoke_makes_no_aws_call_but_four_stack_reads(stub_bin: Path) -> None:
     _smoke(stub_bin)
     aws_calls = [c for c in _calls(stub_bin) if c.startswith("aws ")]
-    assert len(aws_calls) == 2
+    # The status, the site URL, and the two live origins the policy allows (if it has any).
+    assert len(aws_calls) == 4
     assert all(
         c.startswith("aws cloudformation describe-stacks --stack-name precertly-web")
         for c in aws_calls
@@ -2373,7 +2382,8 @@ def test_web_smoke_reads_the_stack_before_it_sends_anything(stub_bin: Path) -> N
     calls = _calls(stub_bin)
     assert calls[0].startswith("aws cloudformation describe-stacks")
     assert calls[1].startswith("aws cloudformation describe-stacks") and "SiteUrl" in calls[1]
-    assert calls[2].startswith("curl ")
+    assert "LiveApiOrigin" in calls[2] and "LiveAuthOrigin" in calls[3]
+    assert calls[4].startswith("curl ")
 
 
 @pytest.mark.parametrize(
@@ -3577,3 +3587,402 @@ def test_script_help_documents_the_live_commands() -> None:
         "About\n               0.07 USD",
     ):
         assert text in result.stdout, text
+
+
+# ---------------------------------------------------------------------------------------------
+# Live mode for the web site: origins from the stack outputs, never printed
+# ---------------------------------------------------------------------------------------------
+
+API_HOST = "abc123def4.execute-api.us-east-2.amazonaws.com"
+API_ORIGIN = f"https://{API_HOST}"
+AUTH_HOST = "example-prefix.auth.us-east-2.amazoncognito.com"
+AUTH_ORIGIN = f"https://{AUTH_HOST}"
+CLIENT_ID = "TestClientId1234567890"
+LIVE_STACKS = {
+    "precertly-web": "CREATE_COMPLETE",
+    "precertly-live": "CREATE_COMPLETE",
+    "precertly-auth": "CREATE_COMPLETE",
+}
+# The stub's default ApiUrl is https://abc123def4.execute-api.us-east-2.amazonaws.com/.
+LIVE_OUTPUTS = {"HostedUiBaseUrl": f"{AUTH_ORIGIN}/", "UserPoolClientId": CLIENT_ID}
+WEB_ALLOWS = {"LiveApiOrigin": API_ORIGIN, "LiveAuthOrigin": AUTH_ORIGIN}
+LIVE_CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+    f"font-src 'self'; connect-src 'self' {API_ORIGIN} {AUTH_ORIGIN}; base-uri 'self'; "
+    "form-action 'none'; frame-ancestors 'none'; object-src 'none'"
+)
+
+
+def _build_env(stub_bin: Path) -> list[str]:
+    log = stub_bin.parent / "build_env.log"
+    return log.read_text().splitlines() if log.exists() else []
+
+
+def _assert_no_live_values(result: subprocess.CompletedProcess[str]) -> None:
+    text = _output(result)
+    for value in (API_HOST, AUTH_HOST, CLIENT_ID, "example-prefix"):
+        assert value not in text, f"{value} was printed"
+
+
+def _live_publish_config(**extra: Any) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "stacks": LIVE_STACKS,
+        "outputs": {**LIVE_OUTPUTS, **WEB_ALLOWS},
+    }
+    config.update(extra)
+    return config
+
+
+def test_web_publish_dry_run_reads_the_live_outputs_and_prints_none_of_them(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "web", "publish", "--dry-run", email=None)
+    assert result.returncode == 0, _output(result)
+    out = result.stdout
+    for query in (
+        "ApiUrl",
+        "HostedUiBaseUrl",
+        "UserPoolClientId",
+        "LiveApiOrigin",
+        "LiveAuthOrigin",
+    ):
+        assert f"OutputKey==\\'{query}\\'" in out or f"OutputKey=='{query}'" in out, query
+    # The build and check-dist get the same three variables.
+    builds = [line for line in out.splitlines() if line.startswith("+ (cd web && env ")]
+    assert len(builds) == 2
+    for line in builds:
+        assert "VITE_LIVE_API_URL=REDACTED" in line
+        assert "VITE_LIVE_HOSTED_UI_URL=REDACTED" in line
+        assert "VITE_LIVE_CLIENT_ID=REDACTED" in line
+    _assert_no_calls(stub_bin)
+
+
+def test_web_publish_builds_live_enabled_when_both_stacks_exist(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, **_live_publish_config())
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    assert "build: live-enabled" in result.stdout
+    builds = [line for line in _build_env(stub_bin) if "run build" in line or "check-dist" in line]
+    assert len(builds) == 2
+    for line in builds:
+        env = line.split(" | ", 1)[1]
+        assert f"VITE_LIVE_API_URL={API_ORIGIN} " in f"{env} "  # the trailing slash is dropped
+        assert f"VITE_LIVE_HOSTED_UI_URL={AUTH_ORIGIN} " in f"{env} "
+        assert f"VITE_LIVE_CLIENT_ID={CLIENT_ID}" in env
+    # Not printed anywhere, though they are passed.
+    _assert_no_live_values(result)
+    assert any(c.startswith("aws s3 cp") for c in _calls(stub_bin))
+
+
+def test_web_publish_builds_recorded_only_when_neither_stack_exists(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(stub_bin)
+    assert result.returncode == 0, _output(result)
+    assert "build: recorded-only" in result.stdout
+    builds = [line for line in _build_env(stub_bin) if "run build" in line or "check-dist" in line]
+    assert len(builds) == 2
+    for line in builds:
+        # Three empty values, so nothing in the shell or in a file can switch live mode on.
+        assert line.endswith(
+            "| VITE_LIVE_API_URL= VITE_LIVE_HOSTED_UI_URL= VITE_LIVE_CLIENT_ID="
+        ), line
+
+
+def test_web_publish_recorded_only_ignores_variables_set_in_the_shell(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=WEB_STACK_OK)
+    result = _publish(
+        stub_bin,
+        env={"VITE_LIVE_API_URL": API_ORIGIN, "VITE_LIVE_CLIENT_ID": CLIENT_ID},
+    )
+    assert result.returncode == 0, _output(result)
+    for line in _build_env(stub_bin):
+        if "run build" in line:
+            assert line.endswith(
+                "| VITE_LIVE_API_URL= VITE_LIVE_HOSTED_UI_URL= VITE_LIVE_CLIENT_ID="
+            )
+
+
+@pytest.mark.parametrize("missing", ["precertly-live", "precertly-auth"])
+def test_web_publish_refuses_when_only_one_of_live_and_auth_exists(
+    stub_bin: Path, publish_repo: Path, missing: str
+) -> None:
+    stacks = {k: v for k, v in LIVE_STACKS.items() if k != missing}
+    _configure(stub_bin, **_live_publish_config(stacks=stacks))
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "only one of precertly-live and precertly-auth exists" in result.stderr
+    assert _build_env(stub_bin) == []
+    assert _s3_writes(stub_bin) == []
+
+
+def test_web_publish_refuses_a_live_build_when_the_deployed_policy_lacks_the_origins(
+    stub_bin: Path, publish_repo: Path
+) -> None:
+    _configure(stub_bin, stacks=LIVE_STACKS, outputs=LIVE_OUTPUTS)
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "does not allow the live origins yet" in result.stderr
+    assert "scripts/deploy.sh up precertly-web" in result.stderr
+    assert _build_env(stub_bin) == []
+    assert _s3_writes(stub_bin) == []
+    _assert_no_live_values(result)
+
+
+@pytest.mark.parametrize("which", ["LiveApiOrigin", "LiveAuthOrigin"])
+def test_web_publish_refuses_when_a_deployed_origin_differs_from_the_stack_outputs(
+    stub_bin: Path, publish_repo: Path, which: str
+) -> None:
+    other = {
+        "LiveApiOrigin": "https://zzzzzzzzzz.execute-api.us-east-2.amazonaws.com",
+        "LiveAuthOrigin": "https://other-prefix.auth.us-east-2.amazoncognito.com",
+    }
+    _configure(
+        stub_bin,
+        **_live_publish_config(outputs={**LIVE_OUTPUTS, **WEB_ALLOWS, which: other[which]}),
+    )
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "are not the ones in precertly-live and precertly-auth" in result.stderr
+    assert _build_env(stub_bin) == []
+    assert _s3_writes(stub_bin) == []
+    _assert_no_live_values(result)
+    assert "zzzzzzzzzz" not in _output(result) and "other-prefix" not in _output(result)
+
+
+def test_web_publish_refuses_a_malformed_live_output(stub_bin: Path, publish_repo: Path) -> None:
+    _configure(
+        stub_bin,
+        **_live_publish_config(outputs={**LIVE_OUTPUTS, "HostedUiBaseUrl": "https://evil.example"}),
+    )
+    result = _publish(stub_bin)
+    assert result.returncode != 0
+    assert "unexpected value" in result.stderr
+    assert "evil.example" not in _output(result)
+    assert _build_env(stub_bin) == []
+
+
+def test_up_web_dry_run_shows_redacted_live_context_and_calls_nothing(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "up", "precertly-web", "--dry-run", env=WEB_ENV)
+    assert result.returncode == 0, _output(result)
+    assert "liveApiOrigin=REDACTED" in result.stdout
+    assert "liveAuthOrigin=REDACTED" in result.stdout
+    _assert_no_live_values(result)
+    _assert_no_calls(stub_bin)
+
+
+def test_up_web_passes_the_live_origins_and_redacts_them_in_the_diff(stub_bin: Path) -> None:
+    _configure(
+        stub_bin,
+        stacks=LIVE_STACKS,
+        outputs=LIVE_OUTPUTS,
+        diff_text="[~] connect-src\n 'self' {api} {auth}\n host {api}\n alert {email}",
+    )
+    result = _deploy(stub_bin, "up", "precertly-web", stdin="y\n", env=WEB_ENV)
+    assert result.returncode == 0, _output(result)
+    assert "'self' REDACTED REDACTED" in result.stdout
+    assert "host REDACTED" in result.stdout
+    _assert_no_live_values(result)
+    npx = [c for c in _calls(stub_bin) if c.startswith("npx")]
+    assert [c.split()[3] for c in npx] == ["diff", "deploy"]
+    for c in npx:
+        assert f"liveApiOrigin={API_ORIGIN}" in c and f"liveAuthOrigin={AUTH_ORIGIN}" in c
+        assert f"liveApiOrigin={API_ORIGIN}/" not in c
+
+
+def test_up_web_without_the_live_stacks_passes_no_live_context(stub_bin: Path) -> None:
+    _configure(stub_bin)
+    result = _deploy(stub_bin, "up", "precertly-web", stdin="y\n", env=WEB_ENV)
+    assert result.returncode == 0, _output(result)
+    assert "recorded-only" in result.stdout
+    for c in (c for c in _calls(stub_bin) if c.startswith("npx")):
+        assert "liveApiOrigin" not in c and "liveAuthOrigin" not in c
+
+
+@pytest.mark.parametrize("present", ["precertly-live", "precertly-auth"])
+def test_up_web_refuses_when_only_one_of_live_and_auth_exists(stub_bin: Path, present: str) -> None:
+    _configure(stub_bin, stacks={present: "CREATE_COMPLETE"}, outputs=LIVE_OUTPUTS)
+    result = _deploy(stub_bin, "up", "precertly-web", "--yes", stdin="y\n", env=WEB_ENV)
+    assert result.returncode != 0
+    assert "only one of precertly-live and precertly-auth exists" in result.stderr
+    assert not any(c.startswith("npx") for c in _calls(stub_bin))
+
+
+def test_stack_web_passes_the_live_origins_to_the_deploy(stub_bin: Path) -> None:
+    _configure(stub_bin, stacks=LIVE_STACKS, outputs=LIVE_OUTPUTS)
+    result = _deploy(stub_bin, "stack", "precertly-web", env=WEB_ENV)
+    assert result.returncode == 0, _output(result)
+    deploy = next(c for c in _calls(stub_bin) if "cdk deploy" in c)
+    assert f"liveApiOrigin={API_ORIGIN}" in deploy
+
+
+def test_the_other_stacks_never_get_the_live_origins(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "stack", "precertly-base", "--dry-run")
+    assert result.returncode == 0, _output(result)
+    assert "liveApiOrigin" not in result.stdout
+
+
+def _live_site(**site: Any) -> dict[str, Any]:
+    """A site whose policy and JavaScript match a live-enabled build."""
+    overrides: dict[str, Any] = {
+        "/": {"headers": {"Content-Security-Policy": LIVE_CSP}},
+        ASSET_JS: {"body": f"var a='{API_ORIGIN}',b='{AUTH_ORIGIN}';"},
+    }
+    overrides.update(site)
+    return overrides
+
+
+def test_web_smoke_checks_connect_src_and_the_hosts_when_the_policy_allows_the_live_origins(
+    stub_bin: Path,
+) -> None:
+    result = _smoke(stub_bin, outputs=WEB_ALLOWS, site=_live_site())
+    assert result.returncode == 0, _output(result)
+    assert (
+        "PASS GET / content-security-policy connect-src: "
+        "'self' plus the two live origins, no wildcard"
+    ) in result.stdout
+    assert "PASS first .js asset names the live API host and the hosted-UI host" in result.stdout
+    _assert_no_live_values(result)
+
+
+def test_web_smoke_fails_a_wildcard_in_connect_src(stub_bin: Path) -> None:
+    csp = LIVE_CSP.replace(f"{API_ORIGIN} ", "* ")
+    result = _smoke(
+        stub_bin,
+        outputs=WEB_ALLOWS,
+        site=_live_site(**{"/": {"headers": {"Content-Security-Policy": csp}}}),
+    )
+    assert result.returncode == 1
+    assert (
+        "FAIL GET / content-security-policy connect-src: "
+        "expected 'self' plus the two live origins and no wildcard"
+    ) in result.stdout
+    _assert_no_live_values(result)
+
+
+def test_web_smoke_fails_when_connect_src_is_missing_an_origin(stub_bin: Path) -> None:
+    csp = LIVE_CSP.replace(f" {AUTH_ORIGIN}", "")
+    result = _smoke(
+        stub_bin,
+        outputs=WEB_ALLOWS,
+        site=_live_site(**{"/": {"headers": {"Content-Security-Policy": csp}}}),
+    )
+    assert result.returncode == 1
+    assert "connect-src: expected 'self' plus the two live origins" in result.stdout
+    _assert_no_live_values(result)
+
+
+def test_web_smoke_fails_when_connect_src_has_an_extra_origin(stub_bin: Path) -> None:
+    csp = LIVE_CSP.replace("connect-src 'self'", "connect-src 'self' https://extra.example.test")
+    result = _smoke(
+        stub_bin,
+        outputs=WEB_ALLOWS,
+        site=_live_site(**{"/": {"headers": {"Content-Security-Policy": csp}}}),
+    )
+    assert result.returncode == 1
+    assert "extra.example.test" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "directive", ["default-src 'none'", "form-action 'none'", "frame-ancestors 'none'"]
+)
+def test_web_smoke_fails_when_a_closed_directive_changes(stub_bin: Path, directive: str) -> None:
+    name = directive.split()[0]
+    csp = LIVE_CSP.replace(directive, f"{name} 'self'")
+    result = _smoke(
+        stub_bin,
+        outputs=WEB_ALLOWS,
+        site=_live_site(**{"/": {"headers": {"Content-Security-Policy": csp}}}),
+    )
+    assert result.returncode == 1
+    assert f"FAIL GET / content-security-policy: expected {directive}, got " in result.stdout
+    # The policy it prints has the live origins redacted.
+    _assert_no_live_values(result)
+
+
+def test_web_smoke_catches_a_recorded_only_build_published_over_a_live_policy(
+    stub_bin: Path,
+) -> None:
+    result = _smoke(
+        stub_bin,
+        outputs=WEB_ALLOWS,
+        site=_live_site(**{ASSET_JS: {"body": "contents of a recorded-only build"}}),
+    )
+    assert result.returncode == 1
+    assert (
+        "FAIL first .js asset: expected the live API host and the hosted-UI host" in result.stdout
+    )
+    assert "neither host" in result.stdout
+    assert "a recorded-only build may have been published" in result.stdout
+    _assert_no_live_values(result)
+
+
+@pytest.mark.parametrize(
+    "body, got",
+    [(f"x {API_ORIGIN}", "only the API host"), (f"x {AUTH_ORIGIN}", "only the hosted-UI host")],
+)
+def test_web_smoke_fails_when_the_javascript_names_only_one_host(
+    stub_bin: Path, body: str, got: str
+) -> None:
+    result = _smoke(stub_bin, outputs=WEB_ALLOWS, site=_live_site(**{ASSET_JS: {"body": body}}))
+    assert result.returncode == 1
+    assert got in result.stdout
+    _assert_no_live_values(result)
+
+
+def test_web_smoke_fails_a_live_build_published_over_a_recorded_only_policy(
+    stub_bin: Path,
+) -> None:
+    result = _smoke(stub_bin, site={ASSET_JS: {"body": f"var a='{API_ORIGIN}';"}})
+    assert result.returncode == 1
+    assert (
+        "FAIL first .js asset: expected no live host (the deployed policy allows none), "
+        "got a live host"
+    ) in result.stdout
+    _assert_no_live_values(result)
+
+
+def test_web_smoke_runs_37_checks_in_either_mode(stub_bin: Path) -> None:
+    # 34 before the live checks, plus form-action, connect-src and the live build check.
+    recorded = _smoke(stub_bin)
+    assert "37 passed, 0 failed" in recorded.stdout, recorded.stdout[-400:]
+
+
+def test_web_smoke_runs_37_checks_for_a_live_site_too(stub_bin: Path) -> None:
+    live = _smoke(stub_bin, outputs=WEB_ALLOWS, site=_live_site())
+    assert "37 passed, 0 failed" in live.stdout, live.stdout[-400:]
+
+
+def test_web_smoke_passes_a_recorded_only_site_with_no_live_origins(stub_bin: Path) -> None:
+    result = _smoke(stub_bin)
+    assert result.returncode == 0, _output(result)
+    assert (
+        "PASS first .js asset names no live host, as the deployed policy allows none"
+        in result.stdout
+    )
+
+
+def test_web_smoke_refuses_malformed_live_origin_outputs(stub_bin: Path) -> None:
+    result = _smoke(
+        stub_bin, outputs={"LiveApiOrigin": "https://evil.example", "LiveAuthOrigin": AUTH_ORIGIN}
+    )
+    assert result.returncode != 0
+    assert "evil.example" not in _output(result)
+    assert _curl_calls(stub_bin) == []
+
+
+def test_web_smoke_dry_run_lists_the_origin_reads_and_the_checks(stub_bin: Path) -> None:
+    result = _deploy(stub_bin, "web", "smoke", "--dry-run", email=None)
+    assert result.returncode == 0, _output(result)
+    assert "LiveApiOrigin" in result.stdout and "LiveAuthOrigin" in result.stdout
+    assert "the first .js asset names the live API host and the hosted-UI host" in result.stdout
+    _assert_no_calls(stub_bin)
+
+
+def test_the_script_never_holds_a_real_host_or_client_id() -> None:
+    script = SCRIPT.read_text()
+    assert not re.search(r"https://[a-z0-9]+\.execute-api\.us-[a-z]+-\d\.amazonaws\.com", script)
+    assert "amazoncognito" in script  # only inside the validation pattern

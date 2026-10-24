@@ -11,6 +11,14 @@ The bucket has removal policy DESTROY and no auto-delete (that needs a custom re
 empty the bucket, including old versions, before destroying the stack, or the delete fails.
 
 The stack has no cross-stack references and no environment, like the other stacks.
+
+Live mode adds two optional CDK context values, both or neither: `liveApiOrigin` (the gateway of
+precertly-live) and `liveAuthOrigin` (the Cognito hosted UI of precertly-auth). With neither, the
+template is exactly what it was before they existed. With both, `connect-src` is 'self' plus
+those two origins and nothing else, and the stack outputs them so `scripts/deploy.sh web publish`
+can check that the JavaScript it publishes only calls hosts this policy allows. They are context,
+not references to the other stacks, so this stack still stands alone. They are public identifiers
+(they end up in the published JavaScript) but the repository never holds them.
 """
 
 import re
@@ -24,6 +32,8 @@ from precertly_stack import PrecertlyStack
 
 WEB_DOMAIN_CONTEXT_KEY = "webDomain"
 WEB_CERTIFICATE_ARN_CONTEXT_KEY = "webCertificateArn"
+LIVE_API_ORIGIN_CONTEXT_KEY = "liveApiOrigin"
+LIVE_AUTH_ORIGIN_CONTEXT_KEY = "liveAuthOrigin"
 # CloudFront accepts only certificates from this region.
 CERTIFICATE_REGION = "us-east-1"
 
@@ -52,6 +62,13 @@ PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()"
 
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 _DOMAIN_RE = re.compile(rf"^{_LABEL}(?:\.{_LABEL})+$")
+# The same shapes web/scripts/live-config.mjs accepts for the build, without a path or slash.
+_LIVE_API_ORIGIN_RE = re.compile(
+    r"^https://[a-z0-9]{6,32}\.execute-api\.[a-z0-9-]{4,30}\.amazonaws\.com$"
+)
+_LIVE_AUTH_ORIGIN_RE = re.compile(
+    r"^https://[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])\.auth\.[a-z0-9-]{4,30}\.amazoncognito\.com$"
+)
 _ARN_RE = re.compile(
     r"^arn:aws:acm:(?P<region>[a-z0-9-]+):(?P<account>\d{12}):certificate/"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
@@ -94,6 +111,43 @@ def validate_certificate_arn(arn: object) -> str:
     return arn
 
 
+def validate_live_origins(api: object, auth: object) -> tuple[str, str] | None:
+    """Both live origins or neither. None means a recorded-only policy.
+
+    Each is `https://` and a host of the exact shape (an execute-api host, a Cognito hosted-UI
+    host): no path, port, credentials, query or wildcard. The messages name the context key and
+    never repeat the value.
+    """
+    if api is None and auth is None:
+        return None
+    if api is None or auth is None:
+        raise ValueError(
+            f"CDK contexts '{LIVE_API_ORIGIN_CONTEXT_KEY}' and '{LIVE_AUTH_ORIGIN_CONTEXT_KEY}' "
+            "go together: pass both or neither."
+        )
+    if not isinstance(api, str) or not _LIVE_API_ORIGIN_RE.fullmatch(api):
+        raise ValueError(
+            f"CDK context '{LIVE_API_ORIGIN_CONTEXT_KEY}' must be "
+            "https://<id>.execute-api.<region>.amazonaws.com with no path, port or wildcard."
+        )
+    if not isinstance(auth, str) or not _LIVE_AUTH_ORIGIN_RE.fullmatch(auth):
+        raise ValueError(
+            f"CDK context '{LIVE_AUTH_ORIGIN_CONTEXT_KEY}' must be "
+            "https://<prefix>.auth.<region>.amazoncognito.com with no path, port or wildcard."
+        )
+    return api, auth
+
+
+def content_security_policy(live_origins: tuple[str, str] | None = None) -> str:
+    """The policy for the site: its own origin only, plus the two live origins when given."""
+    if live_origins is None:
+        return CONTENT_SECURITY_POLICY
+    api, auth = live_origins
+    return CONTENT_SECURITY_POLICY.replace(
+        "connect-src 'self';", f"connect-src 'self' {api} {auth};"
+    )
+
+
 class WebStack(PrecertlyStack):
     def __init__(
         self,
@@ -102,11 +156,14 @@ class WebStack(PrecertlyStack):
         *,
         domain: str,
         certificate_arn: str,
+        live_api_origin: str | None = None,
+        live_auth_origin: str | None = None,
         **kwargs: Any,
     ):
         super().__init__(scope, construct_id, **kwargs)
         self.domain = validate_web_domain(domain)
         certificate_arn = validate_certificate_arn(certificate_arn)
+        self.live_origins = validate_live_origins(live_api_origin, live_auth_origin)
 
         self.bucket = aws_s3.Bucket(
             self,
@@ -179,6 +236,9 @@ class WebStack(PrecertlyStack):
             self, "DistributionDomainName", value=self.distribution.distribution_domain_name
         )
         cdk.CfnOutput(self, "SiteUrl", value=f"https://{self.domain}")
+        if self.live_origins is not None:
+            cdk.CfnOutput(self, "LiveApiOrigin", value=self.live_origins[0])
+            cdk.CfnOutput(self, "LiveAuthOrigin", value=self.live_origins[1])
 
     def _headers_policy(self) -> aws_cloudfront.ResponseHeadersPolicy:
         return aws_cloudfront.ResponseHeadersPolicy(
@@ -187,7 +247,8 @@ class WebStack(PrecertlyStack):
             comment="Security headers for the static site; they replace any the origin sends",
             security_headers_behavior=aws_cloudfront.ResponseSecurityHeadersBehavior(
                 content_security_policy=aws_cloudfront.ResponseHeadersContentSecurityPolicy(
-                    content_security_policy=CONTENT_SECURITY_POLICY, override=True
+                    content_security_policy=content_security_policy(self.live_origins),
+                    override=True,
                 ),
                 strict_transport_security=aws_cloudfront.ResponseHeadersStrictTransportSecurity(
                     access_control_max_age=HSTS_MAX_AGE,

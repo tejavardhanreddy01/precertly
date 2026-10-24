@@ -409,3 +409,141 @@ def test_a_certificate_outside_us_east_1_is_refused_with_a_clear_error(region: s
 def test_every_context_key_is_required_for_every_stack(key: str) -> None:
     with pytest.raises(ValueError, match=key):
         build_app(context(**{key: None}))
+
+
+# ---------------------------------------------------------------------------------------------
+# Live mode: two optional origins in connect-src
+# ---------------------------------------------------------------------------------------------
+
+GOLDEN = Path(__file__).resolve().parent / "golden" / "precertly-web.template.json"
+LIVE_API = "https://abcdefghij.execute-api.us-east-2.amazonaws.com"
+LIVE_AUTH = "https://placeholder-prefix.auth.us-east-2.amazoncognito.com"
+
+
+def _live_context(**extra: Any) -> dict[str, Any]:
+    return context(**{"liveApiOrigin": LIVE_API, "liveAuthOrigin": LIVE_AUTH, **extra})
+
+
+def _csp(template: Template) -> str:
+    config = _only(template, "AWS::CloudFront::ResponseHeadersPolicy")["Properties"]
+    return config["ResponseHeadersPolicyConfig"]["SecurityHeadersConfig"]["ContentSecurityPolicy"][
+        "ContentSecurityPolicy"
+    ]
+
+
+def test_without_the_live_context_the_template_is_byte_identical_to_the_one_on_main() -> None:
+    # tests/golden/precertly-web.template.json was synthesized from main's web_stack.py (before
+    # the live origins existed) with this test context. A change that touches the recorded-only
+    # template has to change this file on purpose.
+    template = _template().to_json()
+    assert json.dumps(template, indent=2, sort_keys=True) + "\n" == GOLDEN.read_text()
+    assert "LiveApiOrigin" not in template.get("Outputs", {})
+    assert "LiveAuthOrigin" not in template.get("Outputs", {})
+
+
+def test_with_the_live_context_connect_src_is_self_plus_exactly_the_two_origins() -> None:
+    csp = _csp(_template(_live_context()))
+    assert csp == (
+        "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+        f"font-src 'self'; connect-src 'self' {LIVE_API} {LIVE_AUTH}; base-uri 'self'; "
+        "form-action 'none'; frame-ancestors 'none'; object-src 'none'"
+    )
+
+
+def test_with_the_live_context_nothing_else_in_the_policy_loosens() -> None:
+    directives = dict(d.strip().split(" ", 1) for d in _csp(_template(_live_context())).split(";"))
+    assert directives["default-src"] == "'none'"
+    assert directives["form-action"] == "'none'"
+    assert directives["frame-ancestors"] == "'none'"
+    assert directives["object-src"] == "'none'"
+    assert directives["script-src"] == "'self'"
+    assert directives["style-src"] == "'self'"
+    assert directives["connect-src"].split() == ["'self'", LIVE_API, LIVE_AUTH]
+    text = _csp(_template(_live_context()))
+    for banned in ("*", "unsafe-inline", "unsafe-eval", "data:", "http:"):
+        assert banned not in text
+
+
+def test_the_live_context_changes_only_the_policy_and_adds_two_outputs() -> None:
+    plain = json.loads(GOLDEN.read_text())
+    live = _template(_live_context()).to_json()
+    assert live["Outputs"]["LiveApiOrigin"]["Value"] == LIVE_API
+    assert live["Outputs"]["LiveAuthOrigin"]["Value"] == LIVE_AUTH
+    del live["Outputs"]["LiveApiOrigin"], live["Outputs"]["LiveAuthOrigin"]
+    for template in (plain, live):
+        for resource in template["Resources"].values():
+            if resource["Type"] == "AWS::CloudFront::ResponseHeadersPolicy":
+                config = resource["Properties"]["ResponseHeadersPolicyConfig"]
+                csp_config = config["SecurityHeadersConfig"]["ContentSecurityPolicy"]
+                csp_config["ContentSecurityPolicy"] = ""
+    assert live == plain
+
+
+@pytest.mark.parametrize("missing", ["liveApiOrigin", "liveAuthOrigin"])
+def test_half_a_live_context_is_refused_for_every_stack(missing: str) -> None:
+    ctx = _live_context()
+    del ctx[missing]
+    with pytest.raises(ValueError, match="both or neither"):
+        build_app(ctx)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://abcdefghij.execute-api.us-east-2.amazonaws.com",
+        "https://abcdefghij.execute-api.us-east-2.amazonaws.com/",
+        "https://abcdefghij.execute-api.us-east-2.amazonaws.com/prod",
+        "https://abcdefghij.execute-api.us-east-2.amazonaws.com:443",
+        "https://*.execute-api.us-east-2.amazonaws.com",
+        "https://abcdefghij.execute-api.us-east-2.amazonaws.com.evil.example",
+        "https://user@abcdefghij.execute-api.us-east-2.amazonaws.com",
+        "https://abcdefghij.execute-api.us-east-2.amazonaws.com?x=1",
+        "https://ABCDEFGHIJ.execute-api.us-east-2.amazonaws.com",
+        "https://abcdefghij.execute-api.us-east-2.amazonaws.com; script-src *",
+        "abcdefghij.execute-api.us-east-2.amazonaws.com",
+        "",
+        5,
+    ],
+)
+def test_a_malformed_api_origin_is_refused_without_repeating_it(value: Any) -> None:
+    with pytest.raises(ValueError, match="liveApiOrigin") as error:
+        build_app(_live_context(liveApiOrigin=value))
+    if isinstance(value, str) and value:
+        assert value not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "http://placeholder-prefix.auth.us-east-2.amazoncognito.com",
+        "https://placeholder-prefix.auth.us-east-2.amazoncognito.com/",
+        "https://placeholder-prefix.auth.us-east-2.amazoncognito.com/login",
+        "https://placeholder-prefix.auth.us-east-2.amazoncognito.com:8443",
+        "https://*.auth.us-east-2.amazoncognito.com",
+        "https://placeholder-prefix.auth.us-east-2.amazoncognito.com.evil.example",
+        "https://placeholder-prefix.us-east-2.amazoncognito.com",
+        "https://-bad.auth.us-east-2.amazoncognito.com",
+        "https://placeholder-prefix.auth.us-east-2.amazoncognito.com; connect-src *",
+        "",
+        5,
+    ],
+)
+def test_a_malformed_auth_origin_is_refused_without_repeating_it(value: Any) -> None:
+    with pytest.raises(ValueError, match="liveAuthOrigin") as error:
+        build_app(_live_context(liveAuthOrigin=value))
+    if isinstance(value, str) and value:
+        assert value not in str(error.value)
+
+
+def test_the_live_origins_are_context_not_references_to_other_stacks() -> None:
+    template = _template(_live_context()).to_json()
+    text = json.dumps(template)
+    assert "Fn::ImportValue" not in text
+    assert "Fn::GetStackOutput" not in text
+
+
+def test_the_source_never_holds_a_real_live_host() -> None:
+    # Only the clearly fake placeholders of the tests may appear in the repository.
+    source = WEB_STACK_SOURCE.read_text()
+    assert "execute-api." in source  # the pattern
+    assert not re.search(r"https://[a-z0-9]+\.execute-api\.[a-z0-9-]+\.amazonaws\.com", source)

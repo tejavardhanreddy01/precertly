@@ -38,11 +38,13 @@ describe("source rules", () => {
     });
   }
 
-  it("makes no request except same-origin fetches of ./data/ files", () => {
-    const fetches = files.flatMap((f) =>
-      [...readFileSync(f, "utf8").matchAll(/\bfetch\(/g)].map(() => relative(SRC, f)),
-    );
-    expect(new Set(fetches)).toEqual(new Set(["lib/data.ts"]));
+  it("makes no request except same-origin fetches of ./data/ files, and the two live modules", () => {
+    const fetches = files
+      .filter((f) => !f.endsWith(".test.ts") && !f.endsWith(".test.tsx"))
+      .flatMap((f) => [...readFileSync(f, "utf8").matchAll(/\bfetch\(/g)].map(() => relative(SRC, f)));
+    // The live modules exist only behind the build-time switch: session.ts makes the one token
+    // exchange with the hosted UI, http.ts makes every call to the API, through its origin guard.
+    expect(new Set(fetches)).toEqual(new Set(["lib/data.ts", "lib/live/session.ts", "lib/live/http.ts"]));
     expect(readFileSync(join(SRC, "lib/data.ts"), "utf8")).toContain('base = "./data/"');
   });
 

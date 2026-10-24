@@ -122,14 +122,26 @@ Commands:
                It then invalidates only /index.html /404.html /favicon.svg /data/* and waits
                (at most 5 min) for CloudFront; on timeout the publish is still done.
                To roll back, check out an older commit and run it again (docs/deployment.md).
-  web smoke    Read-only check of the published site: 2 describe-stacks reads (the stack must be
-               CREATE_COMPLETE or UPDATE_COMPLETE; SiteUrl must be https://<hostname>), then GET
+               Live mode: when precertly-live and precertly-auth both exist, the build gets the
+               gateway origin, the hosted-UI origin and the app client id from their outputs (as
+               VITE_LIVE_* variables for the build and for check-dist; public identifiers, never
+               printed). With neither stack the build is recorded-only, with the variables empty.
+               With only one it refuses. A live-enabled build is refused unless the deployed
+               precertly-web outputs the same two origins (so its policy cannot block the site's
+               own JavaScript): run `up precertly-web` first.
+  web smoke    Read-only check of the published site: describe-stacks reads (the stack must be
+               CREATE_COMPLETE or UPDATE_COMPLETE; SiteUrl must be https://<hostname>; the two
+               live origins the policy allows, if it has them), then GET
                requests with curl (never --insecure, no cookies, redirects not followed): /, the
                security headers, the first assets/*.js and *.css named in /, four /data/ files,
                /favicon.svg, /nope (404 page) and http:// (redirect to https). One PASS or FAIL
                line per check, a summary, and a non-zero exit if any check failed; a request that
-               cannot complete is a failed check, not an abort. Uploads, invalidates and changes
-               nothing. Run it after every publish.
+               cannot complete is a failed check, not an abort. It also checks that connect-src is
+               'self' plus exactly the two live origins the stack outputs (or 'self' alone), with
+               no wildcard, that default-src, form-action and frame-ancestors are 'none', and
+               that the first .js asset names the live hosts exactly when the policy allows them
+               (values are never printed). Uploads, invalidates and changes nothing. Run it after
+               every publish.
 
   live start   Scale precertly-api-live to 1, wait for the ECS health status HEALTHY, then for the
                gateway to answer GET /health with 200, and print the seconds it took. Refuses
@@ -391,6 +403,16 @@ build_context() {
     email="REDACTED"
   fi
   CDK_CONTEXT=(-c "budgetEmail=${email}" -c "imageTag=${tag}" -c "webDomain=${domain}" -c "webCertificateArn=${arn}" -c "authDomainPrefix=${prefix}")
+  # The web stack's policy allows the two live origins when the live and auth stacks exist
+  # (resolve_web_live); no other stack is given them.
+  if [[ "$name" == "$WEB_STACK" && "$WEB_LIVE_MODE" == live ]]; then
+    local api="$WEB_LIVE_API_ORIGIN" auth="$WEB_LIVE_AUTH_ORIGIN"
+    if [[ "$redact" == true ]]; then
+      api="REDACTED"
+      auth="REDACTED"
+    fi
+    CDK_CONTEXT+=(-c "liveApiOrigin=${api}" -c "liveAuthOrigin=${auth}")
+  fi
 }
 
 # Print text with the budget address and the certificate ARN replaced, so a CDK diff can be
@@ -405,6 +427,19 @@ redact() {
   fi
   if [[ -n "${AUTH_DOMAIN_PREFIX:-}" ]]; then
     text="${text//"$AUTH_DOMAIN_PREFIX"/REDACTED}"
+  fi
+  # The live origins and the client id are public identifiers, but they are not printed: the
+  # origin first, then the bare host, so a diff or an error shows neither form.
+  local live_value live_host
+  for live_value in "$WEB_LIVE_API_ORIGIN" "$WEB_LIVE_AUTH_ORIGIN"; do
+    if [[ -n "$live_value" && "$live_value" != REDACTED ]]; then
+      live_host="${live_value#https://}"
+      text="${text//"$live_value"/REDACTED}"
+      text="${text//"$live_host"/REDACTED}"
+    fi
+  done
+  if [[ -n "$WEB_LIVE_CLIENT_ID" && "$WEB_LIVE_CLIENT_ID" != REDACTED ]]; then
+    text="${text//"$WEB_LIVE_CLIENT_ID"/REDACTED}"
   fi
   printf '%s\n' "$text"
 }
@@ -488,12 +523,88 @@ cmd_image() {
     --image-ids "imageTag=${tag}" --query 'imageDetails[0].imageDigest' --output text
 }
 
+# ---------------------------------------------------------------------------------------------
+# Live mode for the web site. The site is built with three public identifiers (the gateway's
+# origin, the Cognito hosted UI's origin and the app client id) and its Content Security Policy
+# allows exactly the first two. Both come from the stack outputs of precertly-live and
+# precertly-auth, never from a file in the repository, and are never printed (redact() knows them).
+# WEB_LIVE_MODE is "live" when both stacks exist, "recorded" when neither does, and the script
+# dies when only one does.
+# ---------------------------------------------------------------------------------------------
+
+readonly HOSTED_UI_URL_RE='^https://[a-z0-9][a-z0-9-]{1,61}[a-z0-9]\.auth\.[a-z0-9-]+\.amazoncognito\.com/?$'
+readonly CLIENT_ID_RE='^[A-Za-z0-9]{10,64}$'
+WEB_LIVE_MODE=""
+WEB_LIVE_API_ORIGIN=""
+WEB_LIVE_AUTH_ORIGIN=""
+WEB_LIVE_CLIENT_ID=""
+
+# The output value of a stack or empty when it has none (the CLI prints None).
+optional_output() {
+  local rc=0
+  probe q_stack_output "$1" "$2" || rc=$?
+  if [[ $rc -ne 0 || "$AWS_OUT" == "None" ]]; then
+    printf ''
+  else
+    printf '%s' "$AWS_OUT"
+  fi
+}
+
+resolve_web_live() {
+  if [[ -n "$WEB_LIVE_MODE" ]]; then
+    return 0
+  fi
+  if $DRY_RUN; then
+    echo "dry-run: the web stack and build get the live origins when both ${LIVE_STACK} and ${AUTH_STACK} exist, none when neither does, and the script refuses when only one does. Reads (values are never printed):"
+    q_stack_status "$LIVE_STACK"
+    q_stack_status "$AUTH_STACK"
+    q_stack_output "$LIVE_STACK" ApiUrl
+    q_stack_output "$AUTH_STACK" HostedUiBaseUrl
+    q_stack_output "$AUTH_STACK" UserPoolClientId
+    WEB_LIVE_MODE=live
+    WEB_LIVE_API_ORIGIN="REDACTED"
+    WEB_LIVE_AUTH_ORIGIN="REDACTED"
+    WEB_LIVE_CLIENT_ID="REDACTED"
+    return 0
+  fi
+  local live_rc=0 auth_rc=0 live_state auth_state
+  probe q_stack_status "$LIVE_STACK" || live_rc=$?
+  live_state="$AWS_OUT"
+  probe q_stack_status "$AUTH_STACK" || auth_rc=$?
+  auth_state="$AWS_OUT"
+  if [[ $live_rc -eq 3 && $auth_rc -eq 3 ]]; then
+    WEB_LIVE_MODE=recorded
+    echo "live mode: ${LIVE_STACK} and ${AUTH_STACK} do not exist, so the web stack and the site are recorded-only"
+    return 0
+  fi
+  if [[ $live_rc -eq 3 || $auth_rc -eq 3 ]]; then
+    die "only one of ${LIVE_STACK} and ${AUTH_STACK} exists; the web site needs both or neither. Deploy the missing one, or destroy the other"
+  fi
+  local state
+  for state in "$live_state" "$auth_state"; do
+    [[ "$state" == "CREATE_COMPLETE" || "$state" == "UPDATE_COMPLETE" ]] ||
+      die "${LIVE_STACK} and ${AUTH_STACK} must both be CREATE_COMPLETE or UPDATE_COMPLETE before the web site uses them (one is ${state})"
+  done
+  local api hosted client
+  api="$(stack_output "$LIVE_STACK" ApiUrl "$LIVE_API_URL_RE")"
+  hosted="$(stack_output "$AUTH_STACK" HostedUiBaseUrl "$HOSTED_UI_URL_RE")"
+  client="$(stack_output "$AUTH_STACK" UserPoolClientId "$CLIENT_ID_RE")"
+  WEB_LIVE_API_ORIGIN="${api%/}"
+  WEB_LIVE_AUTH_ORIGIN="${hosted%/}"
+  WEB_LIVE_CLIENT_ID="$client"
+  WEB_LIVE_MODE=live
+  echo "live mode: ${LIVE_STACK} and ${AUTH_STACK} exist; the web stack and the site get their origins (values not shown)"
+}
+
 # The real settings a stack needs on top of the budget address: precertly-web its domain and
 # certificate, precertly-auth its hosted-UI prefix and the site domain, precertly-live the site
 # domain. The other stacks need nothing (they get placeholders).
 require_stack_settings() {
   case "$1" in
-    "$WEB_STACK") require_web_settings ;;
+    "$WEB_STACK")
+      require_web_settings
+      resolve_web_live
+      ;;
     "$AUTH_STACK") require_auth_settings ;;
     "$LIVE_STACK") require_real_web_domain ;;
   esac
@@ -1499,13 +1610,46 @@ invalidation_is_done() {
   [[ $rc -eq 0 && "$AWS_OUT" == "Completed" ]]
 }
 
+# The three Vite variables for the build and for check-dist: the live origins and client id from the
+# stack outputs, or three empty values for a recorded-only build (empty, not unset, so a stray
+# VITE_LIVE_* in the shell or in web/.env.local cannot turn live mode on). Both the build and
+# check-dist get the same ones. In a dry run the values are the REDACTED placeholders.
+web_live_env() {
+  if [[ "$WEB_LIVE_MODE" == live ]]; then
+    WEB_LIVE_ENV=("VITE_LIVE_API_URL=${WEB_LIVE_API_ORIGIN}" "VITE_LIVE_HOSTED_UI_URL=${WEB_LIVE_AUTH_ORIGIN}" "VITE_LIVE_CLIENT_ID=${WEB_LIVE_CLIENT_ID}")
+  else
+    WEB_LIVE_ENV=("VITE_LIVE_API_URL=" "VITE_LIVE_HOSTED_UI_URL=" "VITE_LIVE_CLIENT_ID=")
+  fi
+}
+
 # The build, in order. Any failure stops before the first aws call that writes.
 web_build() {
+  web_live_env
   build_step "uv sync" run uv sync
   build_step "npm ci" run_in web npm ci
   build_step "npm run prepare-data" run_in web npm run prepare-data
-  build_step "npm run build" run_in web npm run build
-  build_step "check-dist" run_in web node scripts/check-dist.mjs
+  build_step "npm run build" run_in web env "${WEB_LIVE_ENV[@]}" npm run build
+  build_step "check-dist" run_in web env "${WEB_LIVE_ENV[@]}" node scripts/check-dist.mjs
+}
+
+# A live-enabled build is published only if the deployed web stack's policy allows exactly the live
+# and auth origins the build will call; otherwise the browser would block every call. The build is
+# recorded-only (and the site has no live pages) when neither stack exists.
+web_check_live_origins() {
+  if [[ "$WEB_LIVE_MODE" != live ]]; then
+    echo "build: recorded-only (no live pages in the published site)"
+    return 0
+  fi
+  local api auth
+  api="$(optional_output "$WEB_STACK" LiveApiOrigin)"
+  auth="$(optional_output "$WEB_STACK" LiveAuthOrigin)"
+  if [[ -z "$api" || -z "$auth" ]]; then
+    die "the deployed ${WEB_STACK} does not allow the live origins yet, so its Content Security Policy would block the live pages. Run scripts/deploy.sh up ${WEB_STACK} first; nothing was built or uploaded"
+  fi
+  if [[ "$api" != "$WEB_LIVE_API_ORIGIN" || "$auth" != "$WEB_LIVE_AUTH_ORIGIN" ]]; then
+    die "the live origins that ${WEB_STACK} allows are not the ones in ${LIVE_STACK} and ${AUTH_STACK}, so the published JavaScript could be blocked. Run scripts/deploy.sh up ${WEB_STACK} to update the policy; nothing was built or uploaded"
+  fi
+  echo "build: live-enabled (the deployed policy allows exactly these two origins; values not shown)"
 }
 
 # The build must have produced a site, and must not have touched tracked files (what is published
@@ -1570,6 +1714,10 @@ cmd_web_publish() {
     q_stack_output "$WEB_STACK" SiteUrl
     bucket="BUCKET_NAME"
     dist_id="DISTRIBUTION_ID"
+    resolve_web_live
+    echo "dry-run: a live-enabled build is refused unless the deployed web stack outputs the same two origins:"
+    q_stack_output "$WEB_STACK" LiveApiOrigin
+    q_stack_output "$WEB_STACK" LiveAuthOrigin
     echo "dry-run: build; any failure stops before the first upload:"
     web_build
     echo "dry-run: preview (read-only), then it asks 'Publish? [y/N]' (--yes does not skip it):"
@@ -1595,6 +1743,8 @@ cmd_web_publish() {
   dist_id="$(stack_output "$WEB_STACK" DistributionId '^[A-Z0-9]+$')"
   site_url="$(stack_output "$WEB_STACK" SiteUrl '^https://[a-z0-9.-]+$')"
 
+  resolve_web_live
+  web_check_live_origins
   web_build
   web_check_build
   local file_count
@@ -1625,7 +1775,7 @@ cmd_web_publish() {
 
 # ---------------------------------------------------------------------------------------------
 # web smoke: read-only checks of the published site, over HTTPS, with curl.
-# The only AWS calls are two describe-stacks reads; nothing is uploaded, invalidated or changed,
+# The only AWS calls are describe-stacks reads; nothing is uploaded, invalidated or changed,
 # and no request carries a cache-busting query string.
 # ---------------------------------------------------------------------------------------------
 
@@ -1647,6 +1797,10 @@ WEB_SMOKE_PASSED=0
 WEB_SMOKE_FAILED=0
 WEB_SMOKE_FAILURES=""
 ROOT_BODY=""
+# The first .js asset's body (set by smoke_asset), and the live origins the web stack allows, if any.
+JS_BODY=""
+WEB_SMOKE_API_ORIGIN=""
+WEB_SMOKE_AUTH_ORIGIN=""
 # The last response, set by fetch.
 FETCH_STATUS=""
 FETCH_VERIFY=""
@@ -1679,7 +1833,10 @@ lowercase() {
 smoke_pass() {
   WEB_SMOKE_PASSED=$((WEB_SMOKE_PASSED + 1))
   if [[ -n "${2:-}" ]]; then
-    printf 'PASS %s (%s)\n' "$1" "$(printable "${2:0:100}")"
+    # Made printable first, then cut: a cut through the middle of a host would no longer match.
+    local detail
+    detail="$(printable "$2")"
+    printf 'PASS %s (%s)\n' "$1" "${detail:0:100}"
   else
     printf 'PASS %s\n' "$1"
   fi
@@ -1688,15 +1845,18 @@ smoke_pass() {
 # FAIL WHAT EXPECTED GOT. After the first failure on a response, its first 200 characters follow
 # (once per response); a body is never printed otherwise.
 smoke_fail() {
-  local line
-  line="$1: expected $2, got $(printable "${3:0:200}")"
+  local line got
+  got="$(printable "$3")"
+  line="$1: expected $2, got ${got:0:200}"
   WEB_SMOKE_FAILED=$((WEB_SMOKE_FAILED + 1))
   WEB_SMOKE_FAILURES+="  ${line}"$'\n'
   printf 'FAIL %s\n' "$line"
   if ! $FETCH_SHOWN; then
     FETCH_SHOWN=true
     if [[ -s "$FETCH_BODY" ]]; then
-      printf '     response body starts: %s\n' "$(printable "$(head -c 200 "$FETCH_BODY")")"
+      local start
+      start="$(printable "$(head -c 2000 "$FETCH_BODY")")"
+      printf '     response body starts: %s\n' "${start:0:200}"
     else
       printf '     response body: empty\n'
     fi
@@ -1825,6 +1985,77 @@ expect_body_contains() {
   fi
 }
 
+# The sources of one directive of the Content Security Policy in the last response, one per line.
+csp_sources() {
+  header_value content-security-policy | tr ';' '\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' |
+    awk -v d="$1" '$1 == d { for (i = 2; i <= NF; i++) print $i }'
+}
+
+# connect-src is 'self' alone, or 'self' plus the two live origins the web stack outputs, and never
+# a wildcard. The origins are not printed: a failure says how many sources there were, not which.
+smoke_connect_src() {
+  local what="$1" got expected want_text wild=false
+  FETCH_SHOWN=true
+  got="$(csp_sources connect-src | LC_ALL=C sort)"
+  if [[ -n "$WEB_SMOKE_API_ORIGIN" ]]; then
+    expected="$(printf '%s\n' "'self'" "$WEB_SMOKE_API_ORIGIN" "$WEB_SMOKE_AUTH_ORIGIN" | LC_ALL=C sort)"
+    want_text="'self' plus the two live origins"
+  else
+    expected="'self'"
+    want_text="'self' only"
+  fi
+  if [[ "$got" == *"*"* ]]; then
+    wild=true
+  fi
+  if [[ -z "$got" ]]; then
+    smoke_fail "${what} content-security-policy connect-src" "$want_text" "no connect-src directive"
+  elif $wild; then
+    smoke_fail "${what} content-security-policy connect-src" "$want_text and no wildcard" "a wildcard source"
+  elif [[ "$got" == "$expected" ]]; then
+    smoke_pass "${what} content-security-policy connect-src: ${want_text}, no wildcard"
+  else
+    smoke_fail "${what} content-security-policy connect-src" "$want_text" \
+      "$(printf '%s\n' "$got" | wc -l | tr -d '[:space:]') sources that are not that set"
+  fi
+}
+
+# The published JavaScript and the deployed policy must agree. When the web stack outputs the two
+# live origins, the first .js asset must name both hosts (a recorded-only build published by
+# mistake would not); when it outputs none, the asset must name no live host (it would be blocked).
+smoke_live_build() {
+  local what="first .js asset" has_api=false has_auth=false
+  # A failure here is about what the asset names, not about its response: never echo its body.
+  FETCH_SHOWN=true
+  if $DRY_RUN; then
+    echo "check: the first .js asset names the live API host and the hosted-UI host when the web stack outputs them, and no live host when it does not (the values are never printed)"
+    return 0
+  fi
+  if [[ -z "$JS_BODY" || ! -s "$JS_BODY" ]]; then
+    smoke_fail "$what" "a body to search for the live hosts" "no body"
+    return 0
+  fi
+  if [[ -n "$WEB_SMOKE_API_ORIGIN" ]]; then
+    grep -Fq -- "${WEB_SMOKE_API_ORIGIN#https://}" "$JS_BODY" && has_api=true
+    grep -Fq -- "${WEB_SMOKE_AUTH_ORIGIN#https://}" "$JS_BODY" && has_auth=true
+    if $has_api && $has_auth; then
+      smoke_pass "${what} names the live API host and the hosted-UI host"
+    else
+      local got="neither host"
+      if $has_api; then
+        got="only the API host"
+      elif $has_auth; then
+        got="only the hosted-UI host"
+      fi
+      smoke_fail "${what}" "the live API host and the hosted-UI host (the deployed policy allows them)" \
+        "${got}; a recorded-only build may have been published"
+    fi
+  elif grep -Eq 'execute-api|amazoncognito' "$JS_BODY"; then
+    smoke_fail "${what}" "no live host (the deployed policy allows none)" "a live host"
+  else
+    smoke_pass "${what} names no live host, as the deployed policy allows none"
+  fi
+}
+
 smoke_root() {
   local base="https://${WEB_SMOKE_HOST}" what="GET /"
   ROOT_BODY=""
@@ -1837,6 +2068,8 @@ smoke_root() {
   expect_header_present "$what" content-security-policy
   expect_header "$what" content-security-policy "default-src 'none'" "default-src 'none'"
   expect_header "$what" content-security-policy "frame-ancestors 'none'" "frame-ancestors 'none'"
+  expect_header "$what" content-security-policy "form-action 'none'" "form-action 'none'"
+  smoke_connect_src "$what"
   expect_header "$what" strict-transport-security "$HSTS_RE" "max-age=${HSTS_MAX_AGE_SECONDS}"
   expect_header_lacks "$what" strict-transport-security "$HSTS_EXTRAS_RE" "no includeSubDomains and no preload"
   expect_header "$what" x-content-type-options '^nosniff$' "nosniff"
@@ -1866,6 +2099,9 @@ smoke_asset() {
   expect_status "GET /${name}" 200
   expect_header "GET /${name}" content-type "$2" "$3"
   expect_header "GET /${name}" cache-control "$CACHE_IMMUTABLE_RE" "immutable"
+  if [[ "$ext" == js && -z "$JS_BODY" ]]; then
+    JS_BODY="$FETCH_BODY"
+  fi
 }
 
 # smoke_json PATH: a data file, 200 and a JSON content type.
@@ -1912,6 +2148,7 @@ smoke_http_redirect() {
 web_smoke_checks() {
   smoke_root
   smoke_asset js '^(text|application)/javascript' "text/javascript or application/javascript"
+  smoke_live_build
   smoke_asset css '^text/css' "text/css"
   smoke_json /data/index.json
   smoke_json /data/schema.json
@@ -1929,6 +2166,9 @@ cmd_web_smoke() {
     echo "dry-run: refuses unless the stack is CREATE_COMPLETE or UPDATE_COMPLETE; reads the site URL (the only AWS calls):"
     q_stack_status "$WEB_STACK"
     q_stack_output "$WEB_STACK" SiteUrl
+    echo "dry-run: then the two live origins the policy allows, if it has them (read-only; never printed):"
+    q_stack_output "$WEB_STACK" LiveApiOrigin
+    q_stack_output "$WEB_STACK" LiveAuthOrigin
     echo "dry-run: refuses unless it is https://<hostname>. Then these requests, in this order (curl --disable --silent --show-error --max-time ${SMOKE_CURL_TIMEOUT}, --proto =https or =http, never --insecure, no cookies, redirects not followed):"
     WEB_SMOKE_HOST="$DRY_RUN_HOST"
     web_smoke_checks
@@ -1940,12 +2180,21 @@ cmd_web_smoke() {
   [[ "$site_url" =~ ^https://[a-z0-9.-]+$ ]] ||
     die "the SiteUrl output of ${WEB_STACK} is '$(printable "$site_url")', not https://<hostname>; web smoke sends nothing to a site that is not https"
   WEB_SMOKE_HOST="${site_url#https://}"
+  WEB_SMOKE_API_ORIGIN="$(optional_output "$WEB_STACK" LiveApiOrigin)"
+  WEB_SMOKE_AUTH_ORIGIN="$(optional_output "$WEB_STACK" LiveAuthOrigin)"
+  if [[ -n "$WEB_SMOKE_API_ORIGIN" || -n "$WEB_SMOKE_AUTH_ORIGIN" ]]; then
+    [[ "$WEB_SMOKE_API_ORIGIN" =~ $LIVE_API_URL_RE && "$WEB_SMOKE_AUTH_ORIGIN" =~ $HOSTED_UI_URL_RE ]] ||
+      die "the LiveApiOrigin and LiveAuthOrigin outputs of ${WEB_STACK} are not both a gateway origin and a hosted-UI origin"
+    # redact() (used by printable) now hides them in anything printed.
+    WEB_LIVE_API_ORIGIN="$WEB_SMOKE_API_ORIGIN"
+    WEB_LIVE_AUTH_ORIGIN="$WEB_SMOKE_AUTH_ORIGIN"
+  fi
   WEB_SMOKE_TMP="$(mktemp -d)"
   trap web_smoke_cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
-  echo "web smoke: ${site_url} (read-only; the AWS calls were two describe-stacks reads)"
+  echo "web smoke: ${site_url} (read-only; the AWS calls were describe-stacks reads)"
   web_smoke_checks
 
   echo

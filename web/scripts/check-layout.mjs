@@ -10,12 +10,27 @@
 // sideways on their own, and checks that a case page does not scroll itself (its panes do), that
 // the tour bar is pinned inside the viewport, that a false-approval pill sits whole inside the
 // criteria pane, and that the first highlight is centered in the chart panel (when the chart is
-// on screen: under 1024 px it is behind the Evidence tab). Exit code 1 if any check fails.
-import { readFileSync } from "node:fs";
+// on screen: under 1024 px it is behind the Evidence tab).
+//
+//   node scripts/check-layout.mjs --live
+//
+// builds the site with clearly fake live placeholders, serves it from a local folder, answers every
+// request itself with Playwright's page.route (nothing leaves the machine; a request to anywhere
+// else fails the check) and measures the live page at 320, 390 and 1280 px in four states: the
+// environment down, up and signed out, a run in progress, and a result shown.
+//
+// It also checks the top bar itself:
+// its content must not be wider than the bar, it must keep one line, and the Repository link must be
+// in view on every route (a case page has no footer). A fourth nav item, "Live", is added to the
+// bar before measuring when the page has none, to prove the room for it. Exit code 1 if any check fails.
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
+import { tmpdir } from "node:os";
+import { extname, join, normalize } from "node:path";
 import { chromium } from "playwright";
-import { createServer } from "vite";
+import { build as viteBuild, createServer } from "vite";
 
-const WIDTHS = [360, 390, 768, 1280];
+const WIDTHS = [320, 360, 390, 768, 1280];
 const HEIGHT = 900;
 const dataDir = new URL("../public/data/", import.meta.url);
 
@@ -84,6 +99,28 @@ const ROUTES = [
 
 // What to run in the page: the widths, and which elements stick out past the viewport edge.
 function measure({ scrollChunk, workspace }) {
+  // The bar must have room for one more short nav item than the recorded site has.
+  const nav = document.querySelector('header nav[aria-label="Main"]');
+  if (nav && !nav.querySelector('a[href="#/live"]')) {
+    const extra = document.createElement("a");
+    extra.href = "#/live";
+    extra.textContent = "Live";
+    extra.className = nav.firstElementChild?.className ?? "";
+    nav.appendChild(extra);
+  }
+  const hadLiveNav = Boolean(nav?.querySelector('a[href="#/live"]'));
+  const bar = document.querySelector("header > div");
+  let barProblem = null;
+  if (!bar) barProblem = "the top bar is missing";
+  else {
+    if (bar.scrollWidth > bar.clientWidth) barProblem = `the top bar content is ${bar.scrollWidth} px in a bar ${bar.clientWidth} px wide`;
+    else if (bar.getBoundingClientRect().height > document.querySelector("header").getBoundingClientRect().height + 1) barProblem = "the top bar wrapped";
+    const repo = [...bar.querySelectorAll("a")].find((a) => (a.textContent ?? "").includes("Repository"));
+    const r = repo?.getBoundingClientRect();
+    if (!barProblem && (!r || r.width < 24 || r.right > document.documentElement.clientWidth + 0.5 || r.left < 0)) {
+      barProblem = "the Repository link is missing or outside the viewport";
+    }
+  }
   const viewport = document.documentElement.clientWidth;
   const scrollWidth = document.documentElement.scrollWidth;
   const label = (el) => {
@@ -163,7 +200,7 @@ function measure({ scrollChunk, workspace }) {
       top: Math.round(rect.top - visibleTop),
     };
   }
-  return { viewport, scrollWidth, wide: wide.slice(0, 6), inner: inner.slice(0, 6), falseApprovalClipped, workspaceProblem, scroll };
+  return { viewport, scrollWidth, wide: wide.slice(0, 6), inner: inner.slice(0, 6), falseApprovalClipped, workspaceProblem, barProblem, hadLiveNav, scroll };
 }
 
 // A mark that fits the visible area is centered within 12 px (or the content ends first); one taller
@@ -175,7 +212,192 @@ function scrollProblem(sc) {
   return `the first mark is ${sc.offCenter} px from the center of the panel`;
 }
 
+// ---------------------------------------------------------------------------------------------
+// --live: the live page, with every request answered by this script
+// ---------------------------------------------------------------------------------------------
+
+const LIVE_WIDTHS = [320, 390, 1280];
+// Clearly fake, of the right shape. They are built into a folder in the temp directory and never
+// leave this machine: every request to them is answered by page.route below.
+const FAKE = {
+  VITE_LIVE_API_URL: "https://abcdefghij.execute-api.us-east-2.amazonaws.com",
+  VITE_LIVE_HOSTED_UI_URL: "https://placeholder-prefix.auth.us-east-2.amazoncognito.com",
+  VITE_LIVE_CLIENT_ID: "PlaceholderClientId0123456789",
+};
+const contract = JSON.parse(readFileSync(new URL("../src/lib/live/contract.fixture.json", import.meta.url), "utf8"));
+// What the page keeps in sessionStorage between leaving for the sign-in page and coming back.
+const SIGN_IN_KEY = "precertly.live.signin";
+
+const LIVE_STATES = [
+  {
+    // A case page in a live-enabled build has the Run live link in its summary bar.
+    name: "case page, Run live link",
+    hash: "#/cases/facet-03",
+    workspace: true,
+    scenario: { health: 200 },
+    wait: '[data-testid="run-live-link"]',
+  },
+  { name: "live: environment down", scenario: { health: 500 }, wait: '[data-testid="environment"] [data-state="down"]' },
+  { name: "live: up, signed out", scenario: { health: 200 }, wait: '[data-testid="signin"] button' },
+  {
+    name: "live: run in progress",
+    scenario: { health: 200, signedIn: true, poll: "judging" },
+    click: "Run live",
+    wait: '[data-testid="progress"] [data-stage="judging"][data-state="current"]',
+  },
+  {
+    name: "live: result shown",
+    scenario: { health: 200, signedIn: true, poll: "done" },
+    click: "Run live",
+    wait: '[data-testid="live-result"]',
+    timeout: 20000,
+  },
+];
+
+const CONTENT_TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml" };
+
+function serve(dir) {
+  const server = createHttpServer((req, res) => {
+    const path = new URL(req.url ?? "/", "http://localhost").pathname;
+    const file = normalize(join(dir, path === "/" ? "index.html" : path));
+    if (!file.startsWith(dir)) {
+      res.writeHead(403).end();
+      return;
+    }
+    try {
+      const body = readFileSync(file);
+      res.writeHead(200, { "content-type": CONTENT_TYPES[extname(file)] ?? "application/octet-stream" });
+      res.end(body);
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+/** Answers every request: the site from the local server, the fake API and the fake sign-in page from here. */
+function interceptor(origin, scenario, stray) {
+  const apiHost = new URL(FAKE.VITE_LIVE_API_URL).host;
+  const authHost = new URL(FAKE.VITE_LIVE_HOSTED_UI_URL).host;
+  const cors = {
+    "access-control-allow-origin": origin,
+    "access-control-allow-headers": "authorization,content-type",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+  };
+  const json = (route, status, body) =>
+    route.fulfill({ status, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify(body) });
+  return async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin === origin) return route.continue();
+    if (url.host === apiHost || url.host === authHost) {
+      if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+      if (url.host === authHost && url.pathname === "/oauth2/token") {
+        return json(route, 200, { access_token: "FAKE.LAYOUT.TOKEN", token_type: "Bearer", expires_in: 3600 });
+      }
+      if (url.host === apiHost && url.pathname === "/health") {
+        return scenario.health === 200 ? json(route, 200, { status: "ok" }) : json(route, 500, { message: "Internal Server Error" });
+      }
+      if (url.host === apiHost && url.pathname === "/live/runs" && request.method() === "POST") {
+        return json(route, 202, contract.started);
+      }
+      if (url.host === apiHost && url.pathname.startsWith("/live/runs/")) {
+        return json(route, 200, scenario.poll === "done" ? contract.run_states.done : contract.run_states.judging);
+      }
+    }
+    // Anything else is not answered and is a failure of this check: no real host is contacted.
+    stray.push(`${url.protocol}//${url.host.replace(/^[^.]+/, "<id>")}${url.pathname}`);
+    return route.abort();
+  };
+}
+
+async function runLive() {
+  const root = new URL("../", import.meta.url).pathname;
+  const out = mkdtempSync(join(tmpdir(), "check-layout-live-"));
+  const saved = Object.fromEntries(Object.keys(FAKE).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, FAKE);
+  try {
+    await viteBuild({ root, logLevel: "error", build: { outDir: out, emptyOutDir: true } });
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+  const server = await serve(out);
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const browser = await chromium.launch();
+  const failures = [];
+  const rows = [];
+  try {
+    for (const state of LIVE_STATES) {
+      const cells = [];
+      for (const width of LIVE_WIDTHS) {
+        const context = await browser.newContext({ viewport: { width, height: HEIGHT }, reducedMotion: "reduce" });
+        const page = await context.newPage();
+        const stray = [];
+        await page.route("**/*", interceptor(origin, state.scenario, stray));
+        try {
+          let target = `${origin}/${state.hash ?? "#/live/facet-03"}`;
+          if (state.scenario.signedIn) {
+            // A return from the sign-in page: the attempt it stored, and the code and state in the address.
+            await context.addInitScript(
+              ([key, attempt]) => {
+                if (!window.sessionStorage.getItem("__layout_seeded")) {
+                  window.sessionStorage.setItem(key, JSON.stringify({ ...attempt, createdAt: Date.now() }));
+                  window.sessionStorage.setItem("__layout_seeded", "1");
+                }
+              },
+              [SIGN_IN_KEY, { state: "STATE", verifier: "V".repeat(64), returnHash: "#/live/facet-03" }],
+            );
+            target = `${origin}/?code=FAKECODE&state=STATE`;
+          }
+          await page.goto(target);
+          await page.waitForSelector("main h1", { timeout: 15000 });
+          if (state.click) {
+            await page.getByRole("button", { name: state.click }).click({ timeout: 15000 });
+          }
+          await page.waitForSelector(state.wait, { timeout: state.timeout ?? 15000 });
+          await page.evaluate(() => document.fonts?.ready);
+          await page.waitForTimeout(400);
+          const m = await page.evaluate(measure, { scrollChunk: null, workspace: state.workspace === true });
+          const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.barProblem !== null || m.workspaceProblem !== null || !m.hadLiveNav || stray.length > 0;
+          const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.barProblem !== null ? " BAR" : m.workspaceProblem !== null ? " PAGE" : !m.hadLiveNav ? " NAV" : stray.length > 0 ? " NET" : "";
+          cells.push(`${m.scrollWidth}/${m.viewport}${flag}`);
+          if (over) failures.push({ route: state.name, width, stray, ...m });
+        } finally {
+          await context.close();
+        }
+      }
+      rows.push({ route: state.name, cells });
+    }
+  } finally {
+    await browser.close();
+    server.close();
+    rmSync(out, { recursive: true, force: true });
+  }
+  const col = 18;
+  console.log(`live page, scrollWidth/viewport at ${LIVE_WIDTHS.join(", ")} px (OVER = page scrolls sideways, CLIP = a container scrolls sideways, BAR = the top bar overflows, PAGE = a case page scrolls itself, NAV = no Live item in the bar, NET = a request left the page's stand-in server and fake API)`);
+  console.log("state".padEnd(30) + LIVE_WIDTHS.map((w) => String(w).padEnd(col)).join(""));
+  for (const r of rows) console.log(r.route.padEnd(30) + r.cells.map((c) => c.padEnd(col)).join(""));
+  if (failures.length > 0) {
+    console.error(`\n${failures.length} measurement(s) failed:`);
+    for (const f of failures) {
+      console.error(`  ${f.route} at ${f.width}px: scrollWidth ${f.scrollWidth}, viewport ${f.viewport}`);
+      for (const w of f.wide) console.error(`    right edge ${w.right}: ${w.el} "${w.text}"`);
+      for (const w of f.inner) console.error(`    scrolls sideways inside (content ${w.right}): ${w.el} "${w.text}"`);
+      if (f.barProblem) console.error(`    top bar: ${f.barProblem}`);
+      if (f.workspaceProblem) console.error(`    case page: ${f.workspaceProblem}`);
+      if (!f.hadLiveNav) console.error("    the top bar has no Live item");
+      for (const u of f.stray) console.error(`    request that was not answered: ${u}`);
+    }
+    process.exit(1);
+  }
+  console.log("\ncheck-layout --live: no horizontal overflow in any live state, the top bar fits with the Live item, and no request left the machine.");
+}
+
 async function main() {
+  if (process.argv.includes("--live")) return runLive();
   const urlArg = process.argv.indexOf("--url");
   let server = null;
   let base;
@@ -212,8 +434,8 @@ async function main() {
           await page.waitForTimeout(400);
           const m = await page.evaluate(measure, { scrollChunk: route.scrollChunk ?? null, workspace: route.workspace === true });
           const badScroll = m.scroll !== null && scrollProblem(m.scroll) !== null;
-          const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.falseApprovalClipped || m.workspaceProblem !== null || badScroll;
-          const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.falseApprovalClipped ? " PILL" : m.workspaceProblem !== null ? " PAGE" : badScroll ? " SCROLL" : "";
+          const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.falseApprovalClipped || m.workspaceProblem !== null || m.barProblem !== null || badScroll;
+          const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.falseApprovalClipped ? " PILL" : m.workspaceProblem !== null ? " PAGE" : m.barProblem !== null ? " BAR" : badScroll ? " SCROLL" : "";
           cells.push(`${m.scrollWidth}/${m.viewport}${flag}`);
           if (over) failures.push({ route: route.name, width, ...m });
         } finally {
@@ -227,8 +449,8 @@ async function main() {
     await server?.close();
   }
 
-  const col = 20;
-  console.log(`scrollWidth/viewport at ${WIDTHS.join(", ")} px (OVER = page scrolls sideways, CLIP = a container scrolls sideways, PILL = false-approval pill clipped, PAGE = a case page scrolls itself or its tour bar or panes are off, SCROLL = first highlight not centered in the chart panel)`);
+  const col = 18;
+  console.log(`scrollWidth/viewport at ${WIDTHS.join(", ")} px (OVER = page scrolls sideways, CLIP = a container scrolls sideways, PILL = false-approval pill clipped, PAGE = a case page scrolls itself or its tour bar or panes are off, BAR = the top bar overflows, wraps or lost the Repository link, SCROLL = first highlight not centered in the chart panel)`);
   console.log("route".padEnd(36) + WIDTHS.map((w) => String(w).padEnd(col)).join(""));
   for (const r of rows) console.log(r.route.padEnd(36) + r.cells.map((c) => c.padEnd(col)).join(""));
 
@@ -241,6 +463,7 @@ async function main() {
       if (f.scroll && scrollProblem(f.scroll)) console.error(`    chart scroll: ${scrollProblem(f.scroll)}`);
       if (f.falseApprovalClipped) console.error("    the FALSE APPROVAL pill is clipped by the criteria pane or leaves no room for the text");
       if (f.workspaceProblem) console.error(`    case page: ${f.workspaceProblem}`);
+      if (f.barProblem) console.error(`    top bar: ${f.barProblem}`);
     }
     process.exit(1);
   }

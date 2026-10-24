@@ -60,7 +60,7 @@ export function RunChip() {
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-2.5 text-xs font-medium text-ink-2 hover:bg-sunken"
+        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line-strong bg-surface text-xs max-sm:w-8 max-sm:justify-center sm:px-2.5 font-medium text-ink-2 hover:bg-sunken"
       >
         <IconInfo size={14} />
         <span className="max-sm:sr-only">Recorded runs on synthetic data</span>
