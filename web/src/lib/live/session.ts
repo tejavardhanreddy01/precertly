@@ -324,7 +324,7 @@ export class LiveSession {
 export function browserSessionDeps(config: { hostedUiOrigin: string; clientId: string }): SessionDeps {
   return {
     ...config,
-    fetch: (input, init) => window.fetch(input, init),
+    fetch: window.fetch.bind(window),
     now: () => Date.now(),
     location: {
       get origin() {

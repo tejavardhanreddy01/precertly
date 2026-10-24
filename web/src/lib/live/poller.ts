@@ -149,12 +149,16 @@ export class RunController {
     this.#set({ phase: "idle" });
   }
 
+  /** Makes a disposed controller usable again. React StrictMode runs an effect's cleanup and then its setup again. */
+  activate(): void {
+    this.#disposed = false;
+  }
+
   dispose(): void {
     this.#disposed = true;
     this.#abort?.abort();
     this.#abort = null;
     this.#clear();
-    this.#listeners.clear();
   }
 
   #schedule(ms: number): void {

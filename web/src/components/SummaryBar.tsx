@@ -1,3 +1,4 @@
+import { useLiveEnabled } from "../lib/live-feature";
 import { href } from "../lib/router";
 import { useIndex } from "../lib/index-context";
 import { countVerdicts } from "../lib/verdicts";
@@ -14,6 +15,7 @@ import { CorrectMark, LabelsOnlyBadge } from "./ui";
  */
 export function SummaryBar({ file, row }: { file: CaseFile; row: CaseRow }) {
   const { policies } = useIndex();
+  const live = useLiveEnabled();
   const policyTitle = policies.find((p) => p.id === file.policy)?.title ?? file.policy;
   const verdicts = file.result?.verdicts ?? [];
   const counts = countVerdicts(verdicts);
@@ -46,6 +48,15 @@ export function SummaryBar({ file, row }: { file: CaseFile; row: CaseRow }) {
             </span>
           ) : null}
         </span>
+        {live ? (
+          <a
+            href={href(["live", file.id])}
+            className="rounded-md border border-line-strong px-2 py-0.5 text-sm font-medium text-accent hover:bg-sunken"
+            data-testid="run-live-link"
+          >
+            Run live
+          </a>
+        ) : null}
         <span className="flex items-center gap-2 max-lg:contents">
           <span className="flex items-center gap-2 max-lg:hidden">
             <span className="text-xs text-ink-3">Expected</span>

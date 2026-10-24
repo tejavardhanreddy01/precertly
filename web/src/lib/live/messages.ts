@@ -31,3 +31,15 @@ export const STAGE_LABELS = {
   ingesting: "Ingesting the chart",
   judging: "Judging the criteria",
 } as const;
+
+/** Short names for the stages, for the timings after a run. */
+export const STAGE_NAMES = {
+  waking_database: "Waking the database",
+  checking_limits: "Checking the daily limits",
+  ingesting: "Ingesting the chart",
+  judging: "Judging the criteria",
+} as const;
+
+/** Shown if a result's own notice came back empty; the server's notice is shown whenever it sends one. */
+export const NOTICE_FALLBACK =
+  "Single unregistered run, not part of the eval, no accuracy claim. Results are not stored.";

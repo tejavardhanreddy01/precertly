@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useLiveEnabled } from "../lib/live-feature";
 import { isKnownRoute, parseHash, useHash } from "../lib/router";
 import { IconCode, IconMark } from "./icons";
 import { RunChip } from "./RunChip";
@@ -10,11 +11,15 @@ const NAV: { label: string; path: string; href: string }[] = [
   { label: "Policies", path: "policies", href: "#/policies" },
   { label: "About", path: "about", href: "#/about" },
 ];
+// Present only in a build with live mode.
+const LIVE_NAV = { label: "Live", path: "live", href: "#/live" };
 
 function TopBar({ withRun }: { withRun: boolean }) {
   const path = parseHash(useHash()).path;
+  const live = useLiveEnabled();
+  const items = live ? [...NAV, LIVE_NAV] : NAV;
   // An address with no page (#/nope, #/policies/a/b) highlights nothing.
-  const current = isKnownRoute(path) ? path[0] : undefined;
+  const current = isKnownRoute(path, live) ? path[0] : undefined;
   return (
     <header className="sticky top-0 z-30 h-(--size-topbar) shrink-0 border-b border-line bg-surface">
       <div className="mx-auto flex h-full max-w-page items-center gap-1 px-2 sm:gap-4 sm:px-6">
@@ -31,7 +36,7 @@ function TopBar({ withRun }: { withRun: boolean }) {
         </a>
         {withRun ? (
           <nav aria-label="Main" className="flex items-center sm:gap-0.5">
-            {NAV.map((item) => (
+            {items.map((item) => (
               <a
                 key={item.path}
                 href={item.href}
