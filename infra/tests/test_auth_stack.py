@@ -156,9 +156,32 @@ def test_outputs() -> None:
     outputs = _template().to_json()["Outputs"]
     named = {k for k in outputs if not k.startswith("PublishOutput")}
     assert named == {"UserPoolId", "UserPoolClientId", "HostedUiBaseUrl", "IssuerUrl"}
-    assert outputs["IssuerUrl"]["Value"]["Fn::Join"][1][0] == "https://"
+    issuer = _flat(outputs["IssuerUrl"]["Value"])
+    assert issuer == "https://cognito-idp.{AWS::Region}.amazonaws.com/{UserPool6BA7E5F2}"
     assert outputs["HostedUiBaseUrl"]["Value"]["Fn::Join"][1][0] == "https://"
     assert all("Export" not in o for o in outputs.values())
+
+
+def _flat(value: Any) -> str:
+    """A template value as text, with references as {logical id} or {pseudo parameter}."""
+    if isinstance(value, str):
+        return value
+    if "Ref" in value:
+        return "{" + value["Ref"] + "}"
+    if "Fn::GetAtt" in value:
+        return "{" + ".".join(value["Fn::GetAtt"]) + "}"
+    return "".join(_flat(part) for part in value["Fn::Join"][1])
+
+
+def test_the_issuer_has_one_scheme_whatever_the_pool_attributes_look_like() -> None:
+    template = _template()
+    text = json.dumps(template.to_json())
+    assert "https://https://" not in text
+    assert "ProviderURL" not in text  # that attribute already includes "https://"
+    issuer = _flat(template.to_json()["Outputs"]["IssuerUrl"]["Value"])
+    assert issuer.count("https://") == 1
+    assert "cognito-idp." in issuer
+    assert issuer.endswith("/{" + next(iter(_resources(template, "AWS::Cognito::UserPool"))) + "}")
 
 
 def test_the_stack_refers_to_no_other_stack() -> None:

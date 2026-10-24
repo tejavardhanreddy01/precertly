@@ -17,7 +17,7 @@ import re
 from typing import Any
 
 import aws_cdk as cdk
-from aws_cdk import aws_cognito
+from aws_cdk import Aws, aws_cognito
 from constructs import Construct
 
 import names
@@ -81,7 +81,12 @@ class AuthStack(PrecertlyStack):
         )
         self.client = self._client(web_domain)
         # The `iss` claim of every token: https://cognito-idp.<region>.amazonaws.com/<pool id>.
-        self.issuer_url = cdk.Fn.join("", ["https://", self.user_pool.user_pool_provider_url])
+        # Built from its parts on purpose: the pool's ProviderURL attribute already starts with
+        # "https://" (a deploy of precertly-live failed on "https://https://...").
+        self.issuer_url = cdk.Fn.join(
+            "",
+            ["https://cognito-idp.", Aws.REGION, ".amazonaws.com/", self.user_pool.user_pool_id],
+        )
         cdk.CfnOutput(self, "UserPoolId", value=self.user_pool.user_pool_id)
         cdk.CfnOutput(self, "UserPoolClientId", value=self.client.user_pool_client_id)
         cdk.CfnOutput(self, "HostedUiBaseUrl", value=self.domain.base_url())

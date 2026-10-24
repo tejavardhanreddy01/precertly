@@ -500,11 +500,33 @@ def test_authorizer_checks_the_cognito_issuer_and_client() -> None:
     stack, output = _output_name(audience)
     assert stack == "precertly-auth"
     assert "UserPoolWebClient" in output
-    parts = authorizer["JwtConfiguration"]["Issuer"]["Fn::Join"][1]
-    assert parts[0] == "https://"
-    stack, output = _output_name(parts[1])
-    assert stack == "precertly-auth"
-    assert "ProviderURL" in output
+    issuer = _flat(authorizer["JwtConfiguration"]["Issuer"])
+    # One scheme, the regional Cognito host and the pool id (a reference to the auth stack).
+    assert issuer.startswith("https://cognito-idp.{AWS::Region}.amazonaws.com/{precertly-auth:")
+    assert "UserPool" in issuer
+    assert issuer.count("https://") == 1
+
+
+def _flat(value: Any) -> str:
+    """A template value as text: literals as they are, a reference to another stack as
+    {stack:output} and a pseudo parameter as {name}."""
+    if isinstance(value, str):
+        return value
+    if "Ref" in value:
+        return "{" + value["Ref"] + "}"
+    if "Fn::GetStackOutput" in value:
+        inner = value["Fn::GetStackOutput"]
+        return "{" + inner["StackName"] + ":" + inner["OutputName"] + "}"
+    return "".join(_flat(part) for part in value["Fn::Join"][1])
+
+
+def test_the_authorizer_issuer_has_one_scheme_and_no_provider_url() -> None:
+    template = _template()
+    authorizer = _only(template, "AWS::ApiGatewayV2::Authorizer")["Properties"]
+    assert "https://https://" not in _flat(authorizer["JwtConfiguration"]["Issuer"])
+    assert "https://https://" not in json.dumps(template.to_json())
+    # ProviderURL already contains the scheme; the issuer must not be built from it.
+    assert "ProviderURL" not in json.dumps(template.to_json())
 
 
 def _integrations(template: Template) -> dict[str, dict[str, Any]]:
