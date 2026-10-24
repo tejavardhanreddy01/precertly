@@ -3945,6 +3945,17 @@ def test_web_smoke_fails_a_live_build_published_over_a_recorded_only_policy(
     _assert_no_live_values(result)
 
 
+def test_web_smoke_runs_37_checks_in_either_mode(stub_bin: Path) -> None:
+    # 34 before the live checks, plus form-action, connect-src and the live build check.
+    recorded = _smoke(stub_bin)
+    assert "37 passed, 0 failed" in recorded.stdout, recorded.stdout[-400:]
+
+
+def test_web_smoke_runs_37_checks_for_a_live_site_too(stub_bin: Path) -> None:
+    live = _smoke(stub_bin, outputs=WEB_ALLOWS, site=_live_site())
+    assert "37 passed, 0 failed" in live.stdout, live.stdout[-400:]
+
+
 def test_web_smoke_passes_a_recorded_only_site_with_no_live_origins(stub_bin: Path) -> None:
     result = _smoke(stub_bin)
     assert result.returncode == 0, _output(result)

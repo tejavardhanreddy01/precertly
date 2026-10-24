@@ -1,6 +1,6 @@
 # Live infrastructure (auth and live stacks)
 
-Checked 2026-10-23, by synthesis and assertion tests only. **Nothing here is deployed**: no AWS call was made, no image with the live code has been pushed, and nothing has run against Cognito, API Gateway, Aurora or Bedrock. Do not call it live, deployed or running. How to deploy and operate it is in [deployment.md](deployment.md#the-live-environment-auth-and-live-stacks).
+Written and checked 2026-10-23 by synthesis and assertion tests. **The owner reports (owner-reported from their CLI output and browser; Claude did not run or see it) that both stacks were deployed and smoke-tested on 2026-10-23**: `precertly-live` from `main` at `144a557` (the third attempt, `CREATE_COMPLETE` at about 23:03, 22 resources, image `sha-144a55766cff`), `precertly-auth` created at about 21:30 and updated at about 22:45, `live smoke` passed at 23:18, a run of `facet-01` passed at 23:29 (inside the task, not through the gateway by a signed-in user), and the first hosted-UI sign-in worked. Say "deployed and smoke-tested", not "live"; the items under Unverified below that the owner's report does not cover are still unverified. How to deploy and operate it is in [deployment.md](deployment.md#the-live-environment-auth-and-live-stacks).
 
 ```
 browser -> HTTP API (JWT authorizer, throttling, CORS) -> VPC link -> Cloud Map (SRV)
@@ -102,7 +102,7 @@ No NAT gateway, load balancer, interface endpoint, WAF or Cognito advanced secur
 
 ## Unverified
 
-None of this has run. In particular:
+Items 1 to 11 were open when this was written (2026-10-23); the owner's report covers the deployment itself, the hosted-UI sign-in and the cold start of one run inside the task, and nothing else on this list. In particular:
 
 1. **That the JWT authorizer accepts the access token.** The AWS documentation says it does (above); the spike had no authorizer. The `openid` scope requirement depends on the access token carrying that scope; if the web client asks for different scopes, every request is a 403.
 2. **That the parameter mapping works with the Cloud Map integration**: that `overwrite:header.x-precertly-actor` = `$context.authorizer.claims.sub` is applied on a private integration to a service-discovery target, and that the app then sees the user's `sub` (a 36-character id the actor pattern accepts). The spike had no mapping.
@@ -115,6 +115,10 @@ None of this has run. In particular:
 9. **Throttling and the gateway's default endpoint**: the stage throttle of 2 a second with burst 5 is applied to the default route settings; whether bursts from the web UI's polling stay under it is untested. The default `execute-api` endpoint is on (no custom domain), so `/health` is public.
 10. **The issuer string.** The synthesized value was checked in tests (one `https://`, the regional Cognito host, the pool id reference) but it is only proven by a successful deploy of `precertly-live`: the previous bug passed synthesis and failed in API Gateway.
 11. **All prices and costs** in the table above.
+12. **A signed-in call through the gateway** from a browser: that the access token reaches the app as the user (items 1 and 2 above), checked end to end.
+13. **CORS on the actual `GET /health` response.** Only the preflight was checked (`live smoke`, 2026-10-23 at 23:18); the allow-origin header on the response itself, which the browser needs, was not.
+14. **Whether Cognito's `/oauth2/token` accepts a cross-origin browser POST from the site.** The web sign-in exchanges its code with one `fetch` to that endpoint; if the endpoint sends no CORS headers for the site's origin, the exchange fails in the browser.
+15. **The web part against the real gateway and hosted UI.** The Live page (`web/`, in code, not published) was checked with stubs only; its Content Security Policy, with the two origins in `connect-src`, has not been seen by a browser.
 
 ## Tests
 
