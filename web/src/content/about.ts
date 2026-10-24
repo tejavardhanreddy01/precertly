@@ -118,7 +118,7 @@ export const GATES: readonly Gate[] = [
     gate: "Verdict flips across repeated runs",
     threshold: "Reported; any flip on a not_met or insufficient label is investigated",
     current:
-      "3 of 184 verdicts differ between the two runs; the largest measured difference between two runs is 14 of 184",
+      "3 of 184 verdicts differ between the two recorded runs; the largest difference measured anywhere is 14 of 184",
     status: "reported",
   },
   {
@@ -161,7 +161,7 @@ export const LIMITATIONS: readonly Limitation[] = [
   },
   {
     title: "Runs are not exactly repeatable",
-    text: "At temperature 0, two runs on identical evidence differed on 14 of 184 verdicts at most, so small differences are noise.",
+    text: "At temperature 0, two runs on identical evidence are not identical: 3 of 184 verdicts differ between the two recorded runs; the largest difference measured anywhere is 14 of 184. Small differences are noise.",
   },
   {
     title: "Synthetic data",

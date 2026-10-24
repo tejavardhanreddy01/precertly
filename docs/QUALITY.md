@@ -123,7 +123,7 @@ Experiment 2 (line-level evidence handles) was tried and reverted; prompt versio
 | False-approval rate on the eval set | Under 2%, and zero on adversarial injection cases. The gate is only testable once the set has enough negative labels; until then, results report raw counts (for example 2 of 9), not a rate | 1 of 9 not_met or insufficient labels in each run: fails, though the gate is not meaningful at this sample size. No injection cases yet |
 | Criterion accuracy | Over 90% | 96.2% and 95.7%: passes |
 | Citation precision | Over 90% | 74.4% and 74.8%: fails |
-| Verdict flips across repeated runs | Reported; any flip on a `not_met` or `insufficient` label is investigated | 3 of 184 verdicts differ between the two runs; the largest measured difference between two runs is 14 of 184 |
+| Verdict flips across repeated runs | Reported; any flip on a `not_met` or `insufficient` label is investigated | 3 of 184 verdicts differ between the two recorded runs; the largest difference measured anywhere is 14 of 184 |
 | PAS conformance | Zero validator errors on every draft; no warning outside the allowlist | 0 errors on 11 of 11 facet drafts; 383 warnings, all allowlisted (X12 terminology, base R4 identifier-type, narrative best practice) |
 | CI | Green, with database tests running, not skipped. Separate jobs: `lint` (ruff check, ruff format --check), `typecheck` (pyright, standard mode, on `src/`), `test` (`alembic upgrade head` and `alembic check` on the service database, `evals/build_cases.py --check`, pytest) and `security` (`pip-audit`) | Green; database tests run; pyright reports no errors, with no baseline |
 
