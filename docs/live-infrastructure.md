@@ -71,6 +71,8 @@ The task has a public IP only because the VPC has no NAT or endpoints and the im
 
 There is no `$default` route and no catch-all, so any other path ends at the gateway with a 404 and never reaches the task. Stage `$default`: auto deploy, throttle 2 requests per second, burst 5. CORS: origin `https://<webDomain>` only, methods GET, POST, OPTIONS, headers `authorization` and `content-type`, max age 1 hour, no credentials.
 
+Issuer: the authorizer's issuer, and the `IssuerUrl` output of `precertly-auth`, is `https://cognito-idp.<region>.amazonaws.com/<user pool id>`, built from `Aws.REGION` and the pool id. It is not built from the pool's `ProviderURL` attribute, which already starts with `https://`: the first deploy of `precertly-live` (2026-10-23) was rejected by API Gateway ("Issuer is not a valid URL for JWT Authorizer") and rolled back because the code had prefixed `https://` to that attribute. The live stack reads the pool id through a weak cross-stack reference (`PublishOutputRefUserPool...` on the auth stack); the `ProviderURL` publish output no longer exists.
+
 Audience check: AWS documents that the HTTP API JWT authorizer matches the configured audience against `aud`, or against `client_id` when `aud` is absent (the page "Control access to HTTP APIs with JWT authorizers in API Gateway", read 2026-10-23). A Cognito access token has `client_id` and no `aud`, so the access token is the token to send. The same page notes that an ID token (whose `aud` is the client id) would also pass an audience check, and that nothing in a JWT marks it as an access token; the routes therefore also require the scope `openid`, which only an access token carries as a `scope` claim. The CDK construct's own documentation says only "aud"; it does not mention `client_id`.
 
 ## Decisions made in the code
@@ -111,7 +113,8 @@ None of this has run. In particular:
 7. **The cold start with a database.** The spike measured 48 s from scale-up to the first 200 for `/health` with no database. A first run adds the Aurora resume and the run itself (40 to 60 s estimated, not measured).
 8. **Teardown order.** The live stack must be destroyed before the data stack (its rule sits on the database security group) and before the auth stack (it reads the issuer); `cdk destroy` of the Cloud Map namespace after the service is the expected order but has not been run.
 9. **Throttling and the gateway's default endpoint**: the stage throttle of 2 a second with burst 5 is applied to the default route settings; whether bursts from the web UI's polling stay under it is untested. The default `execute-api` endpoint is on (no custom domain), so `/health` is public.
-10. **All prices and costs** in the table above.
+10. **The issuer string.** The synthesized value was checked in tests (one `https://`, the regional Cognito host, the pool id reference) but it is only proven by a successful deploy of `precertly-live`: the previous bug passed synthesis and failed in API Gateway.
+11. **All prices and costs** in the table above.
 
 ## Tests
 
