@@ -21,10 +21,13 @@ from data_stack import DataStack
 from live_stack import LiveStack
 from precertly_stack import AVAILABILITY_ZONES, PrecertlyStack
 from web_stack import (
+    LIVE_API_ORIGIN_CONTEXT_KEY,
+    LIVE_AUTH_ORIGIN_CONTEXT_KEY,
     WEB_CERTIFICATE_ARN_CONTEXT_KEY,
     WEB_DOMAIN_CONTEXT_KEY,
     WebStack,
     validate_certificate_arn,
+    validate_live_origins,
     validate_web_domain,
 )
 
@@ -68,6 +71,12 @@ def build_app(context: dict[str, Any] | None = None) -> cdk.App:
     auth_domain_prefix = validate_auth_domain_prefix(
         app.node.try_get_context(AUTH_DOMAIN_PREFIX_CONTEXT_KEY)
     )
+    # Optional, both or neither (only precertly-web uses them). Validated for every stack, so a
+    # malformed value fails the same way whichever stack is deployed.
+    live_origins = validate_live_origins(
+        app.node.try_get_context(LIVE_API_ORIGIN_CONTEXT_KEY),
+        app.node.try_get_context(LIVE_AUTH_ORIGIN_CONTEXT_KEY),
+    )
     BaseStack(app, "precertly-base", budget_email=email.strip())
     app_stack = AppStack(app, "precertly-app", image_tag=image_tag)
     cdk.Validations.of(app_stack).acknowledge(FIXED_AZ_RULE)
@@ -80,7 +89,14 @@ def build_app(context: dict[str, Any] | None = None) -> cdk.App:
         database_subnets=app_stack.database_subnets,
         tools_subnets=app_stack.public_subnets,
     )
-    WebStack(app, "precertly-web", domain=web_domain, certificate_arn=web_certificate_arn)
+    WebStack(
+        app,
+        "precertly-web",
+        domain=web_domain,
+        certificate_arn=web_certificate_arn,
+        live_api_origin=live_origins[0] if live_origins else None,
+        live_auth_origin=live_origins[1] if live_origins else None,
+    )
     auth_stack = AuthStack(
         app, "precertly-auth", domain_prefix=auth_domain_prefix, web_domain=web_domain
     )
