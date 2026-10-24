@@ -199,6 +199,40 @@ describe("the return from the hosted UI", () => {
   });
 });
 
+describe("coming back to the page with the Back button", () => {
+  it("clears the busy state of a page restored from the cache, so sign-in can start again", async () => {
+    const h = makeSession();
+    await h.session.beginSignIn("#/live");
+    expect(h.session.getSnapshot().busy).toBe(true);
+    await h.session.beginSignIn("#/live");
+    expect(h.location.assigned).toHaveLength(1);
+    h.session.pageShown(true);
+    expect(h.session.getSnapshot().busy).toBe(false);
+    await h.session.beginSignIn("#/live");
+    expect(h.location.assigned).toHaveLength(2);
+  });
+
+  it("changes nothing for a page that was not restored from the cache", async () => {
+    const h = makeSession();
+    await h.session.beginSignIn("#/live");
+    const before = h.session.getSnapshot();
+    h.session.pageShown(false);
+    expect(h.session.getSnapshot()).toBe(before);
+    expect(h.session.getSnapshot().busy).toBe(true);
+  });
+
+  it("touches no token and no storage", async () => {
+    const h = makeSession({ search: "?code=C&state=STATE-1", stored: { [STORAGE_KEY]: attempt() } });
+    await h.session.handleCallback();
+    const bearer = h.session.bearer();
+    const stored = [...h.storage.data];
+    h.session.pageShown(true);
+    expect(h.session.bearer()).toBe(bearer);
+    expect([...h.storage.data]).toEqual(stored);
+    expect(h.session.getSnapshot().signedIn).toBe(true);
+  });
+});
+
 describe("the token", () => {
   async function signedIn() {
     const h = makeSession({ search: "?code=C&state=STATE-1", stored: { [STORAGE_KEY]: attempt() } });

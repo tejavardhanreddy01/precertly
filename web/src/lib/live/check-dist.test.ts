@@ -88,6 +88,16 @@ describe("check-dist", () => {
     expect(r.out).not.toContain("other.execute-api");
   });
 
+  it("matches a live host whole: a path, query or port after it passes, a longer host fails", () => {
+    const ok = check(dist(`${LIVE_JS}fetch("${API}/live/runs?x=1");open("${AUTH}:443/login");`), LIVE_ENV);
+    expect(ok.code).toBe(0);
+    const bad = check(dist(`${LIVE_JS}fetch("${API}.evil.example/x");`), LIVE_ENV);
+    expect(bad.code).toBe(1);
+    expect(bad.out).toContain("[a live host, value not shown]");
+    const worse = check(dist(`${LIVE_JS}fetch("${AUTH}evil/x");`), LIVE_ENV);
+    expect(worse.code).toBe(1);
+  });
+
   it("still fails a URL on any other host in either mode", () => {
     expect(check(dist('fetch("https://evil.example/x")'), NONE).code).toBe(1);
     expect(check(dist(`${LIVE_JS}fetch("https://evil.example/x")`), LIVE_ENV).code).toBe(1);

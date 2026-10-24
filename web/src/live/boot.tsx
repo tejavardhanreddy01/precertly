@@ -21,6 +21,9 @@ const client = createApiClient({
 // lines of it run now, before the app renders, so a code never sits in the address bar.
 void session.handleCallback();
 
+// Back from the hosted UI can restore this page from the back/forward cache, mid-sign-in.
+window.addEventListener("pageshow", (event) => session.pageShown(event.persisted));
+
 export const liveFeature: LiveFeature = {
   Screen: ({ caseId }) => <LiveScreen caseId={caseId} session={session} client={client} />,
 };

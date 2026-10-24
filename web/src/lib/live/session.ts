@@ -170,6 +170,16 @@ export class LiveSession {
     return this.#callback;
   }
 
+  /**
+   * Called when the page is shown again. A page restored from the back/forward cache (the visitor
+   * pressed Back from the hosted UI) comes back with the state it was left in, so a sign-in that
+   * was on its way out would still read busy and keep the button off. Only a restored page
+   * (`persisted`) is touched, and only the busy flag: no token, no storage.
+   */
+  pageShown(persisted: boolean): void {
+    if (persisted && this.#snapshot.busy) this.#set({ busy: false });
+  }
+
   signOut(): void {
     this.#drop(false);
     this.#set({ notice: MESSAGES.signedOutNotice, expired: false });

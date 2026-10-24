@@ -74,6 +74,14 @@ const LIVE_MARKERS = ["execute-api", "amazoncognito"];
 // A URL for a failure message; one that looks like a live host is not repeated.
 const shown = (url) => (LIVE_MARKERS.some((m) => url.includes(m)) ? "[a live host, value not shown]" : url);
 
+// A live host is matched whole: what follows it must be a path, query, fragment or port separator
+// or the end of the URL, so "<live host>.evil.example" is not the live host.
+const AFTER_HOST = /^[/?#:]|^$/;
+function isAllowed(bare) {
+  if (ALLOWED.some(([prefix]) => bare.startsWith(prefix))) return true;
+  return LIVE_ALLOWED.some(([host]) => bare.startsWith(host) && AFTER_HOST.test(bare.slice(host.length)));
+}
+
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
@@ -104,7 +112,7 @@ for (const file of files) {
   for (const match of text.matchAll(URL_PATTERN)) {
     urls += 1;
     const bare = match[0].replace(/^https?:\/\//, "");
-    if (![...ALLOWED, ...LIVE_ALLOWED].some(([prefix]) => bare.startsWith(prefix))) {
+    if (!isAllowed(bare)) {
       failures.push(`${relative(dist, file)}: ${shown(match[0])}`);
     }
   }

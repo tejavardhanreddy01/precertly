@@ -269,8 +269,14 @@ jobs:
             exit 1
           fi
           # ... and a half-set configuration must stop the build.
+          # It must fail for that reason, not for another one.
           if VITE_LIVE_API_URL=https://abcdefghij.execute-api.us-east-2.amazonaws.com \
-            npx vite build --outDir dist-half; then
+            npx vite build --outDir dist-half >half.log 2>&1; then
             echo "a half-set live configuration did not stop the build" >&2
+            exit 1
+          fi
+          if ! grep -q "half configured" half.log; then
+            echo "the half-set build failed, but not with the half-configured message:" >&2
+            cat half.log >&2
             exit 1
           fi
