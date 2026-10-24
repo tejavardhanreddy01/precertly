@@ -29,6 +29,14 @@ function Svg({ size = 14, className, children }: IconProps & { children: ReactNo
   );
 }
 
+/** The brand mark: a check in a rounded square, as in the favicon. */
+export const IconMark = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="1.3" y="1.3" width="13.4" height="13.4" rx="3.4" />
+    <path d="M4.6 8.4l2.4 2.4 4.4-4.6" />
+  </Svg>
+);
+
 /** Met: a check in a circle. */
 export const IconCheck = (p: IconProps) => (
   <Svg {...p}>

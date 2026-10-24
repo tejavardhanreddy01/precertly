@@ -10,12 +10,15 @@
 // sideways on their own, and checks that a case page does not scroll itself (its panes do), that
 // the tour bar is pinned inside the viewport, that a false-approval pill sits whole inside the
 // criteria pane, and that the first highlight is centered in the chart panel (when the chart is
-// on screen: under 1024 px it is behind the Evidence tab). Exit code 1 if any check fails.
+// on screen: under 1024 px it is behind the Evidence tab). It also checks the top bar itself:
+// its content must not be wider than the bar, it must keep one line, and the Repository link must be
+// in view on every route (a case page has no footer). A fourth nav item, "Live", is added to the
+// bar before measuring when the page has none, to prove the room for it. Exit code 1 if any check fails.
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 
-const WIDTHS = [360, 390, 768, 1280];
+const WIDTHS = [320, 360, 390, 768, 1280];
 const HEIGHT = 900;
 const dataDir = new URL("../public/data/", import.meta.url);
 
@@ -84,6 +87,27 @@ const ROUTES = [
 
 // What to run in the page: the widths, and which elements stick out past the viewport edge.
 function measure({ scrollChunk, workspace }) {
+  // The bar must have room for one more short nav item than the recorded site has.
+  const nav = document.querySelector('header nav[aria-label="Main"]');
+  if (nav && !nav.querySelector('a[href="#/live"]')) {
+    const extra = document.createElement("a");
+    extra.href = "#/live";
+    extra.textContent = "Live";
+    extra.className = nav.firstElementChild?.className ?? "";
+    nav.appendChild(extra);
+  }
+  const bar = document.querySelector("header > div");
+  let barProblem = null;
+  if (!bar) barProblem = "the top bar is missing";
+  else {
+    if (bar.scrollWidth > bar.clientWidth) barProblem = `the top bar content is ${bar.scrollWidth} px in a bar ${bar.clientWidth} px wide`;
+    else if (bar.getBoundingClientRect().height > document.querySelector("header").getBoundingClientRect().height + 1) barProblem = "the top bar wrapped";
+    const repo = [...bar.querySelectorAll("a")].find((a) => (a.textContent ?? "").includes("Repository"));
+    const r = repo?.getBoundingClientRect();
+    if (!barProblem && (!r || r.width < 24 || r.right > document.documentElement.clientWidth + 0.5 || r.left < 0)) {
+      barProblem = "the Repository link is missing or outside the viewport";
+    }
+  }
   const viewport = document.documentElement.clientWidth;
   const scrollWidth = document.documentElement.scrollWidth;
   const label = (el) => {
@@ -163,7 +187,7 @@ function measure({ scrollChunk, workspace }) {
       top: Math.round(rect.top - visibleTop),
     };
   }
-  return { viewport, scrollWidth, wide: wide.slice(0, 6), inner: inner.slice(0, 6), falseApprovalClipped, workspaceProblem, scroll };
+  return { viewport, scrollWidth, wide: wide.slice(0, 6), inner: inner.slice(0, 6), falseApprovalClipped, workspaceProblem, barProblem, scroll };
 }
 
 // A mark that fits the visible area is centered within 12 px (or the content ends first); one taller
@@ -212,8 +236,8 @@ async function main() {
           await page.waitForTimeout(400);
           const m = await page.evaluate(measure, { scrollChunk: route.scrollChunk ?? null, workspace: route.workspace === true });
           const badScroll = m.scroll !== null && scrollProblem(m.scroll) !== null;
-          const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.falseApprovalClipped || m.workspaceProblem !== null || badScroll;
-          const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.falseApprovalClipped ? " PILL" : m.workspaceProblem !== null ? " PAGE" : badScroll ? " SCROLL" : "";
+          const over = m.scrollWidth > m.viewport || m.inner.length > 0 || m.falseApprovalClipped || m.workspaceProblem !== null || m.barProblem !== null || badScroll;
+          const flag = m.scrollWidth > m.viewport ? " OVER" : m.inner.length > 0 ? " CLIP" : m.falseApprovalClipped ? " PILL" : m.workspaceProblem !== null ? " PAGE" : m.barProblem !== null ? " BAR" : badScroll ? " SCROLL" : "";
           cells.push(`${m.scrollWidth}/${m.viewport}${flag}`);
           if (over) failures.push({ route: route.name, width, ...m });
         } finally {
@@ -227,8 +251,8 @@ async function main() {
     await server?.close();
   }
 
-  const col = 20;
-  console.log(`scrollWidth/viewport at ${WIDTHS.join(", ")} px (OVER = page scrolls sideways, CLIP = a container scrolls sideways, PILL = false-approval pill clipped, PAGE = a case page scrolls itself or its tour bar or panes are off, SCROLL = first highlight not centered in the chart panel)`);
+  const col = 18;
+  console.log(`scrollWidth/viewport at ${WIDTHS.join(", ")} px (OVER = page scrolls sideways, CLIP = a container scrolls sideways, PILL = false-approval pill clipped, PAGE = a case page scrolls itself or its tour bar or panes are off, BAR = the top bar overflows, wraps or lost the Repository link, SCROLL = first highlight not centered in the chart panel)`);
   console.log("route".padEnd(36) + WIDTHS.map((w) => String(w).padEnd(col)).join(""));
   for (const r of rows) console.log(r.route.padEnd(36) + r.cells.map((c) => c.padEnd(col)).join(""));
 
@@ -241,6 +265,7 @@ async function main() {
       if (f.scroll && scrollProblem(f.scroll)) console.error(`    chart scroll: ${scrollProblem(f.scroll)}`);
       if (f.falseApprovalClipped) console.error("    the FALSE APPROVAL pill is clipped by the criteria pane or leaves no room for the text");
       if (f.workspaceProblem) console.error(`    case page: ${f.workspaceProblem}`);
+      if (f.barProblem) console.error(`    top bar: ${f.barProblem}`);
     }
     process.exit(1);
   }

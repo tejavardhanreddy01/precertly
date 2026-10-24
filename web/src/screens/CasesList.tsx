@@ -91,7 +91,14 @@ export function CasesList() {
         ))}
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-line">
+      {/* At 320 px the table needs about 336 px; this region scrolls sideways there, by keyboard
+          too, instead of clipping the Recorded column. Wider screens never scroll it. */}
+      <div
+        role="region"
+        aria-label="Cases table"
+        tabIndex={0}
+        className="overflow-x-auto rounded-lg border border-line"
+      >
         <table className="w-full border-collapse text-left" data-testid="cases-table">
           <caption className="sr-only">
             Cases with their expected overall result and the recorded result; select a row to open the case
