@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
     // One script file even in a live build: the live module is imported dynamically (main.tsx),
     // and keeping it in the same file means the first .js asset is the one that names the live
     // hosts, which `deploy.sh web smoke` checks. A recorded-only build has no dynamic import.
-    build: { sourcemap: false, rollupOptions: { output: { inlineDynamicImports: true } } },
+    build: { sourcemap: false, rolldownOptions: { output: { codeSplitting: false } } },
     define: {
       __LIVE_ENABLED__: JSON.stringify(live.enabled),
       __LIVE_API_ORIGIN__: JSON.stringify(live.enabled ? live.apiOrigin : ""),
