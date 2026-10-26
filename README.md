@@ -4,7 +4,7 @@
 
 Precertly reads a patient chart (FHIR R4) and a requested procedure, checks each payer coverage criterion against the chart, cites the exact evidence for each verdict, and drafts a prior-authorization request shaped like the HL7 Da Vinci PAS format. A human reviews and approves. It never auto-denies.
 
-> 🚧 **In active development (state checked 2026-10-24).** Chart ingest, search, cited per-criterion verdicts and the eval harness have been run for facet joint interventions only: the 11 facet cases are scored, and the other 18 of the 29 labeled cases (PAP, bariatric surgery and spinal cord stimulators) are labeled only, tested offline and not yet run against the model. Draft PAS requests are built and validated for the 11 facet cases, but not ready to send. The recorded-mode site in `web/` is a **public read-only site of recorded runs, always available; live environment on request**: https://precertly.tejaavuthu.com (static files on S3 behind CloudFront; first published 2026-10-21, latest publish 2026-10-22 from `main` at `dc43854`; owner-confirmed). All data is synthetic, and nothing is judged when the site is open: it has no API, login, Cognito or Bedrock call. `scripts/deploy.sh web smoke` ran against it on 2026-10-22 with 34 checks passed and 0 failed. Six AWS stacks exist. The live environment (Cognito, an HTTP API and the live service, at zero tasks unless the owner starts it) was deployed and smoke-tested by the owner on 2026-10-23 (owner-reported, below). The web part of live mode, a Live page with sign-in, is **in code, not published**: the site above is still recorded-only, and no signed-in call through the gateway has been verified.
+> 🚧 **In active development (state checked 2026-10-26).** Chart ingest, search, cited per-criterion verdicts and the eval harness have been run for facet joint interventions only: the 11 facet cases are scored, and the other 18 of the 29 labeled cases (PAP, bariatric surgery and spinal cord stimulators) are labeled only, tested offline and not yet run against the model. Draft PAS requests are built and validated for the 11 facet cases, but not ready to send. The recorded-mode site in `web/` is a **public read-only site of recorded runs, always available; live environment on request**: https://precertly.tejaavuthu.com (static files on S3 behind CloudFront; first published 2026-10-21, latest publish 2026-10-24, owner-reported; the commit is not recorded here). All data is synthetic, and nothing is judged when the site is open: opening it makes no API, Cognito or Bedrock call (only the Live page, once opened, sends one `GET /health`, and sign-in starts only when the visitor asks). `scripts/deploy.sh web smoke` ran against it on 2026-10-22 with 34 checks passed and 0 failed, and after the Live page was published on 2026-10-24 with 37 checks passed and 0 failed (owner-reported). Six AWS stacks exist. The live environment (Cognito, an HTTP API and the live service, at zero tasks unless the owner starts it) was deployed and smoke-tested by the owner on 2026-10-23 (owner-reported, below). The web part of live mode, a Live page with sign-in, was **published on 2026-10-24** (PR #76) and the owner's signed-in browser test passed (owner-reported; below). A visual polish of the site (warm palette, landing header, cards) is on the branch `feat/web-visual-polish` and is **not published**.
 
 ## What it looks like
 
@@ -265,7 +265,7 @@ Measured on 2026-10-22: 279 web tests in 17 files pass.
 
 ## Live mode (off by default)
 
-The API side was added 2026-10-23. The owner reports (above) that it was deployed that day behind the gateway and Cognito, with the service at zero tasks unless started; the public site still shows recorded runs only. The web UI for it is described next and is in code, not published.
+The API side was added 2026-10-23. The owner reports (above) that it was deployed that day behind the gateway and Cognito, with the service at zero tasks unless started; The web UI for it was published on 2026-10-24 and is described next.
 
 With `PRECERTLY_LIVE_ENABLED=true` the API serves two routes (`src/precertly/live/`); with it unset or false the app has no `/live` path at all, needs no database or AWS setting to start, and `/health` never touches the database either way.
 
@@ -278,7 +278,7 @@ With `PRECERTLY_LIVE_ENABLED=true` the API serves two routes (`src/precertly/liv
 
 The tests use a fake model and a fake embedder. The owner reports one real run of `facet-01` inside the task on 2026-10-23 (not through the gateway, and not by a signed-in user), measured once at about 3.5 minutes from a fully cold start (about 45 s task start, then waking the database 75 s, ingesting 37 s, judging 53 s) and about 90 s warm; those are single measurements, not a promise.
 
-### The Live page of the web UI (in code, not published; added 2026-10-24)
+### The Live page of the web UI (published 2026-10-24)
 
 `web/` can be built with live mode, and then has a **Live** item in the top bar, the pages `#/live` and `#/live/CASE_ID`, and a "Run live" link in each case's summary bar. A plain build (CI, the tests, `npm run build` with nothing set) is recorded-only: it contains no live code and no live host, and `#/live` is the not-found page. Opening the site still triggers nothing; the only automatic request is one `GET /health` when the visitor opens the live page (and again only on "Check again").
 
@@ -286,9 +286,9 @@ The tests use a fake model and a fake embedder. The owner reports one real run o
 - **Content Security Policy.** `precertly-web` takes the same two origins as optional CDK context and then allows exactly them in `connect-src`; without them its template is byte-identical to before (a golden file checks it). `web publish` refuses a live-enabled build unless the deployed web stack outputs the same two origins.
 - **Sign-in.** The authorization code flow with PKCE (S256) against the hosted UI, with no SDK and no new dependency. The access token is kept in memory only (never in storage, a cookie, the address or the DOM), is never decoded, is dropped 30 s before it expires and is not refreshed: the visitor signs in again.
 - **A run.** One run at a time per tab, polled every 4 seconds with one request in flight, backing off on 429 and giving up after three failures in a row. Every response is checked by hand-written guards; only the run's fixed server message is ever shown for a failure. The result shows the notices, the verdicts as icon and words, citations as quote and chunk id, the reviewer checklist, tokens, latency and per-stage timings, and never an expected label, a right-or-wrong mark or a comparison with the recorded run.
-- **Not verified:** any of this against the real gateway or hosted UI (the layout was measured and the logic tested with stubs only), including the cross-origin token exchange, CORS on gateway-generated errors and on the actual `GET /health` response, and a signed-in call through the gateway.
+- **Checked by the owner on 2026-10-24 (owner-reported, not seen by Claude):** `web smoke` passed 37 checks with 0 failed; in the signed-in browser test the real Cognito token was accepted through the gateway, the cross-origin token exchange from the browser worked, there were no CSP violations in the console, and with the service stopped the Live page shows "The live environment is not running" and links to the recorded runs. **Still unverified:** the `sub` to `x-precertly-actor` mapping, CORS on gateway-generated 401 and 429 errors, and the back/forward-cache fix in a real browser.
 
-Tests as of 2026-10-24: 539 web tests, 2062 Python tests (44 skipped), 261 infra tests.
+Tests: 568 web tests as of 2026-10-26 (543 at main plus 25 contrast pairs); 2062 Python tests (44 skipped) and 261 infra tests as of 2026-10-24, not touched since.
 
 ## Roadmap
 
@@ -313,7 +313,7 @@ Tests as of 2026-10-24: 539 web tests, 2062 Python tests (44 skipped), 261 infra
 - [x] Live run API in code, off by default and not deployed: `POST` and `GET /live/runs` behind `PRECERTLY_LIVE_ENABLED`, one run at a time, daily caps, fake-only tests (2026-10-23)
 - [x] Cognito (`precertly-auth`), an API Gateway HTTP API, a VPC link, Cloud Map and the live ECS service at zero (`precertly-live`), and the `deploy.sh` commands `live start|stop|status|smoke`, as code only: synthesized, assertion-tested and stub-tested, nothing deployed or run (2026-10-23)
 - [x] Deployed and smoke-tested by the owner on 2026-10-23 (owner-reported)
-- [x] Web UI for live runs (the Live page, PKCE sign-in, build-time configuration, CSP and tooling), as code only: tested with stubs, not published (2026-10-24)
+- [x] Web UI for live runs (the Live page, PKCE sign-in, build-time configuration, CSP and tooling), published 2026-10-24 and browser-tested by the owner (owner-reported)
 - [ ] Publish it (`up precertly-web`, `web publish`, `web smoke`), then the signed-in browser test against the real gateway; MCP server, demo mode
 
 ## License
