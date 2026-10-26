@@ -288,7 +288,7 @@ The tests use a fake model and a fake embedder. The owner reports one real run o
 - **A run.** One run at a time per tab, polled every 4 seconds with one request in flight, backing off on 429 and giving up after three failures in a row. Every response is checked by hand-written guards; only the run's fixed server message is ever shown for a failure. The result shows the notices, the verdicts as icon and words, citations as quote and chunk id, the reviewer checklist, tokens, latency and per-stage timings, and never an expected label, a right-or-wrong mark or a comparison with the recorded run.
 - **Checked by the owner on 2026-10-24 (owner-reported, not seen by Claude):** `web smoke` passed 37 checks with 0 failed; in the signed-in browser test the real Cognito token was accepted through the gateway, the cross-origin token exchange from the browser worked, there were no CSP violations in the console, and with the service stopped the Live page shows "The live environment is not running" and links to the recorded runs. **Still unverified:** the `sub` to `x-precertly-actor` mapping, CORS on gateway-generated 401 and 429 errors, and the back/forward-cache fix in a real browser.
 
-Tests: 568 web tests as of 2026-10-26 (543 at main plus 25 contrast pairs); 2062 Python tests (44 skipped) and 261 infra tests as of 2026-10-24, not touched since.
+Tests: 572 web tests as of 2026-10-26 (569 at main plus 3 About tests); 2062 Python tests (44 skipped) and 261 infra tests as of 2026-10-24, not touched since.
 
 ## Roadmap
 
@@ -314,7 +314,7 @@ Tests: 568 web tests as of 2026-10-26 (543 at main plus 25 contrast pairs); 2062
 - [x] Cognito (`precertly-auth`), an API Gateway HTTP API, a VPC link, Cloud Map and the live ECS service at zero (`precertly-live`), and the `deploy.sh` commands `live start|stop|status|smoke`, synthesized, assertion-tested and stub-tested before deployment (2026-10-23)
 - [x] Deployed and smoke-tested by the owner on 2026-10-23 (owner-reported)
 - [x] Web UI for live runs (the Live page, PKCE sign-in, build-time configuration, CSP and tooling), published 2026-10-24 and browser-tested by the owner (owner-reported)
-- [ ] Publish it (`up precertly-web`, `web publish`, `web smoke`), then the signed-in browser test against the real gateway; MCP server, demo mode
+- [ ] MCP server, demo mode
 
 ## License
 
