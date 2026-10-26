@@ -117,8 +117,8 @@ Items 1 to 11 were open when this was written (2026-10-23); the owner's report c
 11. **All prices and costs** in the table above.
 12. **A signed-in call through the gateway** from a browser: that the access token reaches the app as the user (items 1 and 2 above), checked end to end.
 13. **CORS on the actual `GET /health` response.** Only the preflight was checked (`live smoke`, 2026-10-23 at 23:18); the allow-origin header on the response itself, which the browser needs, was not.
-14. **Whether Cognito's `/oauth2/token` accepts a cross-origin browser POST from the site.** The web sign-in exchanges its code with one `fetch` to that endpoint; if the endpoint sends no CORS headers for the site's origin, the exchange fails in the browser.
-15. **The web part against the real gateway and hosted UI.** The Live page (`web/`, in code, not published) was checked with stubs only; its Content Security Policy, with the two origins in `connect-src`, has not been seen by a browser.
+14. **Whether Cognito's `/oauth2/token` accepts a cross-origin browser POST from the site.** The web sign-in exchanges its code with one `fetch` to that endpoint; if the endpoint sends no CORS headers for the site's origin, the exchange fails in the browser. Owner-reported 2026-10-24: the exchange worked in the owner's signed-in browser test.
+15. **The web part against the real gateway and hosted UI.** The Live page (`web/`) was published on 2026-10-24 and browser-tested by the owner; the owner reports no CSP violations in the console. The automated checks use stubs only.
 
 ## Tests
 
