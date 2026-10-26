@@ -146,3 +146,47 @@ export const IconEyeOff = (p: IconProps) => (
     <path d="M2.6 13.4L13.4 2.6" />
   </Svg>
 );
+
+/**
+ * The landing header's motif: a checklist whose middle row points, through a thin connector, at
+ * a bracketed quote card, so the picture says "each line is backed by a passage". The last row
+ * carries a dash, not a check: some rows have no answer. Decorative only; drawn for this site,
+ * colored by theme tokens through classes, and hidden from assistive technology.
+ */
+export function EvidenceMotif({ className }: { className?: string }) {
+  return (
+    <svg
+      width="160"
+      height="120"
+      viewBox="0 0 160 120"
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      className={className}
+    >
+      {/* the highlight behind the cited line, in the chart-text color */}
+      <rect x="28" y="51" width="64" height="18" rx="4" className="fill-mark" />
+      {/* three checklist rows */}
+      <circle cx="14" cy="24" r="7" className="fill-surface stroke-accent" strokeWidth="2" />
+      <path d="M10.6 24.2l2.5 2.5 4.4-4.9" className="stroke-accent" strokeWidth="2" />
+      <rect x="28" y="21" width="54" height="6" rx="3" className="fill-line-strong" />
+      <circle cx="14" cy="60" r="7" className="fill-surface stroke-accent" strokeWidth="2" />
+      <path d="M10.6 60.2l2.5 2.5 4.4-4.9" className="stroke-accent" strokeWidth="2" />
+      <rect x="34" y="57" width="52" height="6" rx="3" className="fill-ink-3" />
+      <circle cx="14" cy="96" r="7" className="fill-surface stroke-line-strong" strokeWidth="2" />
+      <path d="M10.8 96h6.4" className="stroke-line-strong" strokeWidth="2" />
+      <rect x="28" y="93" width="40" height="6" rx="3" className="fill-line-strong" />
+      {/* the connector from the highlight to the quote card */}
+      <path d="M92 60C103 60 100 44 112 44" className="stroke-accent" strokeWidth="1.5" strokeDasharray="1 4" />
+      <circle cx="92" cy="60" r="2.5" className="fill-accent" />
+      {/* the quote card with its brackets */}
+      <rect x="112" y="28" width="44" height="64" rx="6" className="fill-surface stroke-line-strong" strokeWidth="1.5" />
+      <path d="M122 38h-5v44h5M146 38h5v44h-5" className="stroke-accent" strokeWidth="2" />
+      <rect x="125" y="44" width="20" height="4" rx="2" className="fill-line-strong" />
+      <rect x="125" y="54" width="20" height="8" rx="2" className="fill-mark" />
+      <rect x="125" y="68" width="14" height="4" rx="2" className="fill-line-strong" />
+    </svg>
+  );
+}
