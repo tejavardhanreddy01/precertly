@@ -1,7 +1,7 @@
 // Takes the screenshots kept under web/docs/screenshots. Run by hand, like check-layout.mjs:
 //
 //   cd web && npm ci && npm run prepare-data && npx playwright install chromium
-//   node scripts/screenshots.mjs before|after [--url http://localhost:5173/]
+//   node scripts/screenshots.mjs before|after [--url http://localhost:5173/] [--only name,name]
 //
 // The label is the last part of each file name (landing-390-before.png), so a redesign can be
 // compared with the screen it replaced. Without --url it starts the Vite dev server on a free local
@@ -16,6 +16,8 @@ const SIZES = [
   { width: 390, height: 844 },
   { width: 1280, height: 720 },
 ];
+
+const WIDE = [{ width: 1920, height: 1080 }, { width: 1280, height: 720 }, { width: 390, height: 844 }, { width: 320, height: 640 }];
 
 const SHOTS = [
   { name: "landing", hash: "", wait: "main h1" },
@@ -41,6 +43,17 @@ const SHOTS = [
     open: "[data-variant] summary",
   },
   { name: "about", hash: "#/about", wait: "main h1" },
+  // The policy page's cards, one element each, at four widths (1920 is a full-HD window).
+  { name: "policy-shared", hash: "#/policies/facet-joint-interventions", wait: "[data-variant]", element: '[data-testid="shared-criteria"]', sizes: WIDE },
+  { name: "policy-variant", hash: "#/policies/facet-joint-interventions", wait: "[data-variant]", element: "[data-variant]", sizes: WIDE },
+  {
+    name: "policy-variant-open",
+    hash: "#/policies/facet-joint-interventions",
+    wait: "[data-variant]",
+    element: "[data-variant]",
+    open: "[data-variant] summary",
+    sizes: WIDE,
+  },
 ];
 
 async function main() {
@@ -48,6 +61,11 @@ async function main() {
   if (label !== "before" && label !== "after") throw new Error("usage: screenshots.mjs before|after [--url URL]");
   const out = new URL("../docs/screenshots/", import.meta.url);
   mkdirSync(out, { recursive: true });
+
+  // --only a,b takes just those shots (by name).
+  const onlyArg = process.argv.indexOf("--only");
+  const only = onlyArg === -1 ? null : (process.argv[onlyArg + 1] ?? "").split(",");
+  const shots = only ? SHOTS.filter((s) => only.includes(s.name)) : SHOTS;
 
   const urlArg = process.argv.indexOf("--url");
   let server = null;
@@ -69,8 +87,8 @@ async function main() {
   const browser = await chromium.launch();
   const tooBig = [];
   try {
-    for (const shot of SHOTS) {
-      for (const size of SIZES) {
+    for (const shot of shots) {
+      for (const size of shot.sizes ?? SIZES) {
         const context = await browser.newContext({ viewport: size, reducedMotion: "reduce" });
         const page = await context.newPage();
         try {
@@ -88,7 +106,10 @@ async function main() {
           }
           await page.waitForTimeout(600);
           const file = new URL(`${shot.name}-${size.width}-${label}.png`, out);
-          await page.screenshot({ path: file.pathname });
+          // The sticky top bar would be drawn over the part of a tall element it passes.
+          if (shot.element) await page.addStyleTag({ content: "header { position: static !important; }" });
+          if (shot.element) await page.locator(shot.element).first().screenshot({ path: file.pathname });
+          else await page.screenshot({ path: file.pathname });
           const bytes = statSync(file).size;
           console.log(`${file.pathname.split("/docs/screenshots/")[1]}  ${Math.round(bytes / 1024)} KB`);
           if (bytes > LIMIT) tooBig.push(file.pathname);

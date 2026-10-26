@@ -88,31 +88,40 @@ function CriterionLink({ id, policyId, criteria }: { id: string; policyId: strin
       <a className="text-accent underline underline-offset-2" href={target} onClick={onClick}>
         {criteria.get(id)?.text ?? id}
       </a>{" "}
-      <span className="font-mono text-xs wrap-anywhere text-ink-3">
+      <span className="font-mono text-xs wrap-anywhere text-ink-3 max-md:mt-0.5 max-md:block">
         (<BreakableId id={id} />)
       </span>
     </>
   );
 }
 
-// A policy card: full width, with a left accent stripe, a tinted header row and a body kept to a
-// readable line length (the criteria lines run long).
+// A policy card: full width, with a left accent stripe and a tinted header row.
 const CARD = "overflow-hidden rounded-lg border border-l-4 border-line border-l-accent bg-surface text-sm shadow-card";
 const CARD_HEAD = "border-b border-line bg-band px-4 py-3";
-const CARD_BODY = "max-w-text p-4";
+const CARD_BODY = "p-4";
 
 type Shared = { policyId: string; criteria: Map<string, PolicyCriterion> };
 
-function ItemList({ items, policyId, criteria }: { items: LogicItem[] } & Shared) {
+// A criterion row from md up: the text on the left, its id in a column of fixed width on the right,
+// so every id in a card starts at the same x. Under md the id sits under the text.
+const ROW =
+  "py-1.5 md:grid md:grid-cols-[minmax(0,1fr)_14rem] md:gap-x-6 lg:grid-cols-[minmax(0,1fr)_20rem]";
+
+function ItemList({
+  items,
+  policyId,
+  criteria,
+  nested = false,
+}: { items: LogicItem[]; nested?: boolean } & Shared) {
   return (
-    <ul className="ml-4 list-disc space-y-1">
+    <ul className={`list-none divide-y divide-line ${nested ? "ml-4" : ""}`}>
       {items.map((item, i) =>
         typeof item === "string" ? (
-          <li key={item}>
+          <li key={item} className={ROW}>
             <CriterionLink id={item} policyId={policyId} criteria={criteria} />
           </li>
         ) : (
-          <li key={i} className="list-none">
+          <li key={i} className="py-1.5">
             <LogicList logic={item} policyId={policyId} criteria={criteria} />
           </li>
         ),
@@ -126,7 +135,7 @@ function LogicList({ logic, policyId, criteria }: { logic: Logic } & Shared) {
   return (
     <div>
       <p className="font-semibold">{kind}:</p>
-      <ItemList items={logic.all_of ?? logic.any_of ?? []} policyId={policyId} criteria={criteria} />
+      <ItemList items={logic.all_of ?? logic.any_of ?? []} policyId={policyId} criteria={criteria} nested />
     </div>
   );
 }

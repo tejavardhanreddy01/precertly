@@ -674,6 +674,26 @@ describe("policy page: shared criteria and criterion links", () => {
     for (const card of cards) expect(card.parentElement).toBe(wrapper);
   });
 
+  it("lays every criterion row of a card out as the same two columns, with no width cap on the body", async () => {
+    renderAt(`#/policies/${POLICY}`);
+    const shared = await screen.findByTestId("shared-criteria");
+    const cards = [shared, ...document.querySelectorAll<HTMLElement>("[data-variant]")];
+    const gridClasses = (row: Element) => row.className.split(/\s+/).filter((c) => /grid/.test(c)).sort();
+    for (const card of cards) {
+      expect(card.querySelector(".max-w-text")).toBeNull();
+      const rows = [...card.querySelectorAll("li")].filter((li) => li.querySelector(":scope > span.font-mono"));
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row).toHaveClass("md:grid", "md:grid-cols-[minmax(0,1fr)_14rem]", "md:gap-x-6");
+        expect(gridClasses(row)).toEqual(gridClasses(rows[0]!));
+        // The id is text in the same list item as its link, and the link text is the criterion's.
+        expect(row.querySelector(":scope > a")).not.toBeNull();
+        expect(row.querySelector(":scope > span.font-mono")!.textContent).toMatch(/^\([a-z0-9._-]+\)$/);
+      }
+      for (const list of card.querySelectorAll("ul")) expect(list).toHaveClass("divide-y", "list-none");
+    }
+  });
+
   it("lets ids break at separators and keeps each variant code whole", async () => {
     renderAt("#/policies/bariatric-surgery");
     await screen.findByRole("heading", { level: 1 });
