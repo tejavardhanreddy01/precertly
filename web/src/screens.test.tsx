@@ -663,11 +663,15 @@ describe("policy page: shared criteria and criterion links", () => {
     expect(screen.getAllByText(EXACT_CAPTION)).toHaveLength(5);
   });
 
-  it("does not stretch a short variant card to the height of its neighbour", async () => {
+  it("stacks variant cards in one column, so none leaves a gap or moves when another opens", async () => {
     renderAt(`#/policies/${POLICY}`);
     await screen.findByTestId("shared-criteria");
-    const grid = document.querySelector("[data-variant]")!.parentElement!;
-    expect(grid).toHaveClass("items-start");
+    const cards = document.querySelectorAll<HTMLElement>("[data-variant]");
+    expect(cards.length).toBeGreaterThan(1);
+    const wrapper = cards[0]!.parentElement!;
+    expect(wrapper).toHaveClass("flex", "flex-col");
+    expect(wrapper.className).not.toMatch(/\b(?:md:|lg:)?(?:grid|columns)/);
+    for (const card of cards) expect(card.parentElement).toBe(wrapper);
   });
 
   it("lets ids break at separators and keeps each variant code whole", async () => {
