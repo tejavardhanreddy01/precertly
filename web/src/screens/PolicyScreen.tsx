@@ -251,11 +251,15 @@ export function PolicyScreen({ id, route }: { id: string; route: Route }) {
             </div>
           </>
         ) : null}
-        <div className="mt-2 grid items-start gap-3 md:grid-cols-2">
+        <div className="mt-2 flex flex-col gap-3">
           {policy.variants.map((v) => {
             const own = ownCriteria(v, shared, groups);
             return (
-              <div key={v.id} data-variant={v.id} className="rounded-lg border border-line bg-surface p-4 text-sm">
+              <div
+                key={v.id}
+                data-variant={v.id}
+                className="rounded-lg border border-line bg-surface p-4 text-sm"
+              >
                 <h3 className="font-semibold">{v.title}</h3>
                 <p className="font-mono text-xs wrap-anywhere text-ink-3">
                   <BreakableId id={v.id} />
