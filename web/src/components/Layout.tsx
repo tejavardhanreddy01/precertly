@@ -21,7 +21,7 @@ function TopBar({ withRun }: { withRun: boolean }) {
   // An address with no page (#/nope, #/policies/a/b) highlights nothing.
   const current = isKnownRoute(path, live) ? path[0] : undefined;
   return (
-    <header className="sticky top-0 z-30 h-(--size-topbar) shrink-0 border-b border-line bg-surface">
+    <header className="sticky top-0 z-30 h-(--size-topbar) shrink-0 border-b border-line bg-surface shadow-topbar">
       <div className="mx-auto flex h-full max-w-page items-center gap-1 px-2 sm:gap-4 sm:px-6">
         {/* Under 360 px the wordmark gives way to the mark (the word stays as the link's name),
             so the bar fits at 320 px with one more nav item and never wraps. */}
@@ -41,8 +41,10 @@ function TopBar({ withRun }: { withRun: boolean }) {
                 key={item.path}
                 href={item.href}
                 aria-current={current === item.path ? "page" : undefined}
-                className={`rounded-md px-1 py-1.5 text-sm font-medium min-[400px]:px-2 sm:px-3 ${
-                  current === item.path ? "bg-accent-soft text-accent-strong" : "text-ink-2 hover:bg-sunken"
+                className={`relative rounded-md px-1 py-1.5 text-sm font-medium transition-colors motion-reduce:transition-none min-[400px]:px-2 sm:px-3 ${
+                  current === item.path
+                    ? "bg-accent-soft text-accent-strong after:absolute after:inset-x-1 after:bottom-0.5 after:h-0.5 after:rounded-full after:bg-accent min-[400px]:after:inset-x-2 sm:after:inset-x-3"
+                    : "text-ink-2 hover:bg-sunken hover:text-ink"
                 }`}
               >
                 {item.label}
@@ -54,7 +56,7 @@ function TopBar({ withRun }: { withRun: boolean }) {
           {withRun ? <RunChip /> : null}
           <a
             href={REPO_URL}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md text-sm font-medium text-ink-2 hover:bg-sunken max-sm:w-8 sm:px-2"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md text-sm font-medium text-ink-2 transition-colors hover:bg-sunken hover:text-ink motion-reduce:transition-none max-sm:w-8 sm:px-2"
           >
             <IconCode size={16} />
             <span className="max-sm:sr-only">Repository</span>
