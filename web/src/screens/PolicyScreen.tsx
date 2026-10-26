@@ -303,7 +303,7 @@ export function PolicyScreen({ id, route }: { id: string; route: Route }) {
       </section>
 
       <section aria-labelledby="criteria-h">
-        <h2 id="criteria-h" className="text-lg font-semibold">
+        <h2 id="criteria-h" className="text-lg font-heading tracking-heading">
           Criteria ({policy.criteria.length})
         </h2>
         <ul className="mt-2 grid gap-3 lg:grid-cols-2">
@@ -315,7 +315,7 @@ export function PolicyScreen({ id, route }: { id: string; route: Route }) {
 
       {policy.not_covered.length > 0 || policy.notes.length > 0 ? (
         <section aria-labelledby="notes-h">
-          <h2 id="notes-h" className="text-lg font-semibold">
+          <h2 id="notes-h" className="text-lg font-heading tracking-heading">
             Notes
           </h2>
           {policy.not_covered.length > 0 ? (

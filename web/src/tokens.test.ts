@@ -25,19 +25,19 @@ function contrast(a: string, b: string): number {
 
 // Text color, then the backgrounds it is drawn on. WCAG AA for text is 4.5:1.
 const PAIRS: [string, string[]][] = [
-  ["ink", ["canvas", "surface", "sunken", "accent-soft", "danger-tint", "mark"]],
-  ["ink-2", ["canvas", "surface", "sunken"]],
-  ["ink-3", ["canvas", "surface", "sunken"]],
-  ["accent", ["canvas", "surface", "accent-soft"]],
-  ["accent-strong", ["canvas", "surface", "accent-soft"]],
+  ["ink", ["canvas", "surface", "sunken", "wash", "band", "accent-soft", "chip", "danger-tint", "mark"]],
+  ["ink-2", ["canvas", "surface", "sunken", "wash", "band"]],
+  ["ink-3", ["canvas", "surface", "sunken", "wash", "band"]],
+  ["accent", ["canvas", "surface", "wash", "band", "accent-soft", "chip"]],
+  ["accent-strong", ["canvas", "surface", "sunken", "wash", "band", "accent-soft", "chip"]],
   ["on-accent", ["accent", "accent-strong"]],
   ["on-danger", ["danger", "danger-deep"]],
-  ["met-fg", ["met-bg", "surface"]],
-  ["notmet-fg", ["notmet-bg", "surface", "danger-tint"]],
-  ["insufficient-fg", ["insufficient-bg", "surface"]],
-  ["invalidated-fg", ["invalidated-bg", "surface"]],
-  ["na-fg", ["na-bg", "surface"]],
-  ["danger", ["surface", "danger-tint"]],
+  ["met-fg", ["met-bg", "surface", "canvas", "wash"]],
+  ["notmet-fg", ["notmet-bg", "surface", "danger-tint", "canvas", "wash"]],
+  ["insufficient-fg", ["insufficient-bg", "surface", "canvas", "wash"]],
+  ["invalidated-fg", ["invalidated-bg", "surface", "canvas", "wash"]],
+  ["na-fg", ["na-bg", "surface", "canvas", "wash"]],
+  ["danger", ["surface", "danger-tint", "canvas"]],
 ];
 
 describe("design tokens", () => {

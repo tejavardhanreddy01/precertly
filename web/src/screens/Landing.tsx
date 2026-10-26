@@ -37,7 +37,7 @@ export function Landing() {
       </section>
 
       <section aria-labelledby="tiles-h">
-        <h2 id="tiles-h" className="text-lg font-semibold">
+        <h2 id="tiles-h" className="text-lg font-heading tracking-heading">
           The recorded run
         </h2>
         <p className="text-sm text-ink-3">
@@ -49,7 +49,7 @@ export function Landing() {
       </section>
 
       <section aria-labelledby="notices-h" className="max-w-text space-y-3">
-        <h2 id="notices-h" className="text-lg font-semibold">
+        <h2 id="notices-h" className="text-lg font-heading tracking-heading">
           What to know before you read the numbers
         </h2>
         <Notices />
