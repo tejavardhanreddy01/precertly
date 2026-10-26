@@ -10,14 +10,19 @@ import type { Index } from "../lib/types";
  * index.json (the summary) differs from it. Update both when the recorded run or the gates change.
  */
 
+/** The one public description of the hosting. Say "live" only inside it. */
+export const PUBLIC_CLAIM = "public read-only site of recorded runs, always available; live environment on request";
+
 export const WHAT_IT_IS: readonly string[] = [
   "Precertly is a prior-authorization copilot. It checks a coverage policy's criteria against a patient's FHIR chart, cites the evidence for every verdict, and drafts a request for a person to review.",
-  "This site replays results that were recorded earlier. Nothing runs when you open it: there is no server behind it, no model call and no login, and every patient in it is synthetic.",
+  `This is a ${PUBLIC_CLAIM}.`,
+  "It replays results that were recorded earlier. The recorded pages make no model call and need no login, nothing runs when you open them, and every patient in them is synthetic.",
+  "A separate, invite-only live environment exists. It is off unless the owner starts it.",
 ];
 
 export const WHAT_IT_IS_NOT: readonly string[] = [
   "It never denies a request. Its outcomes are met, not met or insufficient, and a human reviewer decides.",
-  "It is not live, and it is not clinically validated. The labels were written by a single annotator.",
+  "It is not clinically validated. The labels were written by a single annotator.",
   "It does not submit anything. A drafted request is never sent and carries no verdict.",
 ];
 

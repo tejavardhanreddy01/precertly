@@ -20,6 +20,7 @@ data/synthea/output/
 
 # CDK
 cdk.out/
+infra/cdk.context.json
 node_modules/
 
 # HL7 FHIR Validator and PAS package (pinned by sha256; fetched by scripts/validate_pas.py)
@@ -33,3 +34,9 @@ web/node_modules/
 web/dist/
 web/dist-*/
 web/src/generated/
+
+# Secrets and local state: keys, certificates, Terraform state, local AWS config
+*.pem
+*.key
+*.tfstate
+.aws

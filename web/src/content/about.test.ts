@@ -47,6 +47,24 @@ describe("about content versus index.json", () => {
   });
 });
 
+describe("about content describes the hosting truthfully", () => {
+  it("carries the exact public claim", () => {
+    expect(content).toContain(
+      "public read-only site of recorded runs, always available; live environment on request",
+    );
+  });
+
+  it('never says "not live"', () => {
+    expect(content).not.toMatch(/\bnot live\b/i);
+  });
+
+  it("scopes every no-login or no-server claim to the recorded pages", () => {
+    const sentences = content.split(/(?<=[.!?])\s+|\n/);
+    const claims = sentences.filter((s) => /\bno (login|server|log-in)\b/i.test(s));
+    for (const s of claims) expect(s).toMatch(/recorded/i);
+  });
+});
+
 describe("release gates mirror docs/QUALITY.md", () => {
   const plain = (text: string) => text.replace(/`/g, "").replace(/\s+/g, " ").trim();
   const section = QUALITY.slice(QUALITY.indexOf("## Release gates"), QUALITY.indexOf("## Known limitations"));
