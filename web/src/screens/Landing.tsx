@@ -17,7 +17,7 @@ export function Landing() {
         className="flex items-center justify-between gap-8 rounded-lg border border-line bg-band px-5 py-8 sm:px-10 sm:py-9"
       >
         <div className="min-w-0">
-          <p className="max-w-3xl text-xs font-semibold uppercase tracking-eyebrow text-accent-strong">
+          <p className="max-w-3xl text-xs font-semibold uppercase tracking-wide text-accent-strong sm:tracking-eyebrow">
             Prior-authorization criteria checked against synthetic charts, with cited evidence
           </p>
           <h1 id="hero-h" className="mt-3 max-w-3xl text-3xl font-bold tracking-tight sm:text-4xl">
@@ -42,7 +42,7 @@ export function Landing() {
             </a>
           </div>
         </div>
-        <EvidenceMotif className="hidden shrink-0 sm:block" />
+        <EvidenceMotif className="hidden h-30 w-40 shrink-0 sm:block lg:h-[158px] lg:w-[210px]" />
       </section>
 
       <section aria-labelledby="tiles-h">
