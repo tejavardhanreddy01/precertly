@@ -27,11 +27,11 @@ function CaseTableRow({ row }: { row: CaseRow }) {
     <tr
       data-case-row={row.id}
       data-scored={row.scored}
-      className={`relative border-b border-line last:border-b-0 focus-within:bg-accent-soft ${
+      className={`relative border-b border-line last:border-b-0 transition-colors focus-within:bg-accent-soft motion-reduce:transition-none ${
         row.scored ? "bg-surface hover:bg-accent-soft" : "bg-sunken text-ink-3 hover:bg-accent-soft"
       }`}
     >
-      <td className="px-1 py-3 align-top first:pl-2.5 last:pr-2.5 sm:p-3">
+      <td className="px-1 py-3.5 align-top first:pl-2.5 last:pr-2.5 sm:p-3.5">
         <a
           href={href(["cases", row.id])}
           className="font-mono text-sm font-semibold text-inherit after:absolute after:inset-0 hover:underline"
@@ -40,15 +40,17 @@ function CaseTableRow({ row }: { row: CaseRow }) {
         </a>
         <span className="mt-0.5 block text-xs text-ink-3 md:hidden">{row.variant}</span>
       </td>
-      <td className="hidden p-3 align-top text-sm md:table-cell">
-        {SET_SHORT[row.set] ?? row.set}
-        <span className="block text-xs text-ink-3">{row.variant}</span>
+      <td className="hidden p-3.5 align-top text-sm md:table-cell">
+        <span className="inline-block rounded-full bg-chip px-2 py-0.5 text-xs font-semibold text-accent-strong">
+          {SET_SHORT[row.set] ?? row.set}
+        </span>
+        <span className="mt-1 block text-xs text-ink-3">{row.variant}</span>
       </td>
-      <td className="hidden p-3 align-top text-sm md:table-cell">{row.procedure}</td>
-      <td className="px-1 py-3 align-top first:pl-2.5 last:pr-2.5 sm:p-3">
+      <td className="hidden p-3.5 align-top text-sm md:table-cell">{row.procedure}</td>
+      <td className="px-1 py-3.5 align-top first:pl-2.5 last:pr-2.5 sm:p-3.5">
         <Pill state={row.expected_overall} />
       </td>
-      <td className="px-1 py-3 align-top first:pl-2.5 last:pr-2.5 sm:p-3">
+      <td className="px-1 py-3.5 align-top first:pl-2.5 last:pr-2.5 sm:p-3.5">
         {row.scored && row.predicted_overall ? (
           <span className="flex flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
             <Pill state={row.predicted_overall} />
@@ -97,7 +99,7 @@ export function CasesList() {
         role="region"
         aria-label="Cases table"
         tabIndex={0}
-        className="overflow-x-auto rounded-lg border border-line"
+        className="overflow-x-auto rounded-lg border border-line bg-surface shadow-card"
       >
         <table className="w-full border-collapse text-left" data-testid="cases-table">
           <caption className="sr-only">

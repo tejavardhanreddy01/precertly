@@ -11,10 +11,12 @@
  */
 @theme {
   /* Surfaces and lines */
-  --color-canvas: #f3f4f8;
+  --color-canvas: #f6f4ef;
   --color-surface: #ffffff;
-  --color-sunken: #e9ecf2;
-  --color-line: #d6dae3;
+  --color-sunken: #ece9e1;
+  --color-wash: #efece4; /* the alternate band between sections */
+  --color-band: #eceefb; /* the indigo tint behind the landing header */
+  --color-line: #ddd9ce;
   --color-line-strong: #aeb5c3;
 
   /* Text */
@@ -27,6 +29,7 @@
   --color-accent-strong: #26329a;
   --color-accent-soft: #e5e8fa;
   --color-on-accent: #ffffff;
+  --color-chip: #e5e8fa; /* a chip's background; its text is accent-strong, never a verdict color */
 
   /* Verdict states: text, tint and border for each */
   --color-met-fg: #0f5a2c;
@@ -73,6 +76,9 @@
   --text-3xl--line-height: 2.625rem;
   --text-4xl: 3.25rem;
   --text-4xl--line-height: 3.5rem;
+  --font-weight-heading: 650;
+  --tracking-heading: -0.015em;
+  --tracking-eyebrow: 0.08em;
 
   /* Spacing is Tailwind's 0.25rem step; these are the fixed sizes of the shell */
   --spacing: 0.25rem;
@@ -85,9 +91,12 @@
   --radius-md: 0.4375rem;
   --radius-lg: 0.75rem;
 
-  /* Shadow: one for what floats over the page, one for bars pinned to its edge */
+  /* Shadow: pop floats over the page, bar is pinned to an edge, card rests on the page (hover lifts it), topbar is the top bar's lower edge */
   --shadow-pop: 0 10px 30px -8px rgb(17 21 29 / 0.28), 0 2px 6px rgb(17 21 29 / 0.1);
   --shadow-bar: 0 -6px 18px -10px rgb(17 21 29 / 0.35);
+  --shadow-card: 0 1px 2px rgb(17 21 29 / 0.06), 0 2px 8px -2px rgb(17 21 29 / 0.08);
+  --shadow-card-hover: 0 2px 4px rgb(17 21 29 / 0.08), 0 10px 22px -8px rgb(17 21 29 / 0.18);
+  --shadow-topbar: 0 1px 0 rgb(17 21 29 / 0.04), 0 4px 12px -8px rgb(17 21 29 / 0.25);
 }
 
 :root {

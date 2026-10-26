@@ -30,6 +30,17 @@ const SHOTS = [
     wait: '[data-testid="verdict-panel"]',
   },
   { name: "cases-list", hash: "#/cases", wait: "main h1" },
+  // The policy page is long: the shot starts at the first variant card, and the second one also
+  // has the first "Show exact logic" open.
+  { name: "policy-facet", hash: "#/policies/facet-joint-interventions", wait: "[data-variant]", scrollTo: "[data-variant]" },
+  {
+    name: "policy-facet-open",
+    hash: "#/policies/facet-joint-interventions",
+    wait: "[data-variant]",
+    scrollTo: "[data-variant]",
+    open: "[data-variant] summary",
+  },
+  { name: "about", hash: "#/about", wait: "main h1" },
 ];
 
 async function main() {
@@ -67,6 +78,14 @@ async function main() {
           await page.waitForSelector(shot.wait, { timeout: 15000 });
           // The landing page before the redesign redirects to the first tour step; let it settle.
           await page.evaluate(() => document.fonts?.ready);
+          if (shot.open) await page.locator(shot.open).first().click();
+          if (shot.scrollTo) {
+            // 64 px keeps the top of the card below the sticky bar.
+            await page.evaluate((selector) => {
+              const top = document.querySelector(selector).getBoundingClientRect().top + window.scrollY;
+              window.scrollTo(0, top - 64);
+            }, shot.scrollTo);
+          }
           await page.waitForTimeout(600);
           const file = new URL(`${shot.name}-${size.width}-${label}.png`, out);
           await page.screenshot({ path: file.pathname });

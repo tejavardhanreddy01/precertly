@@ -40,7 +40,7 @@ export function About() {
 
       <article className="space-y-8">
         <section aria-labelledby="is-h" className="space-y-2">
-          <h2 id="is-h" className="text-lg font-semibold">
+          <h2 id="is-h" className="text-lg font-heading tracking-heading">
             What this is, and what it is not
           </h2>
           {WHAT_IT_IS.map((p) => (
@@ -54,7 +54,7 @@ export function About() {
         </section>
 
         <section aria-labelledby="pipe-h">
-          <h2 id="pipe-h" className="text-lg font-semibold">
+          <h2 id="pipe-h" className="text-lg font-heading tracking-heading">
             How a result is made, in five steps
           </h2>
           <ol className="mt-2 list-inside list-decimal space-y-2">
@@ -67,7 +67,7 @@ export function About() {
         </section>
 
         <section aria-labelledby="run-h">
-          <h2 id="run-h" className="text-lg font-semibold">
+          <h2 id="run-h" className="text-lg font-heading tracking-heading">
             The recorded run
           </h2>
           <p className="font-semibold">Facet cases only.</p>
@@ -78,7 +78,7 @@ export function About() {
         </section>
 
         <section aria-labelledby="gates-h">
-          <h2 id="gates-h" className="text-lg font-semibold">
+          <h2 id="gates-h" className="text-lg font-heading tracking-heading">
             Release gates
           </h2>
           <p className="text-sm text-ink-2">{GATES_CAVEAT}</p>
@@ -134,7 +134,7 @@ export function About() {
         </section>
 
         <section aria-labelledby="lim-h">
-          <h2 id="lim-h" className="text-lg font-semibold">
+          <h2 id="lim-h" className="text-lg font-heading tracking-heading">
             Known limitations
           </h2>
           <ul className="mt-2 space-y-2">
