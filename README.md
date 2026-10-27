@@ -4,7 +4,12 @@
 
 Precertly reads a patient chart (FHIR R4) and a requested procedure, checks each payer coverage criterion against the chart, cites the exact evidence for each verdict, and drafts a prior-authorization request shaped like the HL7 Da Vinci PAS format. A human reviews and approves. It never auto-denies.
 
-> 🚧 **In active development (state checked 2026-10-26).** Chart ingest, search, cited per-criterion verdicts and the eval harness have been run for facet joint interventions only: the 11 facet cases are scored, and the other 18 of the 29 labeled cases (PAP, bariatric surgery and spinal cord stimulators) are labeled only, tested offline and not yet run against the model. Draft PAS requests are built and validated for the 11 facet cases, but not ready to send. The recorded-mode site in `web/` is a **public read-only site of recorded runs, always available; live environment on request**: https://precertly.tejaavuthu.com (static files on S3 behind CloudFront; first published 2026-10-21, latest publish 2026-10-24, owner-reported; the commit is not recorded here). All data is synthetic, and nothing is judged when the site is open: opening it makes no API, Cognito or Bedrock call (only the Live page, once opened, sends one `GET /health`, and sign-in starts only when the visitor asks). `scripts/deploy.sh web smoke` ran against it on 2026-10-22 with 34 checks passed and 0 failed, and after the Live page was published on 2026-10-24 with 37 checks passed and 0 failed (owner-reported). Six AWS stacks exist. The live environment (Cognito, an HTTP API and the live service, at zero tasks unless the owner starts it) was deployed and smoke-tested by the owner on 2026-10-23 (owner-reported, below). The web part of live mode, a Live page with sign-in, was **published on 2026-10-24** (PR #76) and the owner's signed-in browser test passed (owner-reported; below). A visual polish of the site (warm palette, landing header, cards) is on the branch `feat/web-visual-polish` and is **not published**.
+> **Status (checked 2026-10-27).**
+> - **Public site:** https://precertly.tejaavuthu.com is a public read-only site of recorded runs, always available; live environment on request. Static files on S3 behind CloudFront. Opening it runs no judgment and makes no model call. All data is synthetic.
+> - **Live environment:** invite-only (Cognito sign-in with TOTP), started by the owner on request, at zero tasks otherwise. One signed-in run of a curated case was tested on 2026-10-24 (owner-reported).
+> - **Evaluation:** 29 labeled cases; only the 11 facet cases are scored. On those: criterion accuracy 96.2% (177 of 184), citation precision 74.4% (229 of 308; gate above 90%, failing), false approvals 1 of 9 (gate under 2%, failing), 7 of 11 cases right overall. One annotator; not clinically validated.
+> - **Not done:** nothing is submitted to any payer; PAS drafts are not ready to send; the PAP, bariatric and spinal cord stimulator cases are labeled but not scored.
+> - Deployed state and checks below are dated; "owner-reported" marks what Claude did not run or see.
 
 ## What it looks like
 
@@ -19,6 +24,20 @@ Precertly reads a patient chart (FHIR R4) and a requested procedure, checks each
 ## Why
 
 Under the CMS Interoperability and Prior Authorization rule (CMS-0057-F), affected payers must run FHIR-based prior-authorization APIs by **January 1, 2027**. Precertly is built against that world: FHIR in, standards-shaped requests out, and measured accuracy instead of claims.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  B[Browser] --> CF[CloudFront + ACM] --> S3[(S3, private: recorded runs)]
+  B --> CG[Cognito sign-in]
+  B --> GW[API Gateway HTTP API]
+  GW -->|VPC link| F[Fargate live task]
+  F --> DB[(Aurora Serverless v2 + pgvector)]
+  F --> BR[Bedrock: Nova 2 Lite, Titan V2]
+```
+
+Precertly is a modular monolith, not a set of microservices: one Python service and one container image, split into packages (ingest, retrieval, judgment, PAS export, live runs). The same image runs in three roles: the API (zero tasks unless started), the live API (the same code with `PRECERTLY_LIVE_ENABLED`) and a one-off tools task for migrations and corpus loading. The public site is static files. Rules decide what coded data can settle, the model reads the notes, and code verifies every quote and combines the logic. A live run takes about a minute, longer than an HTTP API's 30-second limit, so the API returns a run id and the page polls; one run at a time, capped per day and per user. There is no queue, no multi-tenancy and no load test.
 
 ## Procedures covered
 
