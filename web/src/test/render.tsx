@@ -11,7 +11,7 @@ export function renderAt(hash: string, store = new DataStore(diskFetch())) {
 
 /** Waits for the run chip in the top bar, which appears once index.json has loaded. */
 export async function loaded() {
-  return screen.findByRole("button", { name: /Recorded runs on synthetic data/ });
+  return screen.findByRole("button", { name: /Recorded runs on synthetic data|Synthetic data only/ });
 }
 
 /** Makes the page a narrow screen (under 1024 px), where a case shows tabs instead of three panes. */

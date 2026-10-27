@@ -1,4 +1,4 @@
-import { href, isKnownRoute, parseHash } from "./router";
+import { href, isKnownRoute, isLiveRoute, parseHash } from "./router";
 
 describe("hash routes", () => {
   it("parses a path and a query", () => {
@@ -55,5 +55,16 @@ describe("isKnownRoute with live mode", () => {
     expect(isKnownRoute(["live", "a", "b"], true)).toBe(false);
     expect(isKnownRoute(["cases"], true)).toBe(true);
     expect(isKnownRoute(["nope"], true)).toBe(false);
+  });
+});
+
+describe("isLiveRoute", () => {
+  it("is true for the two live addresses in a live build only", () => {
+    expect(isLiveRoute(["live"], true)).toBe(true);
+    expect(isLiveRoute(["live", "facet-01"], true)).toBe(true);
+    expect(isLiveRoute(["live"], false)).toBe(false);
+    expect(isLiveRoute(["live", "a", "b"], true)).toBe(false);
+    expect(isLiveRoute(["cases"], true)).toBe(false);
+    expect(isLiveRoute([], true)).toBe(false);
   });
 });

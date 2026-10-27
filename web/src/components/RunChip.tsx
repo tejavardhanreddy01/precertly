@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useIndex } from "../lib/index-context";
+import { useLiveEnabled } from "../lib/live-feature";
+import { isLiveRoute, parseHash, useHash } from "../lib/router";
 import { shortHash } from "../lib/labels";
 import { IconInfo } from "./icons";
 
@@ -24,6 +26,7 @@ export function RunChip() {
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const panelId = useId();
+  const onLivePage = isLiveRoute(parseHash(useHash()).path, useLiveEnabled());
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +66,7 @@ export function RunChip() {
         className="inline-flex h-8 items-center gap-1.5 rounded-full border border-line-strong bg-surface text-xs max-sm:w-8 max-sm:justify-center sm:px-2.5 font-medium text-ink-2 hover:bg-sunken"
       >
         <IconInfo size={14} />
-        <span className="max-sm:sr-only">Recorded runs on synthetic data</span>
+        <span className="max-sm:sr-only">{onLivePage ? "Synthetic data only" : "Recorded runs on synthetic data"}</span>
       </button>
       {open ? (
         <div

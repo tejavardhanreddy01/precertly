@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useLiveEnabled } from "../lib/live-feature";
-import { isKnownRoute, parseHash, useHash } from "../lib/router";
+import { isKnownRoute, isLiveRoute, parseHash, useHash } from "../lib/router";
 import { IconCode, IconMark } from "./icons";
 import { RunChip } from "./RunChip";
 
@@ -67,11 +67,16 @@ function TopBar({ withRun }: { withRun: boolean }) {
   );
 }
 
+export const FOOTER_RECORDED = "Recorded runs only. Nothing runs when you open this site.";
+export const FOOTER_LIVE =
+  "Synthetic data only. A judgment runs only when you press Run live while signed in; the recorded pages run nothing.";
+
 export function Footer() {
+  const onLivePage = isLiveRoute(parseHash(useHash()).path, useLiveEnabled());
   return (
     <footer className="mt-10 border-t border-line bg-surface">
       <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-2 px-4 py-4 text-sm text-ink-2 sm:px-6">
-        <p>Recorded runs only. Nothing runs when you open this site.</p>
+        <p>{onLivePage ? FOOTER_LIVE : FOOTER_RECORDED}</p>
         <a className="text-accent underline underline-offset-2" href={REPO_URL}>
           github.com/tejavardhanreddy01/precertly
         </a>
