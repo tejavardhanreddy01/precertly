@@ -21,6 +21,17 @@ export interface LiveCitation {
   char_end: number;
 }
 
+/** What a rule read and computed. Not a quote; `inputs` are resource ids or request fields, possibly none. */
+export interface LiveComputed {
+  statement: string;
+  inputs: string[];
+  rule: string | null;
+  rules_version: string | null;
+  branch: string | null;
+  cited_by_model: boolean;
+  quote: string | null;
+}
+
 export interface LiveVerdict {
   criterion: string;
   outcome: Outcome;
@@ -29,6 +40,7 @@ export interface LiveVerdict {
   confidence: number;
   rationale: string;
   citations: LiveCitation[];
+  computed: LiveComputed[];
 }
 
 export interface LiveChecklistItem {
@@ -93,9 +105,32 @@ export function parseCitation(v: unknown): LiveCitation | null {
   return { chunk_id, quote, char_start, char_end };
 }
 
+const isStrOrNull = (v: unknown): v is string | null => v === null || isStr(v);
+
+export function parseComputed(v: unknown): LiveComputed | null {
+  if (!isObj(v)) return null;
+  const { statement, inputs, rule, rules_version, branch, cited_by_model, quote } = v;
+  if (!isStr(statement) || !Array.isArray(inputs) || !inputs.every(isStr)) return null;
+  // The optional fields may be absent (undefined) or null; anything else is not this shape.
+  const opt = (x: unknown) => (x === undefined ? null : x);
+  if (!isStrOrNull(opt(rule)) || !isStrOrNull(opt(rules_version)) || !isStrOrNull(opt(branch)) || !isStrOrNull(opt(quote))) {
+    return null;
+  }
+  if (cited_by_model !== undefined && typeof cited_by_model !== "boolean") return null;
+  return {
+    statement,
+    inputs: [...inputs],
+    rule: opt(rule) as string | null,
+    rules_version: opt(rules_version) as string | null,
+    branch: opt(branch) as string | null,
+    cited_by_model: cited_by_model === true,
+    quote: opt(quote) as string | null,
+  };
+}
+
 export function parseVerdict(v: unknown): LiveVerdict | null {
   if (!isObj(v)) return null;
-  const { criterion, outcome, applicable, decided_by, confidence, rationale, citations } = v;
+  const { criterion, outcome, applicable, decided_by, confidence, rationale, citations, computed } = v;
   if (
     !isStr(criterion) ||
     !oneOf(OUTCOMES, outcome) ||
@@ -108,7 +143,11 @@ export function parseVerdict(v: unknown): LiveVerdict | null {
   }
   const cites = listOf(citations, parseCitation);
   if (cites === null) return null;
-  return { criterion, outcome, applicable, decided_by, confidence, rationale, citations: cites };
+  // A server that predates the computed facts sends none: an absent list is an empty one. A list
+  // that is present must be well formed.
+  const facts = computed === undefined ? [] : listOf(computed, parseComputed);
+  if (facts === null) return null;
+  return { criterion, outcome, applicable, decided_by, confidence, rationale, citations: cites, computed: facts };
 }
 
 function parseChecklistItem(v: unknown): LiveChecklistItem | null {

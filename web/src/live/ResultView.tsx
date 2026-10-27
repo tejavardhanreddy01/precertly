@@ -1,6 +1,6 @@
 import { Pill } from "../components/Pill";
 import type { PillState } from "../lib/pill-text";
-import type { LiveResult, LiveVerdict } from "../lib/live/guards";
+import type { LiveComputed, LiveResult, LiveVerdict } from "../lib/live/guards";
 import { ACTIVE_STATUSES } from "../lib/live/guards";
 import { NOTICE_FALLBACK, NOTICES, STAGE_NAMES } from "../lib/live/messages";
 
@@ -15,6 +15,39 @@ function stateOf(v: LiveVerdict): Exclude<PillState, "false_approval" | "invalid
   return v.applicable ? v.outcome : "not_applicable";
 }
 
+/** What a rule read and computed, with the ids it read. Plain text: the live page has no chart to link to. */
+function Computed({ facts, criterion }: { facts: LiveComputed[]; criterion: string }) {
+  return (
+    <ul className="mt-2 space-y-2" aria-label={`Computed facts for ${criterion}`} data-testid="live-computed">
+      {facts.map((fact, i) => (
+        <li key={i} className="rounded-md border border-line bg-sunken p-2 text-sm">
+          <p className="whitespace-pre-wrap break-words">{fact.statement}</p>
+          <p className="mt-1 break-words text-xs text-ink-3">
+            {fact.rule ? <>Rule {fact.rule}</> : <>A rule</>}
+            {fact.rules_version ? <> (rules version {fact.rules_version})</> : null}
+            {fact.branch ? <> · branch {fact.branch}</> : null} ·{" "}
+            {fact.cited_by_model ? "cited by the model" : "not cited by the model"}
+          </p>
+          {fact.inputs.length > 0 ? (
+            <p className="mt-1 text-xs text-ink-3">
+              Inputs: <span className="break-all font-mono">{fact.inputs.join(", ")}</span>
+            </p>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Why there is no quote, said only as far as it is true. */
+function noQuote(v: LiveVerdict): string {
+  if (v.computed.some((f) => f.inputs.length > 0)) {
+    return "No quote from the chart: the computed facts above are the evidence.";
+  }
+  if (v.decided_by === "rule") return "No quote: decided by a rule from coded data.";
+  return "No citation.";
+}
+
 function Verdict({ verdict }: { verdict: LiveVerdict }) {
   return (
     <li className="rounded-lg border border-line bg-surface p-3" data-testid="live-verdict" data-criterion={verdict.criterion}>
@@ -24,6 +57,7 @@ function Verdict({ verdict }: { verdict: LiveVerdict }) {
         <span className="text-xs text-ink-3">decided by {DECIDED_BY[verdict.decided_by]}</span>
       </div>
       <p className="mt-2 whitespace-pre-wrap break-words text-sm">{verdict.rationale}</p>
+      {verdict.computed.length > 0 ? <Computed facts={verdict.computed} criterion={verdict.criterion} /> : null}
       {verdict.citations.length > 0 ? (
         <ul className="mt-2 space-y-2" aria-label={`Citations for ${verdict.criterion}`}>
           {verdict.citations.map((c, i) => (
@@ -34,7 +68,9 @@ function Verdict({ verdict }: { verdict: LiveVerdict }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-xs text-ink-3">No citation.</p>
+        <p className="mt-2 text-xs text-ink-3" data-testid="live-no-quote">
+          {noQuote(verdict)}
+        </p>
       )}
     </li>
   );
