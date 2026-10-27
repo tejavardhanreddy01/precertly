@@ -36,6 +36,7 @@ from precertly.live import limits
 from precertly.live.models import (
     LiveChecklistItem,
     LiveCitation,
+    LiveComputed,
     LiveResult,
     LiveVerdict,
     Reason,
@@ -139,6 +140,18 @@ def build_result(
                         char_end=c.char_end,
                     )
                     for c in v.citations
+                ],
+                computed=[
+                    LiveComputed(
+                        statement=f.statement,
+                        inputs=list(f.inputs),
+                        rule=f.rule,
+                        rules_version=f.rules_version,
+                        branch=f.branch,
+                        cited_by_model=f.cited_by_model,
+                        quote=f.quote,
+                    )
+                    for f in v.computed
                 ],
             )
             for v in judgment.verdicts

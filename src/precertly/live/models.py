@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from precertly.judgment.models import Outcome
 
@@ -91,6 +91,27 @@ class LiveCitation(BaseModel):
     char_end: int
 
 
+class LiveComputed(BaseModel):
+    """What a rule read and computed for a verdict: the statement and the ids it read.
+
+    Not a quote. It is the rule's own record, so it has no offsets, and it carries no expected
+    label, score or correct flag. `inputs` are the resource ids (or `request.<field>`) the rule
+    read; a rule that has none to give sends an empty list, never an invented id.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    statement: str
+    inputs: list[str]
+    rule: str | None = None
+    rules_version: str | None = None
+    # Partial path only: which branch of the rule fixed the fact.
+    branch: str | None = None
+    cited_by_model: bool = False
+    # Partial path only: the model's quote of the statement, as verified.
+    quote: str | None = None
+
+
 class LiveVerdict(BaseModel):
     criterion: str
     outcome: Literal["met", "not_met", "insufficient"]
@@ -99,6 +120,7 @@ class LiveVerdict(BaseModel):
     confidence: float
     rationale: str
     citations: list[LiveCitation]
+    computed: list[LiveComputed] = Field(default_factory=list)
 
 
 class LiveChecklistItem(BaseModel):

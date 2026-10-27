@@ -26,6 +26,7 @@ from precertly.live.models import (
     NOTICE,
     LiveChecklistItem,
     LiveCitation,
+    LiveComputed,
     LiveResult,
     LiveVerdict,
     Reason,
@@ -93,6 +94,28 @@ def _result() -> LiveResult:
                 confidence=1.0,
                 rationale="The condition does not apply.",
                 citations=[],
+            ),
+            LiveVerdict(
+                criterion="example-criterion-e",
+                outcome="met",
+                applicable=True,
+                decided_by="rule",
+                confidence=1.0,
+                rationale="Coded data settles it.",
+                citations=[],
+                computed=[
+                    LiveComputed(
+                        statement="Example coded value on a synthetic date.",
+                        inputs=[
+                            "Observation/example-value",
+                            "Procedure/example-procedure-with-a-long-identifier-0001",
+                            "Observation/example-value-after-the-first-procedure-0002",
+                            "request.example_field",
+                        ],
+                        rule="example-criterion-e",
+                        rules_version="example-1",
+                    )
+                ],
             ),
             LiveVerdict(
                 criterion="example-criterion-c",
