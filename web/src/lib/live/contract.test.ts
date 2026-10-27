@@ -5,6 +5,7 @@ import {
   FINISHED_STATUSES,
   OUTCOMES,
   parseCitation,
+  parseComputed,
   parseResult,
   parseRunState,
   parseStarted,
@@ -53,8 +54,32 @@ describe("the live API contract", () => {
   it("parses the done result and carries the server's notice", () => {
     const state = parseRunState(states.done);
     expect(state?.result?.notice).toBe(fixture.notice);
-    expect(state?.result?.verdicts).toHaveLength(3);
+    expect(state?.result?.verdicts).toHaveLength(4);
     expect(state?.result?.verdicts.some((v) => !v.applicable)).toBe(true);
+  });
+
+  it("carries a rule's computed fact, with its inputs, through the guards", () => {
+    const verdicts = parseRunState(states.done)?.result?.verdicts ?? [];
+    const rule = verdicts.find((v) => v.criterion === "example-criterion-e");
+    expect(rule?.decided_by).toBe("rule");
+    expect(rule?.computed).toEqual([
+      {
+        statement: "Example coded value on a synthetic date.",
+        inputs: [
+          "Observation/example-value",
+          "Procedure/example-procedure-with-a-long-identifier-0001",
+          "Observation/example-value-after-the-first-procedure-0002",
+          "request.example_field",
+        ],
+        rule: "example-criterion-e",
+        rules_version: "example-1",
+        branch: null,
+        cited_by_model: false,
+        quote: null,
+      },
+    ]);
+    // A verdict with no computed facts has an empty list.
+    expect(verdicts.find((v) => v.criterion === "example-criterion-a")?.computed).toEqual([]);
   });
 
   it("keeps the markup in a rationale as plain text", () => {
@@ -118,6 +143,34 @@ describe("the live API contract", () => {
       expect(parseVerdict({ ...verdict, citations: [{ chunk_id: "x" }] })).toBeNull();
       expect(parseCitation({ chunk_id: "a", quote: "q", char_start: 1.5, char_end: 3 })).toBeNull();
       expect(parseCitation({ chunk_id: "a", quote: "q", char_start: -1, char_end: 3 })).toBeNull();
+    });
+
+    it("a computed fact with a wrong value, or a verdict whose computed list is not a list", () => {
+      const verdict = (result.verdicts as Record<string, unknown>[])[0] as Record<string, unknown>;
+      const fact = { statement: "s", inputs: ["Observation/a"] };
+      expect(parseComputed(fact)).not.toBeNull();
+      expect(parseComputed({ ...fact, statement: 1 })).toBeNull();
+      expect(parseComputed({ ...fact, inputs: "Observation/a" })).toBeNull();
+      expect(parseComputed({ ...fact, inputs: [1] })).toBeNull();
+      expect(parseComputed({ ...fact, rule: 3 })).toBeNull();
+      expect(parseComputed({ ...fact, cited_by_model: "yes" })).toBeNull();
+      expect(parseComputed("x")).toBeNull();
+      expect(parseVerdict({ ...verdict, computed: "none" })).toBeNull();
+      expect(parseVerdict({ ...verdict, computed: [{ inputs: [] }] })).toBeNull();
+    });
+
+    it("treats a verdict from a server that sends no computed list as having none", () => {
+      const verdict = { ...((result.verdicts as Record<string, unknown>[])[0] as Record<string, unknown>) };
+      delete verdict.computed;
+      expect(parseVerdict(verdict)?.computed).toEqual([]);
+    });
+
+    it("ignores fields it does not know in a computed fact, copying none of them", () => {
+      const parsed = parseComputed({ statement: "s", inputs: [], expected: "met", score: 1, correct: true });
+      expect(parsed).not.toBeNull();
+      expect(Object.keys(parsed ?? {}).sort()).toEqual(
+        ["branch", "cited_by_model", "inputs", "quote", "rule", "rules_version", "statement"],
+      );
     });
 
     it("ignores fields it does not know instead of copying them", () => {

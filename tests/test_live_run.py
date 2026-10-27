@@ -184,6 +184,16 @@ def test_result_has_the_notice_no_labels_and_exportable_chunk_ids(url):
     assert result["verdicts"] and result["reviewer_checklist"]
     assert {v["decided_by"] for v in result["verdicts"]} <= {"model", "rule", "rule+model"}
 
+    # Every verdict a rule decided or fixed carries the rule's computed facts, each with the ids it
+    # read; the model-only verdicts carry none.
+    for v in result["verdicts"]:
+        if v["decided_by"] != "model":
+            assert v["computed"], v["criterion"]
+            for fact in v["computed"]:
+                assert fact["statement"] and fact["inputs"], v["criterion"]
+        else:
+            assert v["computed"] == []
+
     banned = {"expected", "expected_overall", "correct", "label", "labels", "score", "notes"}
     assert not keys_of(state) & banned
     assert not any(re.search(r"correct|expected|accuracy_", k) for k in keys_of(state))

@@ -236,6 +236,7 @@
                 "quote": "example quote from a synthetic note"
               }
             ],
+            "computed": [],
             "confidence": 0.75,
             "criterion": "example-criterion-a",
             "decided_by": "model",
@@ -245,6 +246,7 @@
           {
             "applicable": false,
             "citations": [],
+            "computed": [],
             "confidence": 1.0,
             "criterion": "example-criterion-b",
             "decided_by": "rule",
@@ -254,6 +256,32 @@
           {
             "applicable": true,
             "citations": [],
+            "computed": [
+              {
+                "branch": null,
+                "cited_by_model": false,
+                "inputs": [
+                  "Observation/example-value",
+                  "Procedure/example-procedure-with-a-long-identifier-0001",
+                  "Observation/example-value-after-the-first-procedure-0002",
+                  "request.example_field"
+                ],
+                "quote": null,
+                "rule": "example-criterion-e",
+                "rules_version": "example-1",
+                "statement": "Example coded value on a synthetic date."
+              }
+            ],
+            "confidence": 1.0,
+            "criterion": "example-criterion-e",
+            "decided_by": "rule",
+            "outcome": "met",
+            "rationale": "Coded data settles it."
+          },
+          {
+            "applicable": true,
+            "citations": [],
+            "computed": [],
             "confidence": 0.25,
             "criterion": "example-criterion-c",
             "decided_by": "rule+model",
