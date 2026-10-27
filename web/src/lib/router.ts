@@ -32,6 +32,11 @@ export function isKnownRoute(path: readonly string[], liveEnabled = false): bool
   return first === "about" && path.length === 1;
 }
 
+/** True on #/live and #/live/CASE_ID in a build with live mode; there the recorded-only notices would contradict a live result. */
+export function isLiveRoute(path: readonly string[], liveEnabled: boolean): boolean {
+  return path[0] === "live" && isKnownRoute(path, liveEnabled);
+}
+
 export function href(path: string[], query?: Record<string, string | undefined>): string {
   const base = "#/" + path.map(encodeURIComponent).join("/");
   const params = new URLSearchParams();

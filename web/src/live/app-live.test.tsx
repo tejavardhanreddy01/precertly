@@ -24,6 +24,13 @@ describe("a recorded-only build (no live module given to the app)", () => {
     expect(screen.queryByRole("heading", { name: "Live run" })).toBeNull();
   });
 
+  it.each(["#/live", "#/live/facet-01"])("keeps the recorded chip and footer at %s, which is not a page here", async (hash) => {
+    renderAt(hash);
+    await loaded();
+    expect(within(screen.getByRole("banner")).getByRole("button", { name: "Recorded runs on synthetic data" })).toBeInTheDocument();
+    expect(screen.getByRole("contentinfo")).toHaveTextContent("Recorded runs only. Nothing runs when you open this site.");
+  });
+
   it("still says nothing runs when the site is open", async () => {
     renderAt("#/");
     await loaded();
@@ -77,11 +84,40 @@ describe("a build with live mode", () => {
     expect(within(bar).getByRole("link", { name: /Run live/ })).toHaveAttribute("href", "#/live/facet-03");
   });
 
+  it("keeps the recorded chip on a case page, which has no footer", async () => {
+    setup("#/cases/facet-03");
+    await loaded();
+    expect(within(screen.getByRole("banner")).getByRole("button", { name: "Recorded runs on synthetic data" })).toBeInTheDocument();
+  });
+
   it("makes no request on any other page (opening the site triggers nothing)", async () => {
     const { calls } = setup("#/");
     await loaded();
     expect(calls).toEqual([]);
   });
+
+  it.each(["#/live", "#/live/facet-01"])("shows the live chip and footer at %s", async (hash) => {
+    setup(hash);
+    await loaded();
+    const chip = within(screen.getByRole("banner")).getByRole("button", { name: "Synthetic data only" });
+    expect(chip).toBeInTheDocument();
+    expect(within(screen.getByRole("banner")).queryByText("Recorded runs on synthetic data")).toBeNull();
+    const footer = screen.getByRole("contentinfo");
+    expect(footer).toHaveTextContent(
+      "Synthetic data only. A judgment runs only when you press Run live while signed in; the recorded pages run nothing.",
+    );
+    expect(footer).not.toHaveTextContent("Recorded runs only.");
+  });
+
+  it.each(["#/", "#/cases", "#/policies", "#/about", "#/live/a/b"])(
+    "keeps the recorded chip and footer at %s, with live mode on",
+    async (hash) => {
+      setup(hash);
+      await loaded();
+      expect(within(screen.getByRole("banner")).getByRole("button", { name: "Recorded runs on synthetic data" })).toBeInTheDocument();
+      expect(screen.getByRole("contentinfo")).toHaveTextContent("Recorded runs only. Nothing runs when you open this site.");
+    },
+  );
 
   it("keeps the top bar accessible with the extra item", async () => {
     const { view } = setup("#/cases");
