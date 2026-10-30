@@ -7,6 +7,6 @@
     "node": "24.x"
   },
   "devDependencies": {
-    "aws-cdk": "2.1146.0"
+    "aws-cdk": "2.1146.1"
   }
 }
